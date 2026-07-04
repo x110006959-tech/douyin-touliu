@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AccountProfile {
+  id            String          @id @default(cuid())
+  platform      String
+  accountName   String
+  merchantName  String?
+  storeName     String?
+  usage         String?
+  memo          String?
+  loginEntryUrl String?
+  phoneHint     String?
+  sessionStatus String          @default("missing")
+  lastLoginAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  sessions      SessionVault[]
+  memos         AccountMemo[]
+  evidences     RawEvidence[]
+  snapshots     LiveSnapshot[]
+  jobs          CollectionJob[]
+
+  @@index([platform, accountName])
+  @@unique([platform, accountName])
+}
+
+model SessionVault {
+  id               String         @id @default(cuid())
+  accountId        String
+  label            String         @default("default")
+  encryptedPayload String
+  encryptionMeta   String         @default("{}")
+  containsPassword Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  account          AccountProfile @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@unique([accountId, label])
+}
+
+model AccountMemo {
+  id        String         @id @default(cuid())
+  accountId String
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account   AccountProfile @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+model RawEvidence {
+  id               String            @id @default(cuid())
+  accountId        String?
+  source           String
+  pageName         String?
+  targetUrl        String?
+  status           String            @default("pending_verification")
+  confidence       Float?
+  rawText          String?
+  rawPayload       String            @default("{}")
+  parsedFields     String            @default("{}")
+  failureReason    String?
+  screenshotPath   String?
+  needsCalibration Boolean           @default(false)
+  verifiedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  account          AccountProfile?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  calibrationItems CalibrationItem[]
+  snapshots        LiveSnapshot[]
+
+  @@index([status, needsCalibration])
+  @@index([accountId])
+}
+
+model CalibrationItem {
+  id             String      @id @default(cuid())
+  evidenceId     String
+  fieldName      String
+  currentValue   String?
+  suggestedValue String?
+  manualValue    String?
+  unit           String?
+  confidence     Float?
+  status         String      @default("pending")
+  reason         String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  evidence       RawEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([evidenceId])
+}
+
+model SubjectProfile {
+  id                    String         @id @default(cuid())
+  accountIdentity       String
+  operatorType          String
+  cooperationType       String?
+  assetOwner            String?
+  controlLevel          String?
+  subjectType           String
+  serviceProviderName   String?
+  serviceMode           String?
+  serviceFee            Float?
+  serviceScheduleStatus String?
+  serviceScriptStatus   String?
+  materialAssetStatus   String?
+  fanAssetStatus        String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  snapshots             LiveSnapshot[]
+
+  @@index([subjectType])
+}
+
+model ActivitySnapshot {
+  id                    String         @id @default(cuid())
+  name                  String
+  type                  String
+  city                  String?
+  category              String?
+  accountTier           String?
+  startsAt              DateTime?
+  endsAt                DateTime?
+  subsidyOwner          String?
+  verifiedStatus        String         @default("unverified")
+  canCountInRoi         Boolean        @default(false)
+  platformSubsidyAmount Float?
+  adCouponAmount        Float?
+  rebateCouponAmount    Float?
+  merchantSubsidyAmount Float?
+  notes                 String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  snapshots             LiveSnapshot[]
+
+  @@index([verifiedStatus, canCountInRoi])
+}
+
+model LiveSnapshot {
+  id                     String            @id @default(cuid())
+  accountId              String?
+  subjectProfileId       String?
+  activityId             String?
+  sourceEvidenceId        String?           @unique
+  liveRoomName           String
+  merchantName           String?
+  storeName              String?
+  capturedAt             DateTime          @default(now())
+  subjectType            String?
+  accountIdentity        String?
+  operatorType           String?
+  cooperationType        String?
+  controlLevel           String?
+  subjectConfidence      Float?
+  subjectSource          String?
+  serviceProviderName    String?
+  serviceMode            String?
+  serviceFee             Float?
+  serviceScheduleStatus  String?
+  serviceScriptStatus    String?
+  serviceFieldControlIssue Boolean         @default(false)
+  servicePricePromiseRisk  Boolean         @default(false)
+  materialAssetStatus    String?
+  fanAssetStatus         String?
+  dailyBudget            Float?
+  remainingBudget        Float?
+  todaySpend             Float?
+  spendLast30m           Float?
+  currentBid             Float?
+  targetRoi              Float?
+  targetCpa              Float?
+  payRoi                 Float?
+  verifyRoi              Float?
+  grossProfitRoi         Float?
+  attributedVerifyGmv    Float?
+  grossProfit            Float?
+  liveGmv                Float?
+  shelfGmv               Float?
+  searchGmv              Float?
+  poiVisits              Int?
+  storeSearches          Int?
+  searchAfterVerifyCount Int?
+  detailCtr              Float?
+  complaintRate          Float?
+  badReviewRate          Float?
+  refundRate             Float?
+  scoreDrop              Boolean           @default(false)
+  fulfillmentAbnormal    Boolean           @default(false)
+  inventoryStatus        String?
+  reservationStatus      String?
+  hostScriptRisk         Boolean           @default(false)
+  platformSubsidyAmount  Float?
+  adCouponAmount         Float?
+  rebateCouponAmount     Float?
+  merchantSubsidyAmount  Float?
+  sourceQuality          String            @default("manual")
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  account                AccountProfile?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  sourceEvidence         RawEvidence?       @relation(fields: [sourceEvidenceId], references: [id], onDelete: SetNull)
+  subjectProfile         SubjectProfile?   @relation(fields: [subjectProfileId], references: [id], onDelete: SetNull)
+  activity               ActivitySnapshot? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  diagnoses              DiagnosisResult[]
+
+  @@index([capturedAt])
+  @@index([accountId])
+  @@index([sourceEvidenceId])
+}
+
+model DiagnosisResult {
+  id             String       @id @default(cuid())
+  snapshotId     String
+  intelligence   String
+  judgement      String
+  operation      String
+  output         String
+  actions        String       @default("[]")
+  tags           String       @default("[]")
+  confidence     String       @default("medium")
+  missingFields  String       @default("[]")
+  evidenceFields String       @default("{}")
+  createdAt      DateTime     @default(now())
+  snapshot       LiveSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([snapshotId])
+}
+
+model CollectionJob {
+  id         String          @id @default(cuid())
+  accountId  String?
+  type       String
+  targetName String
+  targetUrl  String?
+  schedule   String?
+  status     String          @default("idle")
+  lastRunAt  DateTime?
+  lastError  String?
+  cursor     String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  account    AccountProfile? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([accountId])
+}
+
+model FieldMapping {
+  id                   String    @id @default(cuid())
+  pageType             String
+  fieldName            String
+  selector             String?
+  ocrRegion            String?
+  unit                 String?
+  cleanRule            String?
+  lastSuccessAt        DateTime?
+  structureFingerprint String?
+  status               String    @default("active")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([pageType, fieldName])
+}
