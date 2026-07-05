@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "抖音生活服务诊断采集助手",
+  "version": "0.1.0",
+  "description": "采集用户已登录后台页面中的可见数据与同源/白名单 JSON 响应，用于主体识别优先的本地生活诊断。",
+  "permissions": ["activeTab", "storage", "tabs"],
+  "host_permissions": [
+    "https://*.douyin.com/*",
+    "https://*.douyinlife.com/*",
+    "https://*.juliangengine.com/*",
+    "https://*.oceanengine.com/*",
+    "https://*.bytedance.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "本地生活诊断采集",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.douyin.com/*",
+        "https://*.douyinlife.com/*",
+        "https://*.juliangengine.com/*",
+        "https://*.oceanengine.com/*",
+        "https://*.bytedance.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": [
+        "https://*.douyin.com/*",
+        "https://*.douyinlife.com/*",
+        "https://*.juliangengine.com/*",
+        "https://*.oceanengine.com/*",
+        "https://*.bytedance.com/*"
+      ]
+    }
+  ]
+}

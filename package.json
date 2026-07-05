@@ -1,35 +1,24 @@
 {
-  "name": "douyin-local-life-diagnosis",
+  "name": "douyin-local-life-subject-diagnosis",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && next build",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "collect:worker": "tsx scripts/collection-worker.ts",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
-    "prisma:generate": "prisma generate"
+    "dev": "corepack pnpm --parallel --filter @douyin-local-life/api --filter @douyin-local-life/web dev",
+    "dev:web": "corepack pnpm --filter @douyin-local-life/web dev",
+    "dev:api": "corepack pnpm --filter @douyin-local-life/api dev",
+    "build": "corepack pnpm -r build",
+    "typecheck": "corepack pnpm -r typecheck",
+    "test": "corepack pnpm -r test",
+    "extension:build": "corepack pnpm --filter @douyin-local-life/extension build",
+    "db:push": "corepack pnpm exec prisma db push",
+    "prisma:generate": "corepack pnpm exec prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^6.1.0",
-    "lucide-react": "^0.468.0",
-    "next": "^16.2.10",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zod": "^3.24.1"
-  },
-  "overrides": {
-    "postcss": "^8.5.16"
+    "@prisma/client": "^6.19.3"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
-    "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2",
-    "prisma": "^6.1.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.9"
+    "pnpm": "11.9.0",
+    "prisma": "^6.1.0"
   }
 }

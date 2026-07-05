@@ -1,5 +1,0 @@
-scrapling
-requests
-curl_cffi
-playwright
-browserforge

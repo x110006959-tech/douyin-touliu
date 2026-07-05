@@ -1,0 +1,20 @@
+{
+  "name": "@douyin-local-life/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('extension tests: no tests yet')\""
+  },
+  "dependencies": {
+    "@douyin-local-life/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.9"
+  }
+}

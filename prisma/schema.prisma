@@ -3,273 +3,245 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model AccountProfile {
-  id            String          @id @default(cuid())
-  platform      String
-  accountName   String
-  merchantName  String?
-  storeName     String?
-  usage         String?
-  memo          String?
-  loginEntryUrl String?
-  phoneHint     String?
-  sessionStatus String          @default("missing")
-  lastLoginAt   DateTime?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  sessions      SessionVault[]
-  memos         AccountMemo[]
-  evidences     RawEvidence[]
-  snapshots     LiveSnapshot[]
-  jobs          CollectionJob[]
-
-  @@index([platform, accountName])
-  @@unique([platform, accountName])
+enum UserRole {
+  ADMIN
+  MEMBER
 }
 
-model SessionVault {
-  id               String         @id @default(cuid())
-  accountId        String
-  label            String         @default("default")
-  encryptedPayload String
-  encryptionMeta   String         @default("{}")
-  containsPassword Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  account          AccountProfile @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  @@index([accountId])
-  @@unique([accountId, label])
+enum BusinessType {
+  DOUYIN_LOCAL_LIFE
 }
 
-model AccountMemo {
-  id        String         @id @default(cuid())
-  accountId String
-  title     String
-  body      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  account   AccountProfile @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  @@index([accountId])
+enum SubjectType {
+  SUBJECT_PENDING
+  MERCHANT_OFFICIAL
+  PROFESSIONAL
+  EXTERNAL_CREATOR
+  CREATOR_MATRIX
+  SERVICE_PROVIDER
+  PLATFORM_EVENT
+  BRAND_REGION_MATRIX
 }
 
-model RawEvidence {
-  id               String            @id @default(cuid())
-  accountId        String?
-  source           String
-  pageName         String?
-  targetUrl        String?
-  status           String            @default("pending_verification")
-  confidence       Float?
-  rawText          String?
-  rawPayload       String            @default("{}")
-  parsedFields     String            @default("{}")
-  failureReason    String?
-  screenshotPath   String?
-  needsCalibration Boolean           @default(false)
-  verifiedAt       DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  account          AccountProfile?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  calibrationItems CalibrationItem[]
-  snapshots        LiveSnapshot[]
-
-  @@index([status, needsCalibration])
-  @@index([accountId])
+enum OperatorType {
+  OPERATOR_PENDING
+  MERCHANT_SELF
+  SERVICE_PROVIDER_LIVE
+  SERVICE_PROVIDER_OPERATION
+  CREATOR_SELF
+  AGENCY_LEADER
+  PLATFORM_OPERATION
+  BRAND_REGION
 }
 
-model CalibrationItem {
-  id             String      @id @default(cuid())
-  evidenceId     String
-  fieldName      String
-  currentValue   String?
-  suggestedValue String?
-  manualValue    String?
-  unit           String?
-  confidence     Float?
-  status         String      @default("pending")
-  reason         String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  evidence       RawEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+enum CooperationType {
+  COOPERATION_PENDING
+  NONE
+  PROFESSIONAL_BINDING
+  CREATOR_COOPERATION
+  SERVICE_PROVIDER_CONTRACT
+  PLATFORM_INVITATION
+  BRAND_MATRIX
+}
 
+enum ControlLevel {
+  PENDING
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CollectionTaskStatus {
+  PENDING
+  COLLECTING
+  REVIEWING
+  UPLOADED
+  PROCESSING
+  ANALYZED
+  FAILED
+}
+
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  passwordHash    String
+  name            String?
+  role            UserRole         @default(MEMBER)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  workspaces      Workspace[]
+  collectionTasks CollectionTask[]
+  auditLogs       AuditLog[]
+}
+
+model Workspace {
+  id        String     @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects  Project[]
+  auditLogs AuditLog[]
+
+  @@index([ownerId])
+}
+
+model Project {
+  id                  String          @id @default(cuid())
+  workspaceId         String
+  name                String
+  businessType        BusinessType    @default(DOUYIN_LOCAL_LIFE)
+  subjectType         SubjectType     @default(SUBJECT_PENDING)
+  operatorType        OperatorType    @default(OPERATOR_PENDING)
+  cooperationType     CooperationType @default(COOPERATION_PENDING)
+  controlLevel        ControlLevel    @default(PENDING)
+  subjectConfidence   Float           @default(0)
+  serviceProviderName String?
+  serviceMode         String?
+  serviceFee          Float?
+  status              ProjectStatus   @default(ACTIVE)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks               CollectionTask[]
+  auditLogs           AuditLog[]
+
+  @@index([workspaceId])
+  @@index([subjectType, operatorType])
+}
+
+model CollectionTask {
+  id         String               @id @default(cuid())
+  projectId  String
+  userId     String
+  status     CollectionTaskStatus @default(PENDING)
+  sourceUrl  String?
+  pageTitle  String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  project    Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots  DataSnapshot[]
+  analyses   AiAnalysisTask[]
+  auditLogs  AuditLog[]
+
+  @@index([projectId])
+  @@index([userId])
   @@index([status])
-  @@index([evidenceId])
 }
 
-model SubjectProfile {
-  id                    String         @id @default(cuid())
-  accountIdentity       String
-  operatorType          String
-  cooperationType       String?
-  assetOwner            String?
-  controlLevel          String?
-  subjectType           String
-  serviceProviderName   String?
-  serviceMode           String?
-  serviceFee            Float?
-  serviceScheduleStatus String?
-  serviceScriptStatus   String?
-  materialAssetStatus   String?
-  fanAssetStatus        String?
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
-  snapshots             LiveSnapshot[]
+model DataSnapshot {
+  id                 String             @id @default(cuid())
+  taskId             String
+  pageType           String?
+  rawDomText          String?
+  rawNetworkJson      Json?
+  rawTableData        Json?
+  visibleMetricsJson  Json?
+  screenshotUrl       String?
+  localCollectedAt    DateTime
+  uploadedAt          DateTime           @default(now())
+  createdAt           DateTime           @default(now())
+  task                CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  normalizedMetrics   NormalizedMetric[]
 
-  @@index([subjectType])
+  @@index([taskId])
 }
 
-model ActivitySnapshot {
-  id                    String         @id @default(cuid())
-  name                  String
-  type                  String
-  city                  String?
-  category              String?
-  accountTier           String?
-  startsAt              DateTime?
-  endsAt                DateTime?
-  subsidyOwner          String?
-  verifiedStatus        String         @default("unverified")
-  canCountInRoi         Boolean        @default(false)
-  platformSubsidyAmount Float?
-  adCouponAmount        Float?
-  rebateCouponAmount    Float?
-  merchantSubsidyAmount Float?
-  notes                 String?
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
-  snapshots             LiveSnapshot[]
+model NormalizedMetric {
+  id           String       @id @default(cuid())
+  snapshotId   String
+  metricKey    String
+  metricName   String
+  metricValue  String
+  metricUnit   String?
+  metricSource String
+  createdAt    DateTime     @default(now())
+  snapshot      DataSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
-  @@index([verifiedStatus, canCountInRoi])
-}
-
-model LiveSnapshot {
-  id                     String            @id @default(cuid())
-  accountId              String?
-  subjectProfileId       String?
-  activityId             String?
-  sourceEvidenceId        String?           @unique
-  liveRoomName           String
-  merchantName           String?
-  storeName              String?
-  capturedAt             DateTime          @default(now())
-  subjectType            String?
-  accountIdentity        String?
-  operatorType           String?
-  cooperationType        String?
-  controlLevel           String?
-  subjectConfidence      Float?
-  subjectSource          String?
-  serviceProviderName    String?
-  serviceMode            String?
-  serviceFee             Float?
-  serviceScheduleStatus  String?
-  serviceScriptStatus    String?
-  serviceFieldControlIssue Boolean         @default(false)
-  servicePricePromiseRisk  Boolean         @default(false)
-  materialAssetStatus    String?
-  fanAssetStatus         String?
-  dailyBudget            Float?
-  remainingBudget        Float?
-  todaySpend             Float?
-  spendLast30m           Float?
-  currentBid             Float?
-  targetRoi              Float?
-  targetCpa              Float?
-  payRoi                 Float?
-  verifyRoi              Float?
-  grossProfitRoi         Float?
-  attributedVerifyGmv    Float?
-  grossProfit            Float?
-  liveGmv                Float?
-  shelfGmv               Float?
-  searchGmv              Float?
-  poiVisits              Int?
-  storeSearches          Int?
-  searchAfterVerifyCount Int?
-  detailCtr              Float?
-  complaintRate          Float?
-  badReviewRate          Float?
-  refundRate             Float?
-  scoreDrop              Boolean           @default(false)
-  fulfillmentAbnormal    Boolean           @default(false)
-  inventoryStatus        String?
-  reservationStatus      String?
-  hostScriptRisk         Boolean           @default(false)
-  platformSubsidyAmount  Float?
-  adCouponAmount         Float?
-  rebateCouponAmount     Float?
-  merchantSubsidyAmount  Float?
-  sourceQuality          String            @default("manual")
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
-  account                AccountProfile?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  sourceEvidence         RawEvidence?       @relation(fields: [sourceEvidenceId], references: [id], onDelete: SetNull)
-  subjectProfile         SubjectProfile?   @relation(fields: [subjectProfileId], references: [id], onDelete: SetNull)
-  activity               ActivitySnapshot? @relation(fields: [activityId], references: [id], onDelete: SetNull)
-  diagnoses              DiagnosisResult[]
-
-  @@index([capturedAt])
-  @@index([accountId])
-  @@index([sourceEvidenceId])
-}
-
-model DiagnosisResult {
-  id             String       @id @default(cuid())
-  snapshotId     String
-  intelligence   String
-  judgement      String
-  operation      String
-  output         String
-  actions        String       @default("[]")
-  tags           String       @default("[]")
-  confidence     String       @default("medium")
-  missingFields  String       @default("[]")
-  evidenceFields String       @default("{}")
-  createdAt      DateTime     @default(now())
-  snapshot       LiveSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
   @@index([snapshotId])
+  @@index([metricKey])
 }
 
-model CollectionJob {
-  id         String          @id @default(cuid())
-  accountId  String?
-  type       String
-  targetName String
-  targetUrl  String?
-  schedule   String?
-  status     String          @default("idle")
-  lastRunAt  DateTime?
-  lastError  String?
-  cursor     String?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  account    AccountProfile? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+model AiAnalysisTask {
+  id               String           @id @default(cuid())
+  collectionTaskId String
+  provider         String
+  model            String
+  promptVersion    String
+  status           AnalysisStatus   @default(PENDING)
+  requestPayload   Json?
+  responsePayload  Json?
+  errorMessage     String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  collectionTask   CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  recommendations  Recommendation[]
 
+  @@index([collectionTaskId])
   @@index([status])
-  @@index([accountId])
 }
 
-model FieldMapping {
-  id                   String    @id @default(cuid())
-  pageType             String
-  fieldName            String
-  selector             String?
-  ocrRegion            String?
-  unit                 String?
-  cleanRule            String?
-  lastSuccessAt        DateTime?
-  structureFingerprint String?
-  status               String    @default("active")
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+model Recommendation {
+  id                   String         @id @default(cuid())
+  aiAnalysisTaskId      String
+  summary              String
+  riskLevel            RiskLevel
+  problemsJson         Json?
+  suggestionsJson      Json?
+  manualCheckItemsJson Json?
+  confidence           Float
+  createdAt            DateTime       @default(now())
+  aiAnalysisTask        AiAnalysisTask @relation(fields: [aiAnalysisTaskId], references: [id], onDelete: Cascade)
 
-  @@index([pageType, fieldName])
+  @@index([aiAnalysisTaskId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          String          @id @default(cuid())
+  userId      String
+  workspaceId String?
+  projectId   String?
+  taskId      String?
+  action      String
+  detailJson  Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime        @default(now())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task        CollectionTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([taskId])
+  @@index([action])
 }

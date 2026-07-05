@@ -1,12 +1,22 @@
 .env*
 !.env.example
-.next/
+
 node_modules/
+.pnpm-store/
 coverage/
+
+.next/
 dist/
 tsconfig.tsbuildinfo
+apps/**/.next/
+apps/**/dist/
+packages/**/dist/
+
 prisma/dev.db
 prisma/dev.db-journal
-collector/.cache/
-collector/__pycache__/
-*.pyc
+
+# Removed legacy roots. Keep them ignored so old prototypes do not re-enter the MVP.
+src/
+collector/
+chrome-extension-mvp/
+scripts/
