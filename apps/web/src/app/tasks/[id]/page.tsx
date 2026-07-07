@@ -15,12 +15,16 @@ import {
   type ActionType,
   type ControlLevel,
   type CooperationType,
+  type MetricReviewStatus,
+  type MetricSource,
   type OperatorType,
+  type ReviewedMetricDTO,
   type RiskLevel,
   type SubjectType
 } from "@douyin-local-life/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -91,18 +95,28 @@ export default function TaskDetailPage() {
   const { token } = useAuth();
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [decisionRun, setDecisionRun] = useState<DecisionRun | null>(null);
+  const [reviewMetrics, setReviewMetrics] = useState<ReviewedMetricDTO[]>([]);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
   const [busy, setBusy] = useState("");
+
+  function applyReviewMetrics(metrics: ReviewedMetricDTO[]) {
+    setReviewMetrics(metrics);
+    setReviewDrafts(Object.fromEntries(metrics.map((metric) => [metric.id, metric.reviewedValue ?? metric.originalValue ?? ""])));
+  }
 
   function load() {
     if (!token) return;
     Promise.all([
       apiFetch<TaskDetail>(`/collection-tasks/${params.id}`, token),
-      apiFetch<DecisionRun | null>(`/collection-tasks/${params.id}/decision-runs/latest`, token)
+      apiFetch<DecisionRun | null>(`/collection-tasks/${params.id}/decision-runs/latest`, token),
+      apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token)
     ])
-      .then(([nextTask, nextDecisionRun]) => {
+      .then(([nextTask, nextDecisionRun, nextReviewMetrics]) => {
         setTask(nextTask);
         setDecisionRun(nextDecisionRun);
+        applyReviewMetrics(nextReviewMetrics);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "读取任务失败"));
   }
@@ -138,6 +152,84 @@ export default function TaskDetailPage() {
     }
   }
 
+  async function refreshReviewMetrics() {
+    if (!token) return;
+    setBusy("review-refresh");
+    setReviewMessage("");
+    try {
+      const nextReviewMetrics = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token);
+      applyReviewMetrics(nextReviewMetrics);
+      setReviewMessage("复核指标已刷新");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "刷新复核指标失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function updateReviewMetric(metric: ReviewedMetricDTO, reviewStatus: Exclude<MetricReviewStatus, "PENDING">) {
+    if (!token) return;
+    setBusy(`review-${metric.id}`);
+    setReviewMessage("");
+    try {
+      const reviewedValue = reviewStatus === "MODIFIED" ? reviewDrafts[metric.id] || "" : undefined;
+      const updated = await apiFetch<ReviewedMetricDTO>(`/review-metrics/${metric.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ reviewStatus, reviewedValue })
+      });
+      applyReviewMetrics(reviewMetrics.map((item) => (item.id === updated.id ? updated : item)));
+      setReviewMessage(reviewStatusLabel(reviewStatus));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存复核指标失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveModifiedDrafts() {
+    if (!token) return;
+    const items = reviewMetrics
+      .filter((metric) => (reviewDrafts[metric.id] || "") !== (metric.reviewedValue ?? metric.originalValue ?? ""))
+      .map((metric) => ({ metricId: metric.id, reviewedValue: reviewDrafts[metric.id] || "", reviewStatus: "MODIFIED" as const }));
+    if (!items.length) {
+      setReviewMessage("没有需要保存的修改");
+      return;
+    }
+    setBusy("review-save-all");
+    setReviewMessage("");
+    try {
+      const updated = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/bulk`, token, {
+        method: "POST",
+        body: JSON.stringify({ items })
+      });
+      const byId = new Map(updated.map((metric) => [metric.id, metric]));
+      applyReviewMetrics(reviewMetrics.map((metric) => byId.get(metric.id) || metric));
+      setReviewMessage("修改已保存");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "批量保存复核指标失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function confirmAllPending() {
+    if (!token) return;
+    setBusy("review-confirm-all");
+    setReviewMessage("");
+    try {
+      const updated = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/confirm-all`, token, {
+        method: "POST",
+        body: "{}"
+      });
+      applyReviewMetrics(updated);
+      setReviewMessage("已确认全部待复核指标");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "一键确认失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (!task) {
     return <main className="mx-auto max-w-5xl px-6 py-8 text-sm text-muted">{error || "加载中..."}</main>;
   }
@@ -148,6 +240,7 @@ export default function TaskDetailPage() {
   const suggestions = asArray(recommendation?.suggestionsJson);
   const problems = asArray(recommendation?.problemsJson);
   const manualChecks = asArray(recommendation?.manualCheckItemsJson);
+  const reviewState = summarizeReviewState(reviewMetrics);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
@@ -166,6 +259,11 @@ export default function TaskDetailPage() {
           </Button>
         </div>
       </header>
+
+      <div className="mb-4 rounded-lg border border-border bg-white p-3 text-sm">
+        <strong className="mr-2">数据状态：</strong>
+        <span className={reviewState.tone}>{reviewState.label}</span>
+      </div>
 
       <div className="mb-4 rounded-lg border border-border bg-white p-3 text-sm text-muted">{aiDisclaimer}</div>
       {error ? <div className="mb-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}
@@ -270,6 +368,122 @@ export default function TaskDetailPage() {
           </div>
         </Card>
 
+        <Card className="lg:col-span-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>数据复核表</CardTitle>
+              <p className="mt-1 text-sm text-muted">采集指标先进入待复核状态，确认、修改或忽略后再用于决策建议。</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button className="border border-border bg-white text-foreground" type="button" onClick={refreshReviewMetrics} disabled={busy === "review-refresh"}>
+                刷新复核指标
+              </Button>
+              <Button className="border border-border bg-white text-foreground" type="button" onClick={saveModifiedDrafts} disabled={!reviewMetrics.length || busy === "review-save-all"}>
+                保存修改
+              </Button>
+              <Button type="button" onClick={confirmAllPending} disabled={!reviewMetrics.some((metric) => metric.reviewStatus === "PENDING") || busy === "review-confirm-all"}>
+                一键确认全部
+              </Button>
+            </div>
+          </div>
+          {!reviewMetrics.length ? (
+            <p className="rounded-md border border-border bg-background px-3 py-3 text-sm text-muted">暂无可复核指标，请先上传采集快照。</p>
+          ) : (
+            <div className="grid gap-3">
+              {reviewMetrics.some((metric) => metric.reviewStatus === "PENDING") ? (
+                <p className="rounded-md border border-primary/30 bg-background px-3 py-2 text-sm text-primary">
+                  建议先完成人工复核，再运行决策建议。
+                </p>
+              ) : null}
+              {reviewMessage ? <p className="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted">{reviewMessage}</p> : null}
+              <div className="overflow-x-auto">
+                <table className="min-w-[1200px] text-left text-sm">
+                  <thead className="border-b border-border text-xs text-muted">
+                    <tr>
+                      <th className="px-3 py-2">指标名称</th>
+                      <th className="px-3 py-2">Key</th>
+                      <th className="px-3 py-2">采集值</th>
+                      <th className="px-3 py-2">用户确认值</th>
+                      <th className="px-3 py-2">单位</th>
+                      <th className="px-3 py-2">来源</th>
+                      <th className="px-3 py-2">置信度</th>
+                      <th className="px-3 py-2">页面类型</th>
+                      <th className="px-3 py-2">口径</th>
+                      <th className="px-3 py-2">时间范围</th>
+                      <th className="px-3 py-2">原始证据</th>
+                      <th className="px-3 py-2">复核状态</th>
+                      <th className="px-3 py-2">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviewMetrics.map((metric) => (
+                      <tr className="border-b border-border align-top" key={metric.id}>
+                        <td className="px-3 py-3 font-medium">{metric.metricName}</td>
+                        <td className="px-3 py-3 text-muted">{metric.metricKey}</td>
+                        <td className="px-3 py-3">{metric.originalValue || "数据缺失"}</td>
+                        <td className="px-3 py-3">
+                          <Input
+                            className="w-36"
+                            value={reviewDrafts[metric.id] ?? ""}
+                            onChange={(event) => setReviewDrafts((drafts) => ({ ...drafts, [metric.id]: event.target.value }))}
+                          />
+                        </td>
+                        <td className="px-3 py-3">{metric.metricUnit || "--"}</td>
+                        <td className="px-3 py-3">{metricSourceLabel(metric.metricSource)}</td>
+                        <td className="px-3 py-3">{Math.round(metric.confidence * 100)}%</td>
+                        <td className="px-3 py-3">{metric.pageType || "UNKNOWN"}</td>
+                        <td className="px-3 py-3">{metric.scope || "UNKNOWN"}</td>
+                        <td className="px-3 py-3">{metric.timeRange || "UNKNOWN"}</td>
+                        <td className="px-3 py-3">
+                          {metric.rawEvidence ? (
+                            <details>
+                              <summary className="cursor-pointer text-primary">查看</summary>
+                              <pre className="mt-2 max-h-40 w-72 overflow-auto rounded-md bg-slate-950 p-2 text-xs text-slate-100">
+                                {JSON.stringify(metric.rawEvidence, null, 2)}
+                              </pre>
+                            </details>
+                          ) : (
+                            <span className="text-muted">暂无证据</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">{reviewStatusLabel(metric.reviewStatus)}</td>
+                        <td className="px-3 py-3">
+                          <div className="flex min-w-44 flex-wrap gap-2">
+                            <Button
+                              className="h-8 border border-border bg-white px-2 text-xs text-foreground"
+                              type="button"
+                              onClick={() => updateReviewMetric(metric, "CONFIRMED")}
+                              disabled={busy === `review-${metric.id}`}
+                            >
+                              确认
+                            </Button>
+                            <Button
+                              className="h-8 border border-border bg-white px-2 text-xs text-foreground"
+                              type="button"
+                              onClick={() => updateReviewMetric(metric, "MODIFIED")}
+                              disabled={busy === `review-${metric.id}`}
+                            >
+                              修改
+                            </Button>
+                            <Button
+                              className="h-8 border border-border bg-white px-2 text-xs text-foreground"
+                              type="button"
+                              onClick={() => updateReviewMetric(metric, "IGNORED")}
+                              disabled={busy === `review-${metric.id}`}
+                            >
+                              忽略
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </Card>
+
         <Card>
           <CardTitle>诊断建议</CardTitle>
           {recommendation ? (
@@ -338,6 +552,40 @@ export default function TaskDetailPage() {
 
 function asArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+}
+
+function summarizeReviewState(metrics: ReviewedMetricDTO[]) {
+  if (!metrics.length) {
+    return { label: "无指标：不建议运行", tone: "text-danger" };
+  }
+  const pendingCount = metrics.filter((metric) => metric.reviewStatus === "PENDING").length;
+  const reviewedCount = metrics.filter((metric) => metric.reviewStatus === "CONFIRMED" || metric.reviewStatus === "MODIFIED").length;
+  if (pendingCount === 0 && reviewedCount > 0) {
+    return { label: "已复核：可以正常运行", tone: "text-primary" };
+  }
+  return { label: "未完全复核：可以运行，但置信度可能降低", tone: "text-muted" };
+}
+
+function metricSourceLabel(source: MetricSource) {
+  const labels: Record<MetricSource, string> = {
+    XHR_JSON: "XHR JSON",
+    TABLE: "表格",
+    DOM_TEXT: "页面文本",
+    SCREENSHOT: "截图",
+    MANUAL_INPUT: "人工输入",
+    UNKNOWN: "未知"
+  };
+  return labels[source] || source;
+}
+
+function reviewStatusLabel(status: MetricReviewStatus) {
+  const labels: Record<MetricReviewStatus, string> = {
+    PENDING: "待复核",
+    CONFIRMED: "已确认",
+    MODIFIED: "已修改",
+    IGNORED: "已忽略"
+  };
+  return labels[status] || status;
 }
 
 function Info({ label, value }: { label: string; value: string }) {

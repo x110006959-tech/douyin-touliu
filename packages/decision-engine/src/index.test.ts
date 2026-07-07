@@ -153,4 +153,32 @@ describe("decision-engine", () => {
     expect(actions).not.toContain("DECREASE_BUDGET");
     expect(actions.every((action) => action === "OBSERVE" || action === "REQUEST_MANUAL_REVIEW")).toBe(true);
   });
+
+  it("lowers confidence and asks for manual check when data is unreviewed", () => {
+    const reviewed = runDecisionRules(input({ dataReviewStatus: "REVIEWED", metricLayer: "REVIEWED_METRIC" }));
+    const unreviewed = runDecisionRules(input({ dataReviewStatus: "UNREVIEWED", metricLayer: "NORMALIZED_METRIC" }));
+
+    expect(unreviewed.confidence).toBeLessThan(reviewed.confidence);
+    expect(unreviewed.manualCheckItems.some((item) => item.title.includes("人工复核") || item.reason.includes("人工复核"))).toBe(true);
+  });
+
+  it("ignores unknown metric keys for strong ROI actions", () => {
+    const result = runDecisionRules(
+      input({
+        metrics: [
+          metric("unknown", "自定义低值字段", 0.2),
+          metric("spend", "消耗", 1000),
+          metric("orders", "成交订单数", 10),
+          metric("impressions", "曝光量", 20000),
+          metric("ctr", "点击率", 0.03),
+          metric("gpm", "GPM", 120)
+        ]
+      })
+    );
+    const actions = result.actionProposals.map((proposal) => proposal.actionType);
+
+    expect(result.manualCheckItems.some((item) => item.title.includes("ROI"))).toBe(true);
+    expect(actions).not.toContain("PAUSE_TASK");
+    expect(actions).not.toContain("DECREASE_BUDGET");
+  });
 });

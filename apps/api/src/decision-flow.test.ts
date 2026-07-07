@@ -131,6 +131,12 @@ describe("V0.1 API smoke flow", () => {
     const projectProposals = await api<Array<{ id: string; status: string }>>(`/projects/${project.id}/action-proposals`, token);
     expect(projectProposals.length).toBeGreaterThanOrEqual(3);
 
+    const explanationOnly = await api<{ recommendations: Array<{ suggestionsJson: unknown }> }>(`/collection-tasks/${task.id}/analyze`, token, {
+      method: "POST",
+      body: {}
+    });
+    expect(explanationOnly.recommendations[0]?.suggestionsJson).toEqual([]);
+
     const [approveTarget, observeTarget, rejectTarget] = projectProposals;
     if (!approveTarget || !observeTarget || !rejectTarget) throw new Error("Expected at least three action proposals");
 
@@ -162,6 +168,11 @@ describe("V0.1 API smoke flow", () => {
     expect(rejected.status).toBe("REJECTED");
     expect(rejected.approvalRecords.length).toBeGreaterThan(0);
 
+    await apiError(`/action-proposals/${rejectTarget.id}/outcomes`, token, {
+      method: "POST",
+      body: { observationWindow: "30m", result: "UNCLEAR", note: "Rejected actions cannot have execution outcomes." }
+    }, "ACTION_NOT_MANUAL_EXECUTED");
+
     const executed = await api<{ status: string; executionLogs: unknown[] }>(
       `/action-proposals/${approveTarget.id}/mark-manual-executed`,
       token,
@@ -173,13 +184,37 @@ describe("V0.1 API smoke flow", () => {
     expect(executed.status).toBe("MANUAL_EXECUTED");
     expect(executed.executionLogs.length).toBeGreaterThan(0);
 
-    const detail = await api<{ decisionRun: unknown; approvalRecords: unknown[]; executionLogs: unknown[] }>(
+    const outcome = await api<ActionOutcomeResponse>(`/action-proposals/${approveTarget.id}/outcomes`, token, {
+      method: "POST",
+      body: {
+        observationWindow: "30m",
+        beforeMetrics: { verify_roi: 0.8, orders: 0 },
+        afterMetrics: { verify_roi: 1.1, orders: 3 },
+        result: "IMPROVED",
+        note: "Manual execution improved short-window indicators.",
+        conclusion: "Keep observing before any further budget move."
+      }
+    });
+    expect(outcome.actionProposalId).toBe(approveTarget.id);
+    expect(outcome.observationWindow).toBe("30m");
+    expect(outcome.result).toBe("IMPROVED");
+
+    const outcomes = await api<ActionOutcomeResponse[]>(`/action-proposals/${approveTarget.id}/outcomes`, token);
+    expect(outcomes.some((item) => item.id === outcome.id)).toBe(true);
+
+    const outcomeSummary = await api<ProjectOutcomeSummaryResponse>(`/projects/${project.id}/outcome-summary`, token);
+    expect(outcomeSummary.total).toBeGreaterThanOrEqual(1);
+    expect(outcomeSummary.byResult.IMPROVED).toBeGreaterThanOrEqual(1);
+    expect(outcomeSummary.byActionType.length).toBeGreaterThanOrEqual(1);
+
+    const detail = await api<{ decisionRun: unknown; approvalRecords: unknown[]; executionLogs: unknown[]; outcomes: unknown[] }>(
       `/action-proposals/${approveTarget.id}`,
       token
     );
     expect(detail.decisionRun).toBeTruthy();
     expect(detail.approvalRecords.length).toBeGreaterThan(0);
     expect(detail.executionLogs.length).toBeGreaterThan(0);
+    expect(detail.outcomes.length).toBeGreaterThan(0);
 
     const auditLogs = await api<Array<{ action: string }>>(`/projects/${project.id}/audit-logs`, token);
     expect(auditLogs.some((log) => log.action === "CREATE_DECISION_RUN")).toBe(true);
@@ -188,8 +223,183 @@ describe("V0.1 API smoke flow", () => {
     expect(auditLogs.some((log) => log.action === "OBSERVE_ACTION_PROPOSAL")).toBe(true);
     expect(auditLogs.some((log) => log.action === "REJECT_ACTION_PROPOSAL")).toBe(true);
     expect(auditLogs.some((log) => log.action === "MARK_ACTION_MANUAL_EXECUTED")).toBe(true);
+    expect(auditLogs.some((log) => log.action === "CREATE_ACTION_OUTCOME")).toBe(true);
+  });
+
+  it("keeps the V0.1.1 reviewed metric loop before decision runs", async () => {
+    const email = `v011-review-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+    const password = "password123";
+    const registered = await api<{ token: string }>("/auth/register", null, {
+      method: "POST",
+      body: { email, password, name: "V0.1.1 Review Smoke" }
+    });
+    const token = registered.token;
+    const workspace = await api<{ id: string }>("/workspaces", token, {
+      method: "POST",
+      body: { name: "V0.1.1 Review Workspace" }
+    });
+    const project = await api<{ id: string }>("/projects", token, {
+      method: "POST",
+      body: {
+        workspaceId: workspace.id,
+        name: "V0.1.1 reviewed metric project",
+        businessType: "DOUYIN_LOCAL_LIFE",
+        subjectType: "SERVICE_PROVIDER",
+        operatorType: "SERVICE_PROVIDER_LIVE",
+        cooperationType: "SERVICE_PROVIDER_CONTRACT",
+        controlLevel: "MEDIUM",
+        subjectConfidence: 0.9,
+        serviceProviderName: "V0.1.1 service provider",
+        serviceMode: "managed live operation",
+        serviceFee: 200
+      }
+    });
+    const task = await api<{ id: string } >("/collection-tasks", token, {
+      method: "POST",
+      body: {
+        projectId: project.id,
+        sourceUrl: "https://life.douyin.com/review-dashboard",
+        pageTitle: "V0.1.1 reviewed metric dashboard"
+      }
+    });
+
+    await api<{ id: string; normalizedMetrics: Array<{ metricKey: string; confidence: number; rawEvidence: unknown }> }>(
+      `/collection-tasks/${task.id}/snapshots`,
+      token,
+      {
+        method: "POST",
+        body: {
+          pageType: "LIVE_DATA_SCREEN",
+          sourceUrl: "https://life.douyin.com/review-dashboard",
+          pageTitle: "V0.1.1 reviewed metric dashboard",
+          rawDomText: "review dashboard spend 1000 orders 3 impressions 20000 ctr 3% GPM 120",
+          rawNetworkJson: [],
+          rawTableData: [],
+          visibleMetricsJson: [
+            metric("verify_roi", "verify ROI", 1.6),
+            metric("spend", "spend", 1000),
+            metric("orders", "orders", 3),
+            metric("impressions", "impressions", 20000),
+            metric("ctr", "CTR", 0.03, "%"),
+            metric("gpm", "GPM", 120),
+            metric("clicks", "clicks", 600)
+          ],
+          screenshotUrl: null,
+          localCollectedAt: new Date().toISOString()
+        }
+      }
+    );
+
+    const initialReviewMetrics = await api<Array<ReviewMetricResponse>>(`/collection-tasks/${task.id}/review-metrics`, token);
+    expect(initialReviewMetrics.length).toBeGreaterThanOrEqual(6);
+    expect(initialReviewMetrics.every((item) => item.reviewStatus === "PENDING")).toBe(true);
+    expect(initialReviewMetrics.every((item) => item.metricSource !== undefined && typeof item.confidence === "number")).toBe(true);
+
+    const fallbackRun = await api<DecisionRunResponse>(`/collection-tasks/${task.id}/decision-runs`, token, { method: "POST", body: {} });
+    expect(fallbackRun.inputJson.metricLayer).toBe("NORMALIZED_METRIC");
+    expect(fallbackRun.inputJson.dataReviewStatus).toBe("UNREVIEWED");
+    expect(fallbackRun.confidence).toBeLessThan(0.9);
+    expect(JSON.stringify(fallbackRun.manualCheckItemsJson)).toContain("人工复核");
+
+    const byKey = new Map(initialReviewMetrics.map((item) => [item.metricKey, item]));
+    const roi = byKey.get("verify_roi");
+    const spend = byKey.get("spend");
+    const orders = byKey.get("orders");
+    const clicks = byKey.get("clicks");
+    if (!roi || !spend || !orders || !clicks) throw new Error("Expected review metric keys to exist");
+
+    const confirmed = await api<ReviewMetricResponse>(`/review-metrics/${roi.id}`, token, {
+      method: "PATCH",
+      body: { reviewStatus: "CONFIRMED" }
+    });
+    expect(confirmed.reviewStatus).toBe("CONFIRMED");
+    expect(confirmed.reviewedValue).toBe(confirmed.originalValue);
+
+    const modified = await api<ReviewMetricResponse>(`/review-metrics/${clicks.id}`, token, {
+      method: "PATCH",
+      body: { reviewStatus: "MODIFIED", reviewedValue: "900" }
+    });
+    expect(modified.reviewStatus).toBe("MODIFIED");
+    expect(modified.reviewedValue).toBe("900");
+    expect(modified.metricSource).toBe("MANUAL_INPUT");
+
+    const ignored = await api<ReviewMetricResponse>(`/review-metrics/${orders.id}`, token, {
+      method: "PATCH",
+      body: { reviewStatus: "IGNORED" }
+    });
+    expect(ignored.reviewStatus).toBe("IGNORED");
+
+    const bulkUpdated = await api<Array<ReviewMetricResponse>>(`/collection-tasks/${task.id}/review-metrics/bulk`, token, {
+      method: "POST",
+      body: { items: [{ metricId: spend.id, reviewStatus: "MODIFIED", reviewedValue: "1200" }] }
+    });
+    expect(bulkUpdated.some((item) => item.metricKey === "spend" && item.reviewStatus === "MODIFIED" && item.reviewedValue === "1200")).toBe(true);
+    expect(bulkUpdated.some((item) => item.metricKey === "spend" && item.metricSource === "MANUAL_INPUT")).toBe(true);
+
+    const confirmedAll = await api<Array<ReviewMetricResponse>>(`/collection-tasks/${task.id}/review-metrics/confirm-all`, token, {
+      method: "POST",
+      body: {}
+    });
+    expect(confirmedAll.some((item) => item.reviewStatus === "PENDING")).toBe(false);
+    expect(confirmedAll.find((item) => item.metricKey === "orders")?.reviewStatus).toBe("IGNORED");
+
+    const reviewedRun = await api<DecisionRunResponse>(`/collection-tasks/${task.id}/decision-runs`, token, { method: "POST", body: {} });
+    expect(reviewedRun.inputJson.metricLayer).toBe("REVIEWED_METRIC");
+    expect(reviewedRun.inputJson.dataReviewStatus).toBe("REVIEWED");
+    expect(reviewedRun.inputJson.reviewCoverage.modifiedCount).toBeGreaterThanOrEqual(2);
+    expect(reviewedRun.inputJson.reviewCoverage.ignoredCount).toBeGreaterThanOrEqual(1);
+    expect(reviewedRun.inputJson.metrics.some((item) => item.key === "orders")).toBe(false);
+    expect(reviewedRun.inputJson.metrics.some((item) => item.key === "spend" && item.value === 1200)).toBe(true);
+
+    const auditLogs = await api<Array<{ action: string; detailJson?: unknown }>>(`/projects/${project.id}/audit-logs`, token);
+    for (const action of [
+      "REVIEW_METRICS_INITIALIZED",
+      "REVIEW_METRIC_UPDATE",
+      "REVIEW_METRICS_BULK_UPDATE",
+      "REVIEW_METRICS_CONFIRM_ALL",
+      "DECISION_RUN_FALLBACK_NORMALIZED_METRICS",
+      "DECISION_RUN_USE_REVIEWED_METRICS"
+    ]) {
+      expect(auditLogs.some((log) => log.action === action), `${action} audit log should exist`).toBe(true);
+    }
   });
 });
+
+type ReviewMetricResponse = {
+  id: string;
+  metricKey: string;
+  originalValue: string | null;
+  reviewedValue: string | null;
+  metricSource: string;
+  confidence: number;
+  rawEvidence?: unknown;
+  reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED";
+};
+
+type DecisionRunResponse = {
+  id: string;
+  confidence: number;
+  inputJson: {
+    metricLayer: "REVIEWED_METRIC" | "NORMALIZED_METRIC";
+    dataReviewStatus: "REVIEWED" | "UNREVIEWED";
+    reviewCoverage: { confirmedCount: number; modifiedCount: number; ignoredCount: number; pendingCount: number; totalCount: number };
+    metrics: Array<{ key: string; value: number | string | null }>;
+  };
+  manualCheckItemsJson: unknown;
+};
+
+type ActionOutcomeResponse = {
+  id: string;
+  actionProposalId: string;
+  observationWindow: "30m" | "2h" | "1d" | "custom";
+  result: "IMPROVED" | "WORSENED" | "NO_CHANGE" | "UNCLEAR";
+};
+
+type ProjectOutcomeSummaryResponse = {
+  total: number;
+  byResult: Record<"IMPROVED" | "WORSENED" | "NO_CHANGE" | "UNCLEAR", number>;
+  byActionType: Array<{ actionType: string; total: number }>;
+};
 
 function metric(key: string, name: string, value: number | string | null, unit?: string) {
   return { key, name, value, unit: unit || null, source: "manual" };
@@ -216,4 +426,21 @@ async function api<T>(path: string, token: string | null, options: { method?: st
   expect(envelope).toMatchObject({ success: true, error: null });
   expect(envelope.data).toBeDefined();
   return envelope.data;
+}
+
+async function apiError(path: string, token: string | null, options: { method?: string; body?: unknown }, expectedCode: string) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: options.method || "GET",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {})
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+  });
+  const envelope = (await response.json()) as ApiEnvelope<unknown>;
+  expect(envelope).toMatchObject({
+    success: false,
+    data: null,
+    error: { code: expectedCode, message: expect.any(String) }
+  });
 }

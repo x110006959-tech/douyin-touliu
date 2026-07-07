@@ -67,6 +67,39 @@ export const actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED
 export const approvalDecisions = ["APPROVE", "REJECT", "APPROVED", "REJECTED", "OBSERVE"] as const;
 export const executionModes = ["MANUAL"] as const;
 export const executionStatuses = ["PENDING", "MANUAL_EXECUTED", "FAILED"] as const;
+export const metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"] as const;
+export const metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"] as const;
+export const dataReviewStatuses = ["REVIEWED", "UNREVIEWED"] as const;
+export const metricLayers = ["REVIEWED_METRIC", "NORMALIZED_METRIC"] as const;
+export const metricKeys = [
+  "unknown",
+  "verify_roi",
+  "gross_profit_roi",
+  "pay_roi",
+  "target_roi",
+  "spend",
+  "daily_budget",
+  "remaining_budget",
+  "orders",
+  "impressions",
+  "clicks",
+  "ctr",
+  "cpa",
+  "target_cpa",
+  "live_viewers",
+  "gpm",
+  "gmv",
+  "gross_profit",
+  "merchant_subsidy",
+  "service_fee",
+  "shelf_gmv",
+  "search_gmv",
+  "poi_visits",
+  "store_searches"
+] as const;
+export const metricCategories = ["ROI", "COST", "CONVERSION", "TRAFFIC", "LIVE_ROOM", "FULL_DOMAIN", "SERVICE_PROVIDER", "UNKNOWN"] as const;
+export const observationWindows = ["30m", "2h", "1d", "custom"] as const;
+export const actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"] as const;
 
 export type BusinessType = (typeof businessTypes)[number];
 export type SubjectType = (typeof subjectTypes)[number];
@@ -82,6 +115,14 @@ export type ActionProposalStatus = (typeof actionProposalStatuses)[number];
 export type ApprovalDecision = (typeof approvalDecisions)[number];
 export type ExecutionMode = (typeof executionModes)[number];
 export type ExecutionStatus = (typeof executionStatuses)[number];
+export type MetricSource = (typeof metricSources)[number];
+export type MetricReviewStatus = (typeof metricReviewStatuses)[number];
+export type DataReviewStatus = (typeof dataReviewStatuses)[number];
+export type MetricLayer = (typeof metricLayers)[number];
+export type MetricKey = (typeof metricKeys)[number];
+export type MetricCategory = (typeof metricCategories)[number];
+export type ObservationWindow = (typeof observationWindows)[number];
+export type ActionOutcomeResult = (typeof actionOutcomeResults)[number];
 
 export const subjectTypeLabels: Record<SubjectType, string> = {
   SUBJECT_PENDING: "主体待校准",
@@ -201,6 +242,101 @@ export const executionStatusLabels: Record<ExecutionStatus, string> = {
   FAILED: "执行记录异常"
 };
 
+export const metricKeyLabels: Record<MetricKey, string> = {
+  unknown: "未知指标",
+  verify_roi: "核销 ROI",
+  gross_profit_roi: "毛利 ROI",
+  pay_roi: "支付 ROI",
+  target_roi: "目标 ROI",
+  spend: "消耗",
+  daily_budget: "日预算",
+  remaining_budget: "剩余预算",
+  orders: "成交订单数",
+  impressions: "曝光量",
+  clicks: "点击量",
+  ctr: "点击率",
+  cpa: "订单成本",
+  target_cpa: "目标 CPA",
+  live_viewers: "直播间观看人数",
+  gpm: "GPM",
+  gmv: "GMV",
+  gross_profit: "核销毛利",
+  merchant_subsidy: "商家补贴",
+  service_fee: "服务商费用",
+  shelf_gmv: "货架成交 GMV",
+  search_gmv: "搜索成交 GMV",
+  poi_visits: "POI 访问量",
+  store_searches: "门店搜索量"
+};
+
+export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
+  unknown: "UNKNOWN",
+  verify_roi: "ROI",
+  gross_profit_roi: "ROI",
+  pay_roi: "ROI",
+  target_roi: "ROI",
+  spend: "COST",
+  daily_budget: "COST",
+  remaining_budget: "COST",
+  orders: "CONVERSION",
+  impressions: "TRAFFIC",
+  clicks: "TRAFFIC",
+  ctr: "TRAFFIC",
+  cpa: "COST",
+  target_cpa: "COST",
+  live_viewers: "LIVE_ROOM",
+  gpm: "LIVE_ROOM",
+  gmv: "CONVERSION",
+  gross_profit: "CONVERSION",
+  merchant_subsidy: "COST",
+  service_fee: "SERVICE_PROVIDER",
+  shelf_gmv: "FULL_DOMAIN",
+  search_gmv: "FULL_DOMAIN",
+  poi_visits: "FULL_DOMAIN",
+  store_searches: "FULL_DOMAIN"
+};
+
+export const metricAliases: Record<MetricKey, readonly string[]> = {
+  unknown: [],
+  verify_roi: ["verify_roi", "核销 ROI", "核销ROI", "核销roi", "roi"],
+  gross_profit_roi: ["gross_profit_roi", "毛利 ROI", "毛利ROI", "核销毛利 ROI", "核销毛利ROI"],
+  pay_roi: ["pay_roi", "支付 ROI", "支付ROI", "付款 ROI", "付款ROI"],
+  target_roi: ["target_roi", "目标 ROI", "目标ROI"],
+  spend: ["spend", "消耗", "广告消耗", "今日消耗", "投放消耗"],
+  daily_budget: ["daily_budget", "日预算", "预算"],
+  remaining_budget: ["remaining_budget", "剩余预算"],
+  orders: ["orders", "order_count", "conversions", "成交订单数", "成交人数", "支付订单", "支付订单数"],
+  impressions: ["impressions", "曝光量", "曝光次数", "商品曝光人数", "直播曝光人数", "直播曝光次数"],
+  clicks: ["clicks", "点击量", "点击人数", "商品点击人数"],
+  ctr: ["ctr", "CTR", "点击率", "商品点击率", "曝光点击率"],
+  cpa: ["cpa", "cost_per_order", "order_cost", "转化成本", "成交成本", "订单成本", "CPA"],
+  target_cpa: ["target_cpa", "target_cost", "目标 CPA", "目标CPA", "目标成本"],
+  live_viewers: ["live_viewers", "viewers", "直播间观看人数", "观看人数", "看播人数", "累计在线人数"],
+  gpm: ["gpm", "GPM", "千次观看成交金额"],
+  gmv: ["gmv", "GMV", "成交金额", "支付金额"],
+  gross_profit: ["gross_profit", "核销毛利", "毛利"],
+  merchant_subsidy: ["merchant_subsidy", "商家补贴"],
+  service_fee: ["service_fee", "服务费", "服务商费用"],
+  shelf_gmv: ["shelf_gmv", "货架成交 GMV", "货架成交GMV", "团购货架"],
+  search_gmv: ["search_gmv", "搜索成交 GMV", "搜索成交GMV", "搜索成交"],
+  poi_visits: ["poi_visits", "POI 访问量", "POI访问量", "POI访问", "门店访问"],
+  store_searches: ["store_searches", "门店搜索量", "搜索量"]
+};
+
+export const observationWindowLabels: Record<ObservationWindow, string> = {
+  "30m": "30 分钟",
+  "2h": "2 小时",
+  "1d": "1 天",
+  custom: "自定义"
+};
+
+export const actionOutcomeResultLabels: Record<ActionOutcomeResult, string> = {
+  IMPROVED: "改善",
+  WORSENED: "变差",
+  NO_CHANGE: "无明显变化",
+  UNCLEAR: "不明确"
+};
+
 export const diagnosisActionToActionType: Record<DiagnosisAction, ActionType> = {
   加预算: "INCREASE_BUDGET",
   稳预算: "KEEP_BUDGET",
@@ -249,15 +385,73 @@ export type ApiResponse<T = unknown> =
       error: {
         code: string;
         message: string;
+        requestId?: string;
       };
     };
 
+export type MetricRawEvidence = {
+  sourceType: string;
+  path?: string;
+  selector?: string;
+  tableIndex?: number;
+  rowIndex?: number;
+  columnName?: string;
+  url?: string;
+  method?: string;
+  jsonPath?: string;
+  textSnippet?: string;
+};
+
 export type VisibleMetric = {
-  key: string;
+  key: MetricKey | string;
   name: string;
   value: number | string | null;
   unit?: string | null;
   source: "dom" | "table" | "network" | "manual";
+  metricSource?: MetricSource;
+  confidence?: number;
+  rawEvidence?: MetricRawEvidence | null;
+};
+
+export type ReviewCoverage = {
+  confirmedCount: number;
+  modifiedCount: number;
+  ignoredCount: number;
+  pendingCount: number;
+  totalCount: number;
+};
+
+export type ReviewedMetricDTO = {
+  id: string;
+  taskId: string;
+  snapshotId?: string | null;
+  normalizedMetricId?: string | null;
+  metricKey: string;
+  metricName: string;
+  originalValue?: string | null;
+  reviewedValue?: string | null;
+  metricUnit?: string | null;
+  metricSource: MetricSource;
+  confidence: number;
+  rawEvidence?: unknown;
+  pageType?: string | null;
+  scope?: string | null;
+  timeRange?: string | null;
+  reviewStatus: MetricReviewStatus;
+  reviewedAt?: string | null;
+};
+
+export type ReviewMetricInput = {
+  reviewedValue?: string;
+  reviewStatus: "CONFIRMED" | "MODIFIED" | "IGNORED";
+};
+
+export type BulkReviewMetricInput = {
+  items: Array<{
+    metricId: string;
+    reviewedValue?: string;
+    reviewStatus: "CONFIRMED" | "MODIFIED" | "IGNORED";
+  }>;
 };
 
 export type CapturedNetworkRecord = {
@@ -342,6 +536,9 @@ export type DecisionEngineInput = {
   targetRoi?: number | null;
   targetCpa?: number | null;
   latestAnalysis?: AnalyzeOutput | null;
+  dataReviewStatus?: DataReviewStatus;
+  reviewCoverage?: ReviewCoverage;
+  metricLayer?: MetricLayer;
 };
 
 export type ActionProposalDTO = {
@@ -367,6 +564,46 @@ export type ActionProposalDTO = {
   manualExecutedAt?: string | null;
 };
 
+export type ActionOutcomeDTO = {
+  id: string;
+  actionProposalId: string;
+  projectId: string;
+  collectionTaskId: string;
+  observationWindow: ObservationWindow;
+  customWindow?: string | null;
+  beforeMetrics?: unknown;
+  afterMetrics?: unknown;
+  result: ActionOutcomeResult;
+  note?: string | null;
+  conclusion?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateActionOutcomeInput = {
+  observationWindow: ObservationWindow;
+  customWindow?: string | null;
+  beforeMetrics?: unknown;
+  afterMetrics?: unknown;
+  result: ActionOutcomeResult;
+  note?: string | null;
+  conclusion?: string | null;
+};
+
+export type ProjectOutcomeSummary = {
+  projectId: string;
+  total: number;
+  byResult: Record<ActionOutcomeResult, number>;
+  byActionType: Array<{
+    actionType: ActionType;
+    total: number;
+    improved: number;
+    worsened: number;
+    noChange: number;
+    unclear: number;
+  }>;
+};
+
 export type DecisionEngineOutput = {
   engineVersion?: string;
   ruleVersion?: string;
@@ -388,13 +625,51 @@ export type AnalyzeOutput = {
   confidence: number;
 };
 
+export const metricRawEvidenceSchema = z.object({
+  sourceType: z.string().min(1),
+  path: z.string().optional(),
+  selector: z.string().optional(),
+  tableIndex: z.number().int().optional(),
+  rowIndex: z.number().int().optional(),
+  columnName: z.string().optional(),
+  url: z.string().optional(),
+  method: z.string().optional(),
+  jsonPath: z.string().optional(),
+  textSnippet: z.string().optional()
+});
+
+export const metricKeySchema = z.enum(metricKeys);
+
 export const visibleMetricSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
   value: z.union([z.number(), z.string(), z.null()]),
   unit: z.string().nullable().optional(),
-  source: z.enum(["dom", "table", "network", "manual"])
+  source: z.enum(["dom", "table", "network", "manual"]),
+  metricSource: z.enum(metricSources).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  rawEvidence: metricRawEvidenceSchema.nullable().optional()
 });
+
+export const createActionOutcomeInputSchema = z
+  .object({
+    observationWindow: z.enum(observationWindows),
+    customWindow: z.string().trim().max(100).nullable().optional(),
+    beforeMetrics: z.unknown().optional(),
+    afterMetrics: z.unknown().optional(),
+    result: z.enum(actionOutcomeResults),
+    note: z.string().trim().max(2000).nullable().optional(),
+    conclusion: z.string().trim().max(2000).nullable().optional()
+  })
+  .superRefine((value, ctx) => {
+    if (value.observationWindow === "custom" && !value.customWindow?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customWindow"],
+        message: "custom observationWindow requires customWindow"
+      });
+    }
+  });
 
 export const networkRecordSchema = z.object({
   url: z.string().url(),
@@ -439,6 +714,71 @@ export const decisionDataQualitySchema = z.object({
   blocksStrongActions: z.boolean()
 });
 
+export const reviewCoverageSchema = z.object({
+  confirmedCount: z.number().int().nonnegative(),
+  modifiedCount: z.number().int().nonnegative(),
+  ignoredCount: z.number().int().nonnegative(),
+  pendingCount: z.number().int().nonnegative(),
+  totalCount: z.number().int().nonnegative()
+});
+
+export const reviewedMetricDTOSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  snapshotId: z.string().nullable().optional(),
+  normalizedMetricId: z.string().nullable().optional(),
+  metricKey: z.string(),
+  metricName: z.string(),
+  originalValue: z.string().nullable().optional(),
+  reviewedValue: z.string().nullable().optional(),
+  metricUnit: z.string().nullable().optional(),
+  metricSource: z.enum(metricSources),
+  confidence: z.number().min(0).max(1),
+  rawEvidence: z.unknown().optional(),
+  pageType: z.string().nullable().optional(),
+  scope: z.string().nullable().optional(),
+  timeRange: z.string().nullable().optional(),
+  reviewStatus: z.enum(metricReviewStatuses),
+  reviewedAt: z.string().nullable().optional()
+});
+
+export const reviewMetricInputSchema = z
+  .object({
+    reviewedValue: z.string().optional(),
+    reviewStatus: z.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+  })
+  .superRefine((value, ctx) => {
+    if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reviewedValue"],
+        message: "MODIFIED requires reviewedValue"
+      });
+    }
+  });
+
+export const bulkReviewMetricInputSchema = z.object({
+  items: z
+    .array(
+      z
+        .object({
+          metricId: z.string().min(1),
+          reviewedValue: z.string().optional(),
+          reviewStatus: z.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+        })
+        .superRefine((value, ctx) => {
+          if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["reviewedValue"],
+              message: "MODIFIED requires reviewedValue"
+            });
+          }
+        })
+    )
+    .min(1)
+});
+
 export const actionProposalDTOSchema = z.object({
   id: z.string().optional(),
   decisionRunId: z.string().optional(),
@@ -475,7 +815,10 @@ export const decisionEngineInputSchema = z.object({
   networkJsonSummary: z.array(networkRecordSchema).max(50),
   targetRoi: z.number().nullable().optional(),
   targetCpa: z.number().nullable().optional(),
-  latestAnalysis: z.unknown().nullable().optional()
+  latestAnalysis: z.unknown().nullable().optional(),
+  dataReviewStatus: z.enum(dataReviewStatuses).optional(),
+  reviewCoverage: reviewCoverageSchema.optional(),
+  metricLayer: z.enum(metricLayers).optional()
 });
 
 export const decisionEngineOutputSchema = z.object({
@@ -515,8 +858,8 @@ export const updateCollectionTaskStatusSchema = z.object({
 });
 
 export const authLoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6)
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(6).max(128)
 });
 
 export const authRegisterSchema = authLoginSchema.extend({
@@ -527,12 +870,42 @@ export function success<T>(data: T): ApiResponse<T> {
   return { success: true, data, error: null };
 }
 
-export function failure(code: string, message: string): ApiResponse<never> {
-  return { success: false, data: null, error: { code, message } };
+export function failure(code: string, message: string, options: { requestId?: string } = {}): ApiResponse<never> {
+  return { success: false, data: null, error: { code, message, ...(options.requestId ? { requestId: options.requestId } : {}) } };
 }
 
 export function subjectLabel(type: SubjectType) {
   return subjectTypeLabels[type] || "主体待校准";
+}
+
+export function normalizeMetricLookupValue(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[（）()]/g, "")
+    .replace(/[\s_\-:/：，,。]+/g, "");
+}
+
+const metricAliasLookup = new Map<string, MetricKey>(
+  metricKeys.flatMap((key) => [
+    [normalizeMetricLookupValue(key), key] as const,
+    [normalizeMetricLookupValue(metricKeyLabels[key]), key] as const,
+    ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key] as const)
+  ])
+);
+
+export function identifyMetricKey(value: string | null | undefined): MetricKey {
+  if (!value) return "unknown";
+  return metricAliasLookup.get(normalizeMetricLookupValue(value)) || "unknown";
+}
+
+export function standardizeMetricKey(metric: Pick<VisibleMetric, "key" | "name">): MetricKey {
+  const keyMatch = identifyMetricKey(metric.key);
+  if (keyMatch !== "unknown") return keyMatch;
+  return identifyMetricKey(metric.name);
+}
+
+export function isKnownMetricKey(value: string | null | undefined): value is MetricKey {
+  return !!value && value !== "unknown" && metricKeys.includes(value as MetricKey);
 }
 
 export const aiDisclaimer = "AI 诊断结果仅供投流决策参考，请结合业务目标、预算和平台规则人工确认。第一版系统不会自动执行任何投放操作。";

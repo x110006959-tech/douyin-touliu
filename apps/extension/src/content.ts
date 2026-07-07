@@ -104,15 +104,21 @@ function extractMetrics(text: string): VisibleMetric[] {
   ];
 
   return definitions.flatMap((definition) => {
-    const raw = extractValueAfterAnyLabel(text, definition.labels);
-    if (!raw) return [];
+    const evidence = extractValueAfterAnyLabel(text, definition.labels);
+    if (!evidence) return [];
     return [
       {
         key: definition.key,
         name: definition.name,
-        value: parseValue(raw, definition.unit),
+        value: parseValue(evidence.raw, definition.unit),
         unit: definition.unit || null,
-        source: "dom" as const
+        source: "dom" as const,
+        metricSource: "DOM_TEXT" as const,
+        confidence: 0.6,
+        rawEvidence: {
+          sourceType: "DOM_TEXT",
+          textSnippet: evidence.textSnippet
+        }
       }
     ];
   });
@@ -124,7 +130,12 @@ function extractValueAfterAnyLabel(text: string, labels: string[]) {
     if (index < 0) continue;
     const slice = text.slice(index + label.length, index + label.length + 120);
     const matched = slice.match(/[\u00a5\uffe5]?\s*-?\d[\d,]*(?:\.\d+)?\s*(?:\u4e07|w|W|%)?/);
-    if (matched?.[0]) return matched[0];
+    if (matched?.[0]) {
+      return {
+        raw: matched[0],
+        textSnippet: text.slice(Math.max(0, index - 40), Math.min(text.length, index + label.length + 120))
+      };
+    }
   }
   return null;
 }

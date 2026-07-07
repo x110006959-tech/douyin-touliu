@@ -5,7 +5,13 @@ import {
   decisionRuleVersion,
   runDecisionRules
 } from "@douyin-local-life/decision-engine";
-import type { ActionProposalDTO, DecisionEngineInput, DecisionEngineOutput, VisibleMetric } from "@douyin-local-life/shared";
+import type { ActionProposalDTO, DecisionEngineInput, DecisionEngineOutput } from "@douyin-local-life/shared";
+import {
+  normalizedMetricsToVisibleMetrics,
+  reviewedMetricsToVisibleMetrics,
+  reviewCoverage,
+  selectedReviewedMetrics
+} from "./review-metrics.js";
 
 export const strategyVersion = decisionRuleVersion;
 
@@ -26,22 +32,51 @@ export function buildDecisionInput(task: {
     serviceFee: number | null;
   };
   snapshots: Array<{
+    id: string;
     rawDomText: string | null;
     rawNetworkJson: Prisma.JsonValue | null;
     rawTableData: Prisma.JsonValue | null;
     normalizedMetrics: Array<{
+      id: string;
       metricKey: string;
       metricName: string;
       metricValue: string;
       metricUnit: string | null;
       metricSource: string;
+      confidence?: number | null;
+      rawEvidence?: Prisma.JsonValue | null;
     }>;
+  }>;
+  reviewedMetrics?: Array<{
+    id: string;
+    taskId: string;
+    snapshotId: string | null;
+    normalizedMetricId: string | null;
+    metricKey: string;
+    metricName: string;
+    originalValue: string | null;
+    reviewedValue: string | null;
+    metricUnit: string | null;
+    metricSource: "XHR_JSON" | "TABLE" | "DOM_TEXT" | "SCREENSHOT" | "MANUAL_INPUT" | "UNKNOWN";
+    confidence: number;
+    rawEvidence: Prisma.JsonValue | null;
+    pageType: string | null;
+    scope: string | null;
+    timeRange: string | null;
+    reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED";
+    reviewerId: string | null;
+    reviewedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
   }>;
 }): DecisionEngineInput {
   const latestSnapshot = task.snapshots[0];
   if (!latestSnapshot) {
     throw new Error("SNAPSHOT_REQUIRED");
   }
+  const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId === latestSnapshot.id);
+  const usableReviewedMetrics = selectedReviewedMetrics(latestReviewedMetrics);
+  const useReviewedMetrics = usableReviewedMetrics.length > 0;
 
   return {
     projectId: task.project.id,
@@ -59,12 +94,15 @@ export function buildDecisionInput(task: {
     },
     pageTitle: task.pageTitle || "",
     sourceUrl: task.sourceUrl || "",
-    metrics: latestSnapshot.normalizedMetrics.map(toVisibleMetric),
+    metrics: useReviewedMetrics ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics) : normalizedMetricsToVisibleMetrics(latestSnapshot.normalizedMetrics),
     tables: Array.isArray(latestSnapshot.rawTableData) ? [...latestSnapshot.rawTableData] : [],
     visibleText: latestSnapshot.rawDomText || "",
     networkJsonSummary: Array.isArray(latestSnapshot.rawNetworkJson)
       ? (latestSnapshot.rawNetworkJson.slice(0, 50) as DecisionEngineInput["networkJsonSummary"])
-      : []
+      : [],
+    dataReviewStatus: useReviewedMetrics ? "REVIEWED" : "UNREVIEWED",
+    reviewCoverage: latestReviewedMetrics.length ? reviewCoverage(latestReviewedMetrics) : undefined,
+    metricLayer: useReviewedMetrics ? "REVIEWED_METRIC" : "NORMALIZED_METRIC"
   };
 }
 
@@ -103,21 +141,5 @@ function withVersions(output: DecisionEngineOutput): DecisionEngineOutput {
     engineVersion: decisionEngineVersion,
     ruleVersion: decisionRuleVersion,
     strategyVersion
-  };
-}
-
-function toVisibleMetric(metric: {
-  metricKey: string;
-  metricName: string;
-  metricValue: string;
-  metricUnit: string | null;
-  metricSource: string;
-}): VisibleMetric {
-  return {
-    key: metric.metricKey,
-    name: metric.metricName,
-    value: Number.isFinite(Number(metric.metricValue)) && metric.metricValue.trim() !== "" ? Number(metric.metricValue) : metric.metricValue,
-    unit: metric.metricUnit,
-    source: metric.metricSource as VisibleMetric["source"]
   };
 }

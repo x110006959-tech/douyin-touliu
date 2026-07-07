@@ -3,12 +3,14 @@ import {
   decisionEngineActionTypes,
   strongActionTypes,
   subjectLabel,
+  standardizeMetricKey,
   type ActionProposalDTO,
   type ActionType,
   type DecisionDataQuality,
   type DecisionEngineInput,
   type DecisionEngineOutput,
   type ManualCheckItem,
+  type MetricKey,
   type RiskLevel,
   type VisibleMetric
 } from "@douyin-local-life/shared";
@@ -29,20 +31,23 @@ export function runDecisionRules(input: DecisionEngineInput): DecisionEngineOutp
   const dataQuality = assessDataQuality(input, metrics);
   let riskLevel: RiskLevel = dataQuality.blocksStrongActions ? "MEDIUM" : "LOW";
 
-  const roi = metrics.number(["verify_roi", "核销 ROI", "核销ROI", "gross_profit_roi", "毛利 ROI", "pay_roi", "支付 ROI", "roi", "ROI"]);
-  const targetRoi = input.targetRoi ?? metrics.number(["target_roi", "目标 ROI", "目标ROI"]) ?? 1;
-  const spend = metrics.number(["spend", "消耗", "广告消耗", "今日消耗"]);
-  const dailyBudget = metrics.number(["daily_budget", "日预算", "预算"]);
-  const orders = metrics.number(["orders", "order_count", "conversions", "成交订单数", "成交人数", "支付订单"]);
-  const impressions = metrics.number(["impressions", "曝光量", "曝光次数", "商品曝光人数", "直播曝光人数"]);
-  const clicks = metrics.number(["clicks", "点击量", "点击人数", "商品点击人数"]);
-  const ctr = normalizeRate(metrics.number(["ctr", "点击率", "CTR", "商品点击率"]));
-  const cpa = metrics.number(["cpa", "cost_per_order", "order_cost", "转化成本", "成交成本", "CPA"]);
-  const targetCpa = input.targetCpa ?? metrics.number(["target_cpa", "target_cost", "目标 CPA", "目标成本"]);
-  const viewers = metrics.number(["live_viewers", "viewers", "直播间观看人数", "观看人数", "看播人数"]);
-  const gpm = metrics.number(["gpm", "GPM", "千次观看成交金额"]);
+  const roi = metrics.firstNumber(["verify_roi", "gross_profit_roi", "pay_roi"]);
+  const targetRoi = input.targetRoi ?? metrics.number("target_roi") ?? 1;
+  const spend = metrics.number("spend");
+  const dailyBudget = metrics.number("daily_budget");
+  const orders = metrics.number("orders");
+  const impressions = metrics.number("impressions");
+  const clicks = metrics.number("clicks");
+  const ctr = normalizeRate(metrics.number("ctr"));
+  const cpa = metrics.number("cpa");
+  const targetCpa = input.targetCpa ?? metrics.number("target_cpa");
+  const viewers = metrics.number("live_viewers");
+  const gpm = metrics.number("gpm");
 
   addSubjectChecks(input, manualCheckItems, proposals);
+  if (input.dataReviewStatus === "UNREVIEWED") {
+    addManualCheck(manualCheckItems, "数据未人工复核", "当前数据未经过人工复核，请确认关键指标后再进行投流决策。");
+  }
 
   if (roi == null) {
     addManualCheck(manualCheckItems, "ROI 缺失", "缺少核销 ROI、毛利 ROI 或支付 ROI 时，不输出确定性放量结论。");
@@ -307,12 +312,12 @@ function addSubjectChecks(input: DecisionEngineInput, manualCheckItems: ManualCh
 
 function assessDataQuality(input: DecisionEngineInput, metrics: MetricReader): DecisionDataQuality {
   const required = [
-    { label: "ROI", value: metrics.number(["verify_roi", "核销 ROI", "gross_profit_roi", "毛利 ROI", "pay_roi", "支付 ROI", "roi", "ROI"]) },
-    { label: "消耗", value: metrics.number(["spend", "消耗", "广告消耗", "今日消耗"]) },
-    { label: "订单数", value: metrics.number(["orders", "order_count", "conversions", "成交订单数", "成交人数", "支付订单"]) },
-    { label: "曝光量", value: metrics.number(["impressions", "曝光量", "曝光次数", "商品曝光人数", "直播曝光人数"]) },
-    { label: "点击率", value: normalizeRate(metrics.number(["ctr", "点击率", "CTR", "商品点击率"])) },
-    { label: "GPM", value: metrics.number(["gpm", "GPM", "千次观看成交金额"]) }
+    { label: "ROI", value: metrics.firstNumber(["verify_roi", "gross_profit_roi", "pay_roi"]) },
+    { label: "消耗", value: metrics.number("spend") },
+    { label: "订单数", value: metrics.number("orders") },
+    { label: "曝光量", value: metrics.number("impressions") },
+    { label: "点击率", value: normalizeRate(metrics.number("ctr")) },
+    { label: "GPM", value: metrics.number("gpm") }
   ];
   const missingFields = required.flatMap((field) => (field.value == null ? [field.label] : []));
   const lowConfidenceFields = input.subject.confidence < 0.7 ? ["subjectConfidence"] : [];
@@ -326,7 +331,8 @@ function assessDataQuality(input: DecisionEngineInput, metrics: MetricReader): D
 }
 
 function computeConfidence(input: DecisionEngineInput, dataQuality: DecisionDataQuality) {
-  return round(clamp(Math.min(input.subject.confidence, 0.4 + dataQuality.completeness * 0.5)), 2);
+  const reviewMultiplier = input.dataReviewStatus === "UNREVIEWED" ? 0.8 : 1;
+  return round(clamp(Math.min(input.subject.confidence, 0.4 + dataQuality.completeness * 0.5) * reviewMultiplier), 2);
 }
 
 function buildDiagnosis(
@@ -385,18 +391,31 @@ function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
 type MetricReader = ReturnType<typeof metricReader>;
 
 function metricReader(metrics: VisibleMetric[]) {
+  const byKey = new Map<MetricKey, VisibleMetric>();
+  for (const metric of metrics) {
+    const key = standardizeMetricKey(metric);
+    if (key === "unknown") continue;
+    if (!byKey.has(key)) byKey.set(key, metric);
+  }
+  const readNumber = (key: MetricKey) => {
+    if (key === "unknown") return null;
+    const found = byKey.get(key);
+    if (!found) return null;
+    return parseMetricNumber(found.value);
+  };
+
   return {
-    number(keys: string[]) {
-      const normalizedKeys = new Set(keys.map(normalizeMetricKey));
-      const found = metrics.find((metric) => normalizedKeys.has(normalizeMetricKey(metric.key)) || normalizedKeys.has(normalizeMetricKey(metric.name)));
-      if (!found) return null;
-      return parseMetricNumber(found.value);
+    number(key: MetricKey) {
+      return readNumber(key);
+    },
+    firstNumber(keys: MetricKey[]) {
+      for (const key of keys) {
+        const value = readNumber(key);
+        if (value != null) return value;
+      }
+      return null;
     }
   };
-}
-
-function normalizeMetricKey(value: string) {
-  return value.toLowerCase().replace(/[\s_：:（）()]/g, "");
 }
 
 function parseMetricNumber(value: VisibleMetric["value"]) {

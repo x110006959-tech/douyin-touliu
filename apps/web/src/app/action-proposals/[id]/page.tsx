@@ -5,16 +5,20 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   actionProposalStatusLabels,
+  actionOutcomeResultLabels,
   actionTypeLabels,
   aiDisclaimer,
   approvalDecisionLabels,
   executionModeLabels,
   executionStatusLabels,
+  observationWindowLabels,
+  type ActionOutcomeResult,
   type ActionProposalStatus,
   type ActionType,
   type ApprovalDecision,
   type ExecutionMode,
   type ExecutionStatus,
+  type ObservationWindow,
   type RiskLevel
 } from "@douyin-local-life/shared";
 import { Button } from "@/components/ui/button";
@@ -51,20 +55,47 @@ type ActionProposalDetail = {
   executionLogs: Array<{ id: string; mode: ExecutionMode; status: ExecutionStatus; note: string | null; createdAt: string }>;
 };
 
+type ActionOutcomeDetail = {
+  id: string;
+  actionProposalId: string;
+  observationWindow: ObservationWindow;
+  customWindow: string | null;
+  beforeMetrics?: unknown;
+  afterMetrics?: unknown;
+  result: ActionOutcomeResult;
+  note: string | null;
+  conclusion: string | null;
+  createdAt: string;
+};
+
 export default function ActionProposalDetailPage() {
   const params = useParams<{ id: string }>();
   const { token } = useAuth();
   const [proposal, setProposal] = useState<ActionProposalDetail | null>(null);
+  const [outcomes, setOutcomes] = useState<ActionOutcomeDetail[]>([]);
   const [comment, setComment] = useState("");
   const [note, setNote] = useState("");
+  const [outcomeWindow, setOutcomeWindow] = useState<ObservationWindow>("30m");
+  const [customWindow, setCustomWindow] = useState("");
+  const [outcomeResult, setOutcomeResult] = useState<ActionOutcomeResult>("UNCLEAR");
+  const [beforeMetricsJson, setBeforeMetricsJson] = useState("");
+  const [afterMetricsJson, setAfterMetricsJson] = useState("");
+  const [outcomeNote, setOutcomeNote] = useState("");
+  const [outcomeConclusion, setOutcomeConclusion] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
 
   function load() {
     if (!token) return;
     setError("");
-    apiFetch<ActionProposalDetail>(`/action-proposals/${params.id}`, token)
-      .then(setProposal)
+    Promise.all([
+      apiFetch<ActionProposalDetail>(`/action-proposals/${params.id}`, token),
+      apiFetch<ActionOutcomeDetail[]>(`/action-proposals/${params.id}/outcomes`, token)
+    ])
+      .then(([detail, latestOutcomes]) => {
+        setProposal(detail);
+        setOutcomes(latestOutcomes);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "读取动作建议失败"));
   }
 
@@ -107,6 +138,41 @@ export default function ActionProposalDetailPage() {
     }
   }
 
+  async function submitOutcome(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !proposal) return;
+    setBusy("outcome");
+    setError("");
+    try {
+      const beforeMetrics = parseOptionalJson(beforeMetricsJson, "执行前指标");
+      const afterMetrics = parseOptionalJson(afterMetricsJson, "执行后指标");
+      const created = await apiFetch<ActionOutcomeDetail>(`/action-proposals/${proposal.id}/outcomes`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          observationWindow: outcomeWindow,
+          customWindow: outcomeWindow === "custom" ? customWindow : null,
+          beforeMetrics,
+          afterMetrics,
+          result: outcomeResult,
+          note: outcomeNote,
+          conclusion: outcomeConclusion
+        })
+      });
+      setOutcomes((current) => [created, ...current]);
+      setOutcomeWindow("30m");
+      setCustomWindow("");
+      setOutcomeResult("UNCLEAR");
+      setBeforeMetricsJson("");
+      setAfterMetricsJson("");
+      setOutcomeNote("");
+      setOutcomeConclusion("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "执行后复盘记录失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (!token) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-10">
@@ -126,6 +192,7 @@ export default function ActionProposalDetailPage() {
 
   const isPending = proposal.status === "PENDING_APPROVAL";
   const canMarkManualExecuted = proposal.status === "APPROVED";
+  const canCreateOutcome = proposal.status === "MANUAL_EXECUTED";
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
@@ -210,6 +277,33 @@ export default function ActionProposalDetailPage() {
               {proposal.executionLogs.length === 0 ? <p className="text-muted">暂无人工执行记录。</p> : null}
             </div>
           </Card>
+
+          <Card>
+            <CardTitle>执行后复盘</CardTitle>
+            <div className="grid gap-2 text-sm">
+              {outcomes.map((outcome) => (
+                <div className="rounded-md border border-border px-3 py-2" key={outcome.id}>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted">
+                    <span>{observationWindowLabels[outcome.observationWindow]}</span>
+                    {outcome.customWindow ? <span>{outcome.customWindow}</span> : null}
+                    <span>{new Date(outcome.createdAt).toLocaleString("zh-CN")}</span>
+                  </div>
+                  <strong>{actionOutcomeResultLabels[outcome.result]}</strong>
+                  {outcome.note ? <p className="text-muted">{outcome.note}</p> : null}
+                  {outcome.conclusion ? <p>{outcome.conclusion}</p> : null}
+                  {outcome.beforeMetrics || outcome.afterMetrics ? (
+                    <details className="mt-2 rounded-md bg-muted/20 p-2">
+                      <summary className="cursor-pointer text-xs text-muted">查看指标快照</summary>
+                      <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs">
+                        {JSON.stringify({ before: outcome.beforeMetrics || null, after: outcome.afterMetrics || null }, null, 2)}
+                      </pre>
+                    </details>
+                  ) : null}
+                </div>
+              ))}
+              {outcomes.length === 0 ? <p className="text-muted">暂无执行后复盘。</p> : null}
+            </div>
+          </Card>
         </div>
 
         <div className="grid content-start gap-4">
@@ -261,7 +355,51 @@ export default function ActionProposalDetailPage() {
             </Card>
           ) : null}
 
-          {!isPending && !canMarkManualExecuted ? (
+          {canCreateOutcome ? (
+            <Card>
+              <CardTitle>记录执行后复盘</CardTitle>
+              <form className="grid gap-3 text-sm" onSubmit={submitOutcome}>
+                <label className="grid gap-1">
+                  观察窗口
+                  <select
+                    className="rounded-md border border-border bg-white px-3 py-2"
+                    value={outcomeWindow}
+                    onChange={(event) => setOutcomeWindow(event.target.value as ObservationWindow)}
+                  >
+                    <option value="30m">30 分钟</option>
+                    <option value="2h">2 小时</option>
+                    <option value="1d">1 天</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </label>
+                {outcomeWindow === "custom" ? (
+                  <Textarea value={customWindow} onChange={(event) => setCustomWindow(event.target.value)} placeholder="自定义观察窗口" />
+                ) : null}
+                <label className="grid gap-1">
+                  结果
+                  <select
+                    className="rounded-md border border-border bg-white px-3 py-2"
+                    value={outcomeResult}
+                    onChange={(event) => setOutcomeResult(event.target.value as ActionOutcomeResult)}
+                  >
+                    <option value="IMPROVED">改善</option>
+                    <option value="WORSENED">变差</option>
+                    <option value="NO_CHANGE">无明显变化</option>
+                    <option value="UNCLEAR">不明确</option>
+                  </select>
+                </label>
+                <Textarea value={beforeMetricsJson} onChange={(event) => setBeforeMetricsJson(event.target.value)} placeholder='执行前指标 JSON，例如 {"verify_roi":0.8}' />
+                <Textarea value={afterMetricsJson} onChange={(event) => setAfterMetricsJson(event.target.value)} placeholder='执行后指标 JSON，例如 {"verify_roi":1.1}' />
+                <Textarea value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="复盘备注" />
+                <Textarea value={outcomeConclusion} onChange={(event) => setOutcomeConclusion(event.target.value)} placeholder="复盘结论" />
+                <Button type="submit" disabled={busy === "outcome"}>
+                  保存复盘
+                </Button>
+              </form>
+            </Card>
+          ) : null}
+
+          {!isPending && !canMarkManualExecuted && !canCreateOutcome ? (
             <Card>
               <CardTitle>当前状态</CardTitle>
               <p className="text-sm text-muted">该动作建议当前没有可执行的页面按钮。</p>
@@ -280,4 +418,14 @@ function Info({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function parseOptionalJson(value: string, label: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    throw new Error(`${label}必须是合法 JSON`);
+  }
 }

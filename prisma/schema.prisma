@@ -138,6 +138,36 @@ enum ExecutionStatus {
   FAILED
 }
 
+enum OutcomeObservationWindow {
+  THIRTY_MINUTES
+  TWO_HOURS
+  ONE_DAY
+  CUSTOM
+}
+
+enum ActionOutcomeResult {
+  IMPROVED
+  WORSENED
+  NO_CHANGE
+  UNCLEAR
+}
+
+enum MetricSource {
+  XHR_JSON
+  TABLE
+  DOM_TEXT
+  SCREENSHOT
+  MANUAL_INPUT
+  UNKNOWN
+}
+
+enum MetricReviewStatus {
+  PENDING
+  CONFIRMED
+  MODIFIED
+  IGNORED
+}
+
 model User {
   id              String           @id @default(cuid())
   email           String           @unique
@@ -151,6 +181,8 @@ model User {
   auditLogs       AuditLog[]
   approvalRecords ApprovalRecord[]
   executionLogs   ExecutionLog[]
+  reviewedMetrics ReviewedMetric[]
+  actionOutcomes  ActionOutcome[]
 }
 
 model Workspace {
@@ -189,6 +221,7 @@ model Project {
   actionProposals     ActionProposal[]
   executionLogs       ExecutionLog[]
   strategyRules       StrategyRule[]
+  actionOutcomes      ActionOutcome[]
 
   @@index([workspaceId])
   @@index([subjectType, operatorType])
@@ -213,6 +246,8 @@ model CollectionTask {
   decisionRuns    DecisionRun[]
   actionProposals ActionProposal[]
   executionLogs   ExecutionLog[]
+  reviewedMetrics ReviewedMetric[]
+  actionOutcomes  ActionOutcome[]
 
   @@index([projectId])
   @@index([userId])
@@ -233,6 +268,7 @@ model DataSnapshot {
   createdAt           DateTime           @default(now())
   task                CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   normalizedMetrics   NormalizedMetric[]
+  reviewedMetrics     ReviewedMetric[]
 
   @@index([taskId])
 }
@@ -245,11 +281,48 @@ model NormalizedMetric {
   metricValue  String
   metricUnit   String?
   metricSource String
+  confidence    Float        @default(0.5)
+  rawEvidence   Json?
   createdAt    DateTime     @default(now())
   snapshot      DataSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  reviewedMetric ReviewedMetric?
 
   @@index([snapshotId])
   @@index([metricKey])
+}
+
+model ReviewedMetric {
+  id                 String             @id @default(cuid())
+  taskId             String
+  snapshotId         String?
+  normalizedMetricId String?            @unique
+  metricKey          String
+  metricName         String
+  originalValue      String?
+  reviewedValue      String?
+  metricUnit         String?
+  metricSource       MetricSource       @default(UNKNOWN)
+  confidence         Float              @default(0.5)
+  rawEvidence        Json?
+  pageType           String?
+  scope              String?
+  timeRange          String?
+  reviewStatus       MetricReviewStatus @default(PENDING)
+  reviewerId         String?
+  reviewedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  task               CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  snapshot           DataSnapshot?      @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  normalizedMetric   NormalizedMetric?  @relation(fields: [normalizedMetricId], references: [id], onDelete: SetNull)
+  reviewer           User?              @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([snapshotId])
+  @@index([metricKey])
+  @@index([metricSource])
+  @@index([reviewStatus])
+  @@index([reviewerId])
 }
 
 model AiAnalysisTask {
@@ -343,6 +416,7 @@ model ActionProposal {
   collectionTask   CollectionTask       @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
   approvalRecords  ApprovalRecord[]
   executionLogs    ExecutionLog[]
+  outcomes         ActionOutcome[]
 
   @@index([decisionRunId])
   @@index([projectId])
@@ -386,6 +460,34 @@ model ExecutionLog {
   @@index([collectionTaskId])
   @@index([userId])
   @@index([status])
+}
+
+model ActionOutcome {
+  id                String                   @id @default(cuid())
+  actionProposalId  String
+  projectId         String
+  collectionTaskId  String
+  userId            String
+  observationWindow OutcomeObservationWindow
+  customWindow      String?
+  beforeMetricsJson Json?
+  afterMetricsJson  Json?
+  result            ActionOutcomeResult
+  note              String?
+  conclusion        String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  actionProposal    ActionProposal           @relation(fields: [actionProposalId], references: [id], onDelete: Cascade)
+  project           Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask    CollectionTask           @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([actionProposalId])
+  @@index([projectId])
+  @@index([collectionTaskId])
+  @@index([userId])
+  @@index([result])
+  @@index([createdAt])
 }
 
 model StrategyRule {

@@ -12,8 +12,36 @@ export type AuthenticatedRequest = Request & {
   user: AuthUser;
 };
 
+const TEST_JWT_SECRET = "test-only-change-me";
+const FORBIDDEN_JWT_SECRETS = new Set(["dev-only-change-me", TEST_JWT_SECRET, "change-me", "secret", "password"]);
+const MIN_JWT_SECRET_LENGTH = 32;
+
+export function resolveJwtSecret(nodeEnv = process.env.NODE_ENV, configuredSecret = process.env.JWT_SECRET) {
+  if (nodeEnv === "test") {
+    const testSecret = configuredSecret?.trim();
+    if (!testSecret || testSecret.length < MIN_JWT_SECRET_LENGTH || FORBIDDEN_JWT_SECRETS.has(testSecret)) return TEST_JWT_SECRET;
+    return testSecret;
+  }
+
+  const secret = configuredSecret?.trim();
+  if (!secret) {
+    throw new Error("JWT_SECRET is required outside test environment");
+  }
+  if (secret.length < MIN_JWT_SECRET_LENGTH) {
+    throw new Error(`JWT_SECRET must be at least ${MIN_JWT_SECRET_LENGTH} characters`);
+  }
+  if (FORBIDDEN_JWT_SECRETS.has(secret)) {
+    throw new Error("JWT_SECRET is not allowed to use an insecure default value");
+  }
+  return secret;
+}
+
 export function jwtSecret() {
-  return process.env.JWT_SECRET || "dev-only-change-me";
+  return resolveJwtSecret();
+}
+
+export function ensureJwtSecretConfigured() {
+  resolveJwtSecret();
 }
 
 export function signToken(user: AuthUser) {
