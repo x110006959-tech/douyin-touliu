@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@douyin-local-life/decision-engine": "workspace:*",
     "@douyin-local-life/llm": "workspace:*",
     "@douyin-local-life/shared": "workspace:*",
     "@prisma/client": "^6.1.0",

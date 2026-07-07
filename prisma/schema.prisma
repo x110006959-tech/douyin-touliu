@@ -83,6 +83,61 @@ enum RiskLevel {
   HIGH
 }
 
+enum ActionType {
+  OBSERVE
+  INCREASE_BUDGET
+  DECREASE_BUDGET
+  KEEP_BUDGET
+  FINE_TUNE_TARGETING
+  DECREASE_BID
+  PAUSE_TASK
+  ADJUST_ROI_TARGET
+  CHECK_LIVE_ROOM
+  CHECK_CREATIVE
+  CHECK_AUDIENCE
+  VERIFY_ACTIVITY
+  APPLY_ACTIVITY
+  OPTIMIZE_SCRIPT
+  REPAIR_REPUTATION
+  STRENGTHEN_SHELF
+  CHECK_INVENTORY_BOOKING
+  OPTIMIZE_POI_SEARCH
+  REPLACE_CREATOR
+  UNIFY_CREATOR_SCRIPT
+  ADJUST_SERVICE_PROVIDER_SOP
+  RENEGOTIATE_SERVICE_FEE
+  REUSE_MATERIAL
+  ALLOCATE_HIGH_VERIFY_STORES
+  CALIBRATE_SUBJECT
+  REQUEST_MANUAL_REVIEW
+}
+
+enum ActionProposalStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  OBSERVING
+  MANUAL_EXECUTED
+}
+
+enum ApprovalDecision {
+  APPROVE
+  REJECT
+  APPROVED
+  REJECTED
+  OBSERVE
+}
+
+enum ExecutionMode {
+  MANUAL
+}
+
+enum ExecutionStatus {
+  PENDING
+  MANUAL_EXECUTED
+  FAILED
+}
+
 model User {
   id              String           @id @default(cuid())
   email           String           @unique
@@ -94,6 +149,8 @@ model User {
   workspaces      Workspace[]
   collectionTasks CollectionTask[]
   auditLogs       AuditLog[]
+  approvalRecords ApprovalRecord[]
+  executionLogs   ExecutionLog[]
 }
 
 model Workspace {
@@ -128,6 +185,10 @@ model Project {
   workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks               CollectionTask[]
   auditLogs           AuditLog[]
+  decisionRuns        DecisionRun[]
+  actionProposals     ActionProposal[]
+  executionLogs       ExecutionLog[]
+  strategyRules       StrategyRule[]
 
   @@index([workspaceId])
   @@index([subjectType, operatorType])
@@ -149,6 +210,9 @@ model CollectionTask {
   snapshots  DataSnapshot[]
   analyses   AiAnalysisTask[]
   auditLogs  AuditLog[]
+  decisionRuns    DecisionRun[]
+  actionProposals ActionProposal[]
+  executionLogs   ExecutionLog[]
 
   @@index([projectId])
   @@index([userId])
@@ -202,6 +266,7 @@ model AiAnalysisTask {
   updatedAt        DateTime         @updatedAt
   collectionTask   CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
   recommendations  Recommendation[]
+  decisionRuns     DecisionRun[]
 
   @@index([collectionTaskId])
   @@index([status])
@@ -221,6 +286,127 @@ model Recommendation {
 
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
+}
+
+model DecisionRun {
+  id                 String           @id @default(cuid())
+  projectId          String
+  collectionTaskId   String
+  aiAnalysisTaskId   String?
+  engineVersion      String
+  ruleVersion        String
+  strategyVersion    String           @default("local-life-rules-v0.1.0")
+  inputJson          Json?
+  riskLevel          RiskLevel
+  confidence         Float
+  diagnosis          String
+  ruleResultJson     Json
+  aiResultJson       Json?
+  finalResultJson    Json
+  manualCheckItemsJson Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask     CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  aiAnalysisTask     AiAnalysisTask?  @relation(fields: [aiAnalysisTaskId], references: [id], onDelete: SetNull)
+  actionProposals    ActionProposal[]
+
+  @@index([projectId])
+  @@index([collectionTaskId])
+  @@index([aiAnalysisTaskId])
+  @@index([createdAt])
+}
+
+model ActionProposal {
+  id               String               @id @default(cuid())
+  decisionRunId    String
+  projectId        String
+  collectionTaskId String
+  actionType       ActionType
+  title            String
+  summary          String?
+  reason           String
+  expectedImpact   String?
+  riskLevel        RiskLevel
+  confidence       Float
+  requiresApproval Boolean              @default(true)
+  blockedReason    String?
+  status           ActionProposalStatus @default(PENDING_APPROVAL)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  approvedAt       DateTime?
+  rejectedAt       DateTime?
+  observedAt       DateTime?
+  manualExecutedAt DateTime?
+  decisionRun      DecisionRun          @relation(fields: [decisionRunId], references: [id], onDelete: Cascade)
+  project          Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask   CollectionTask       @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  approvalRecords  ApprovalRecord[]
+  executionLogs    ExecutionLog[]
+
+  @@index([decisionRunId])
+  @@index([projectId])
+  @@index([collectionTaskId])
+  @@index([status])
+  @@index([actionType])
+}
+
+model ApprovalRecord {
+  id               String           @id @default(cuid())
+  actionProposalId String
+  userId           String
+  decision         ApprovalDecision
+  comment          String?
+  createdAt        DateTime         @default(now())
+  actionProposal   ActionProposal   @relation(fields: [actionProposalId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([actionProposalId])
+  @@index([userId])
+  @@index([decision])
+}
+
+model ExecutionLog {
+  id               String           @id @default(cuid())
+  actionProposalId String
+  projectId        String?
+  collectionTaskId String?
+  userId           String
+  mode             ExecutionMode    @default(MANUAL)
+  status           ExecutionStatus  @default(MANUAL_EXECUTED)
+  note             String?
+  createdAt        DateTime         @default(now())
+  actionProposal   ActionProposal   @relation(fields: [actionProposalId], references: [id], onDelete: Cascade)
+  project          Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  collectionTask   CollectionTask?  @relation(fields: [collectionTaskId], references: [id], onDelete: SetNull)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([actionProposalId])
+  @@index([projectId])
+  @@index([collectionTaskId])
+  @@index([userId])
+  @@index([status])
+}
+
+model StrategyRule {
+  id            String       @id @default(cuid())
+  projectId     String?
+  name          String
+  description   String?
+  subjectType   SubjectType?
+  actionType    ActionType?
+  enabled       Boolean      @default(true)
+  priority      Int          @default(100)
+  conditionJson Json
+  effectJson    Json
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  project       Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([subjectType])
+  @@index([actionType])
+  @@index([enabled])
 }
 
 model AuditLog {
