@@ -4,7 +4,7 @@
 
 - 输出服务器 staging 部署方案。
 - 让 V0.1.2 可以在腾讯云 Ubuntu 22.04 Docker 环境中通过 Docker Compose 跑起来。
-- 暂不绑定正式域名，先使用服务器 IP 测试。
+- 正式域名为 `www.pxxis.cn`，V0.1.3 暂不切换正式流量，先使用服务器 IP 测试。
 - PostgreSQL 不暴露公网。
 - 不改业务功能。
 

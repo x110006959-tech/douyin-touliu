@@ -52,7 +52,7 @@ export default function TermsPage() {
         <section className="rounded-lg border border-border bg-white p-5">
           <h2 className="text-lg font-semibold text-foreground">变更与联系</h2>
           <p className="mt-2">我们可能根据产品迭代和合规要求更新本条款。重要变更会在合理范围内通过页面或站内方式提示。</p>
-          <p className="mt-2">如需联系，请发送邮件至 support@pxxis.com。</p>
+          <p className="mt-2">如需联系，请发送邮件至 support@pxxis.cn。</p>
         </section>
       </div>
     </main>

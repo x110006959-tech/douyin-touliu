@@ -931,7 +931,13 @@ function actionProposalAudit(
 
 function corsOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
   if (!origin) return callback(null, true);
-  const allowed = new Set([process.env.WEB_ORIGIN || "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3000"]);
+  const allowed = new Set([
+    process.env.WEB_ORIGIN || "https://www.pxxis.cn",
+    "https://www.pxxis.cn",
+    "https://pxxis.cn",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000"
+  ]);
   if (origin.startsWith("chrome-extension://") || allowed.has(origin)) return callback(null, true);
   return callback(null, false);
 }

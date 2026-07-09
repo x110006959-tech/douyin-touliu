@@ -10,15 +10,23 @@
 
 ## 当前约束
 
-- 暂不绑定正式域名。
+- 正式域名为 `www.pxxis.cn`，当前暂不切换正式流量。
 - 暂用服务器 IP 测试。
 - PostgreSQL 不暴露公网。
 - 不改业务功能。
 - 先输出部署方案，再改部署文件。
 
+## 接力状态
+
+- Codex 上下文防丢失体系已建立。
+- 本次文档同步后，当前实际开发任务仍然是服务器 Staging 部署准备。
+- 新对话接力时先读 `AGENTS.md`、`docs/CODEX_HANDOFF.md`、`docs/PROJECT_STATE.md`、`docs/SAFETY_BOUNDARY.md`、`docs/CURRENT_TASK.md`。
+- 进入部署工作前，仍需先输出服务器 staging 部署方案。
+- 未经新的任务确认，不直接修改业务功能、API、Web、Extension 或 Prisma schema。
+
 ## 本任务不做
 
-- 不切换正式域名。
+- 不切换 `www.pxxis.cn` 正式流量。
 - 不开放 PostgreSQL 公网端口。
 - 不新增自动投放执行能力。
 - 不改 API 业务语义。

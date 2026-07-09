@@ -9,9 +9,9 @@
 
 ## 域名规划
 
-- 域名：www.pxxis.com
-- API 域名规划：api.pxxis.com
-- 当前不建议未备案时把 www.pxxis.com 指向广州服务器。
+- 域名：www.pxxis.cn
+- API 域名规划：api.pxxis.cn
+- 当前不建议未备案时把 www.pxxis.cn 指向广州服务器。
 
 ## 腾讯云服务器状态
 
@@ -24,7 +24,7 @@
 ## 当前部署策略
 
 - 下一步是服务器 IP staging 测试。
-- 暂不绑定正式域名。
+- 暂不切换 `www.pxxis.cn` 正式流量。
 - 暂用服务器 IP 验证 Web/API 可访问性。
 - PostgreSQL 不暴露公网，只允许容器内网访问。
 - staging 通过后再处理备案、域名解析、HTTPS、反向代理和正式环境切换。

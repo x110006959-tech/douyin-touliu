@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>&#26412;&#22320;&#29983;&#27963;&#35786;&#26029;&#37319;&#38598;</title>
+    <style>
+      body {
+        width: 380px;
+        margin: 0;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        color: #172033;
+        background: #f7f8fa;
+      }
+      header,
+      section,
+      footer {
+        padding: 12px;
+      }
+      header {
+        background: #fff;
+        border-bottom: 1px solid #dde3ee;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+      }
+      section {
+        display: grid;
+        gap: 8px;
+      }
+      .panel {
+        border: 1px solid #dde3ee;
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+      }
+      .muted {
+        color: #667085;
+      }
+      .notice {
+        border-color: #bfdbfe;
+        background: #eff6ff;
+        color: #1e3a8a;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 84px 1fr;
+        gap: 6px;
+      }
+      button {
+        min-height: 32px;
+        border: 1px solid #dde3ee;
+        border-radius: 7px;
+        background: #fff;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: #2563eb;
+        background: #2563eb;
+        color: #fff;
+      }
+      footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      pre {
+        max-height: 160px;
+        overflow: auto;
+        border-radius: 6px;
+        background: #101828;
+        color: #e5e7eb;
+        padding: 8px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>&#26412;&#22320;&#29983;&#27963;&#35786;&#26029;&#37319;&#38598;</h1>
+      <div id="status" class="muted">&#21021;&#22987;&#21270;&#20013;</div>
+    </header>
+    <section>
+      <div class="panel">
+        <div class="row"><span class="muted">&#24403;&#21069; URL</span><span id="currentUrl">-</span></div>
+        <div class="row"><span class="muted">&#39029;&#38754;&#31867;&#22411;</span><span id="pageType">-</span></div>
+        <div class="row"><span class="muted">&#21487;&#37319;&#38598;</span><span id="collectable">-</span></div>
+        <div class="row"><span class="muted">Token</span><span id="hasToken">-</span></div>
+        <div class="row"><span class="muted">&#20219;&#21153; ID</span><span id="taskId">-</span></div>
+      </div>
+      <div class="panel notice">
+        本插件仅在用户授权并打开目标后台页面时采集当前页面可见数据和允许的 JSON 响应。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。
+      </div>
+      <div class="panel">
+        <div class="muted">&#26412;&#22320;&#24555;&#29031;</div>
+        <pre id="snapshot">{}</pre>
+      </div>
+    </section>
+    <footer>
+      <button id="configBtn">&#37197;&#32622; API</button>
+      <button id="startBtn" class="primary">&#24320;&#22987;&#37319;&#38598;</button>
+      <button id="refreshBtn">&#26597;&#30475;&#26412;&#22320;&#24555;&#29031;</button>
+      <button id="uploadBtn">&#19978;&#20256;&#24555;&#29031;</button>
+      <button id="clearBtn">&#28165;&#31354;&#26412;&#22320;&#24555;&#29031;</button>
+    </footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

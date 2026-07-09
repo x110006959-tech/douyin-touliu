@@ -5,6 +5,20 @@
 - 当前版本：V0.1.2
 - 状态：V0.1.2 已完成
 - 当前系统仍然没有任何自动投放执行能力。
+- 正式网站域名已确认为 `www.pxxis.cn`，API 域名规划为 `api.pxxis.cn`。
+
+## 上下文防丢失体系
+
+- 已建立 `AGENTS.md` 作为 Codex 固定规则文件。
+- 已建立 `docs/CODEX_HANDOFF.md` 作为新对话接力入口。
+- 已建立 `docs/PROJECT_STATE.md` 记录项目当前状态。
+- 已建立 `docs/SAFETY_BOUNDARY.md` 单独记录长期安全红线。
+- 已建立 `docs/CURRENT_TASK.md` 记录当前正在推进的任务。
+- 已建立 `docs/DECISION_LOG.md` 记录重要架构决策。
+- 已建立 `docs/ROADMAP.md` 记录后续版本计划。
+- 已建立 `docs/DEPLOYMENT_STATE.md` 记录部署状态。
+- 新 Codex 对话必须先读取这些接力文档，再总结当前项目状态、风险和下一步。
+- 任务完成后必须同步更新接力文档，避免长对话自动压缩导致项目上下文丢失。
 
 ## V0.1.2 已完成能力
 

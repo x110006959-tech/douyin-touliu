@@ -42,7 +42,7 @@ export default function PrivacyPage() {
         <section className="rounded-lg border border-border bg-white p-5">
           <h2 className="text-lg font-semibold text-foreground">用户责任与联系</h2>
           <p className="mt-2">用户应确保自己有权限查看和处理相关后台数据，并遵守适用的平台规则、账号规范和法律要求。</p>
-          <p className="mt-2">如需咨询隐私相关问题，请联系 support@pxxis.com。</p>
+          <p className="mt-2">如需咨询隐私相关问题，请联系 support@pxxis.cn。</p>
         </section>
       </div>
     </main>
