@@ -16,6 +16,8 @@ type RateLimitCheck =
     };
 
 const buckets = new Map<string, Bucket>();
+const cleanupThreshold = 1_000;
+const maximumBuckets = 100_000;
 
 const loginIpRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 30 };
 const loginEmailRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 10 };
@@ -52,6 +54,11 @@ function checkCompositeRateLimit(entries: Array<[string, RateLimitRule]>): RateL
 }
 
 function hitBucket(key: string, rule: RateLimitRule, now = Date.now()): RateLimitCheck {
+  if (buckets.size >= cleanupThreshold) pruneExpiredBuckets(now);
+  if (!buckets.has(key) && buckets.size >= maximumBuckets) {
+    const oldest = buckets.keys().next().value as string | undefined;
+    if (oldest) buckets.delete(oldest);
+  }
   const existing = buckets.get(key);
   const current = existing && existing.resetAt > now ? existing : { count: 0, resetAt: now + rule.windowMs };
   current.count += 1;
@@ -62,6 +69,12 @@ function hitBucket(key: string, rule: RateLimitRule, now = Date.now()): RateLimi
     allowed: false,
     retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000))
   };
+}
+
+function pruneExpiredBuckets(now: number) {
+  for (const [key, bucket] of buckets) {
+    if (bucket.resetAt <= now) buckets.delete(key);
+  }
 }
 
 function normalizeEmail(email: string) {

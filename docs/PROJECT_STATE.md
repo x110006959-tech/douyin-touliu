@@ -74,3 +74,24 @@
 - 不包含自动暂停或创建计划。
 - 不包含自动提交平台表单。
 - 不包含绕过验证码或平台风控。
+
+## V0.1.2 安全加固状态（2026-07-10）
+
+- 主体确认、人工复核覆盖率、关键指标置信度和数据完整性现在共同决定是否允许产生强动作。
+- 服务商诊断已使用广告消耗、服务费、商家补贴、已核验平台权益和核销毛利计算真实成本及毛利 ROI。
+- API 已有服务端二次脱敏、请求体限制、幂等写入、事务审计和并发状态保护。
+- 最终动作唯一来源是 `packages/decision-engine`，解释接口不再创建旧动作口径。
+- Extension 仍是 MV3 只采集插件；网络捕获需用户点击开始，XHR 仅补丁原型方法，不替换构造器。
+- 内部包生产入口改为 `dist`，类型入口保留 `src`，避免生产运行直接加载工作区 TypeScript。
+- 测试状态：58 项通过，API 集成测试无需人工启动数据库。
+- 部署状态：Compose 本机完整冒烟通过，服务器 staging 尚未执行。
+
+## V0.1.2 发布收尾（2026-07-10）
+
+- Extension `0.1.2` 的 unpacked 目录和 ZIP 已由当前安全源码重新生成，测试直接验证最终 ZIP。
+- 旧 Recommendation 双轨已从 API/Web/Prisma Client 主线移除。
+- Web 浏览器会话已迁移为 HttpOnly Cookie，不再持久化 JWT；Extension Bearer 上传能力保持不变。
+- API 列表已支持 cursor 分页，Outcome 项目汇总使用数据库聚合。
+- BullMQ/queue 未启用预留已删除；StrategyRule 仅作为数据库兼容旧表保留，不进入生成客户端。
+- API 已拆出 `routes/auth`、`http-security`、`ownership`、`pagination`、`server-utils`。
+- 当前测试总数为 64 项，全部通过。

@@ -11,10 +11,11 @@ export async function writeAuditLog(
     projectId?: string | null;
     taskId?: string | null;
     detailJson?: unknown;
-  } = {}
+  } = {},
+  db: Pick<Prisma.TransactionClient, "auditLog"> = prisma
 ) {
   const user = (req as unknown as AuthenticatedRequest).user;
-  await prisma.auditLog.create({
+  await db.auditLog.create({
     data: {
       userId: user.id,
       workspaceId: detail.workspaceId || null,

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Douyin Local Life Diagnosis Collector",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Collects visible page data and allowed JSON responses for diagnosis.",
   "permissions": ["activeTab", "storage"],
   "icons": {

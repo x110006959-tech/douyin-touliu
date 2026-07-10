@@ -27,6 +27,10 @@ afterAll(async () => {
 });
 
 describe("V0.1 API smoke flow", () => {
+  it("reports database readiness", async () => {
+    await expect(api<{ ok: boolean; database: string }>("/ready", null)).resolves.toEqual({ ok: true, database: "ready" });
+  });
+
   it("keeps the full decision, approval, manual execution, and audit trail loop", async () => {
     const email = `v01-smoke-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
     const password = "password123";
@@ -83,59 +87,98 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(task.projectId).toBe(project.id);
 
+    const snapshotBody = {
+      pageType: "LIVE_DATA_SCREEN",
+      sourceUrl: "https://life.douyin.com/live-dashboard?access_token=must-not-persist",
+      pageTitle: "V0.1 live dashboard smoke 13800138000",
+      rawDomText: "service provider password=must-not-persist phone 13800138000 spend 1200 orders 0 impressions 50000 ctr 0.5% GPM 80",
+      rawNetworkJson: [
+        {
+          url: "https://life.douyin.com/api/live?authorization=Bearer-secret",
+          method: "GET",
+          status: 200,
+          responseJson: { access_token: "must-not-persist", phone: "13800138000", spend: 1200 },
+          capturedAt: new Date().toISOString()
+        }
+      ],
+      rawTableData: [{ mobile: "13800138000", orders: 0 }],
+      visibleMetricsJson: [
+        metric("verify_roi", "verify ROI", 0.8),
+        metric("spend", "spend", 1200),
+        metric("orders", "orders", 0),
+        metric("impressions", "impressions", 50000),
+        metric("ctr", "CTR", 0.005, "%"),
+        metric("gpm", "GPM", 80),
+        metric("clicks", "clicks", 900),
+        metric("live_viewers", "live viewers", 8000),
+        metric("daily_budget", "daily budget", 1500),
+        metric("cpa", "CPA", 200),
+        metric("target_cpa", "target CPA", 80),
+        metric("target_roi", "target ROI", 1.4)
+      ],
+      screenshotUrl: null,
+      localCollectedAt: new Date().toISOString()
+    };
+    const snapshotKey = `snapshot-${Date.now()}`;
     const snapshot = await api<{ id: string; normalizedMetrics: Array<{ metricKey: string }> }>(`/collection-tasks/${task.id}/snapshots`, token, {
       method: "POST",
-      body: {
-        pageType: "LIVE_DATA_SCREEN",
-        sourceUrl: "https://life.douyin.com/live-dashboard",
-        pageTitle: "V0.1 live dashboard smoke",
-        rawDomText: "service provider live dashboard spend 1200 orders 0 impressions 50000 ctr 0.5% GPM 80",
-        rawNetworkJson: [],
-        rawTableData: [],
-        visibleMetricsJson: [
-          metric("verify_roi", "verify ROI", 0.8),
-          metric("spend", "spend", 1200),
-          metric("orders", "orders", 0),
-          metric("impressions", "impressions", 50000),
-          metric("ctr", "CTR", 0.005, "%"),
-          metric("gpm", "GPM", 80),
-          metric("clicks", "clicks", 900),
-          metric("live_viewers", "live viewers", 8000),
-          metric("daily_budget", "daily budget", 1500),
-          metric("cpa", "CPA", 200),
-          metric("target_cpa", "target CPA", 80),
-          metric("target_roi", "target ROI", 1.4)
-        ],
-        screenshotUrl: null,
-        localCollectedAt: new Date().toISOString()
-      }
+      headers: { "idempotency-key": snapshotKey },
+      body: snapshotBody
     });
     expect(snapshot.id).toBeTruthy();
     expect(snapshot.normalizedMetrics.length).toBeGreaterThan(0);
+    const replayedSnapshot = await api<{ id: string }>(`/collection-tasks/${task.id}/snapshots`, token, {
+      method: "POST",
+      headers: { "idempotency-key": snapshotKey },
+      body: snapshotBody
+    });
+    expect(replayedSnapshot.id).toBe(snapshot.id);
+    const persistedSnapshot = await prisma.dataSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } });
+    const persistedSnapshotText = JSON.stringify(persistedSnapshot);
+    expect(persistedSnapshotText).not.toContain("must-not-persist");
+    expect(persistedSnapshotText).not.toContain("13800138000");
 
     const metrics = await api<Array<{ metricKey: string }>>(`/collection-tasks/${task.id}/metrics`, token);
     expect(metrics.length).toBeGreaterThan(0);
 
+    const decisionKey = `decision-${Date.now()}`;
     const decisionRun = await api<{ id: string; actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }> }>(
       `/collection-tasks/${task.id}/decision-runs`,
       token,
-      { method: "POST", body: {} }
+      { method: "POST", headers: { "idempotency-key": decisionKey }, body: {} }
     );
     expect(decisionRun.id).toBeTruthy();
     expect(decisionRun.actionProposals.length).toBeGreaterThanOrEqual(3);
     expect(decisionRun.actionProposals.every((proposal) => proposal.requiresApproval)).toBe(true);
+    const replayedDecision = await api<{ id: string }>(`/collection-tasks/${task.id}/decision-runs`, token, {
+      method: "POST",
+      headers: { "idempotency-key": decisionKey },
+      body: {}
+    });
+    expect(replayedDecision.id).toBe(decisionRun.id);
 
     const latest = await api<{ id: string; actionProposals: Array<{ id: string }> }>(`/collection-tasks/${task.id}/decision-runs/latest`, token);
     expect(latest.id).toBe(decisionRun.id);
 
     const projectProposals = await api<Array<{ id: string; status: string }>>(`/projects/${project.id}/action-proposals`, token);
     expect(projectProposals.length).toBeGreaterThanOrEqual(3);
+    const firstProposalPage = await api<Array<{ id: string }>>(`/projects/${project.id}/action-proposals?limit=1`, token);
+    const secondProposalPage = await api<Array<{ id: string }>>(
+      `/projects/${project.id}/action-proposals?limit=1&cursor=${firstProposalPage[0]?.id}`,
+      token
+    );
+    expect(firstProposalPage).toHaveLength(1);
+    expect(secondProposalPage).toHaveLength(1);
+    expect(secondProposalPage[0]?.id).not.toBe(firstProposalPage[0]?.id);
 
-    const explanationOnly = await api<{ recommendations: Array<{ suggestionsJson: unknown }> }>(`/collection-tasks/${task.id}/analyze`, token, {
+    const explanationsBefore = await prisma.aiAnalysisTask.count({ where: { collectionTaskId: task.id } });
+    const explanationOnly = await api<{ responsePayload: { finalActionsSource: string } }>(`/collection-tasks/${task.id}/explain`, token, {
       method: "POST",
       body: {}
     });
-    expect(explanationOnly.recommendations[0]?.suggestionsJson).toEqual([]);
+    expect(explanationOnly.responsePayload.finalActionsSource).toBe("decision-engine");
+    expect(explanationOnly.responsePayload).not.toHaveProperty("suggestions");
+    expect(await prisma.aiAnalysisTask.count({ where: { collectionTaskId: task.id } })).toBe(explanationsBefore + 1);
 
     const [approveTarget, observeTarget, rejectTarget] = projectProposals;
     if (!approveTarget || !observeTarget || !rejectTarget) throw new Error("Expected at least three action proposals");
@@ -184,20 +227,29 @@ describe("V0.1 API smoke flow", () => {
     expect(executed.status).toBe("MANUAL_EXECUTED");
     expect(executed.executionLogs.length).toBeGreaterThan(0);
 
+    const outcomeKey = `outcome-${Date.now()}`;
+    const outcomeBody = {
+      observationWindow: "30m",
+      beforeMetrics: { verify_roi: 0.8, orders: 0 },
+      afterMetrics: { verify_roi: 1.1, orders: 3 },
+      result: "IMPROVED",
+      note: "Manual execution improved short-window indicators.",
+      conclusion: "Keep observing before any further budget move."
+    };
     const outcome = await api<ActionOutcomeResponse>(`/action-proposals/${approveTarget.id}/outcomes`, token, {
       method: "POST",
-      body: {
-        observationWindow: "30m",
-        beforeMetrics: { verify_roi: 0.8, orders: 0 },
-        afterMetrics: { verify_roi: 1.1, orders: 3 },
-        result: "IMPROVED",
-        note: "Manual execution improved short-window indicators.",
-        conclusion: "Keep observing before any further budget move."
-      }
+      headers: { "idempotency-key": outcomeKey },
+      body: outcomeBody
     });
     expect(outcome.actionProposalId).toBe(approveTarget.id);
     expect(outcome.observationWindow).toBe("30m");
     expect(outcome.result).toBe("IMPROVED");
+    const replayedOutcome = await api<ActionOutcomeResponse>(`/action-proposals/${approveTarget.id}/outcomes`, token, {
+      method: "POST",
+      headers: { "idempotency-key": outcomeKey },
+      body: outcomeBody
+    });
+    expect(replayedOutcome.id).toBe(outcome.id);
 
     const outcomes = await api<ActionOutcomeResponse[]>(`/action-proposals/${approveTarget.id}/outcomes`, token);
     expect(outcomes.some((item) => item.id === outcome.id)).toBe(true);
@@ -405,12 +457,17 @@ function metric(key: string, name: string, value: number | string | null, unit?:
   return { key, name, value, unit: unit || null, source: "manual" };
 }
 
-async function api<T>(path: string, token: string | null, options: { method?: string; body?: unknown } = {}): Promise<T> {
+async function api<T>(
+  path: string,
+  token: string | null,
+  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}
+): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: options.method || "GET",
     headers: {
       "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {})
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { addNetworkRecord, isAllowedCaptureUrl, isJsonContentType, sanitizeSensitiveFields, sanitizeSnapshotPayload } from "./safety";
+import {
+  addNetworkRecord,
+  isAllowedCaptureUrl,
+  isJsonContentType,
+  normalizeApiBaseUrl,
+  sanitizeSensitiveFields,
+  sanitizeSnapshotPayload
+} from "./safety";
 
 describe("extension safety helpers", () => {
   it("redacts direct sensitive fields", () => {
@@ -92,6 +99,13 @@ describe("extension safety helpers", () => {
     expect(isAllowedCaptureUrl("/api/live", pageHref)).toBe(true);
     expect(isAllowedCaptureUrl("https://analytics.douyin.com/api/live", pageHref)).toBe(true);
     expect(isAllowedCaptureUrl("https://evil.example.com/api/live", pageHref)).toBe(false);
+  });
+
+  it("allows HTTPS SaaS endpoints and localhost development only", () => {
+    expect(normalizeApiBaseUrl("https://api.pxxis.cn/")).toBe("https://api.pxxis.cn");
+    expect(normalizeApiBaseUrl("http://127.0.0.1:4000")).toBe("http://127.0.0.1:4000");
+    expect(normalizeApiBaseUrl("http://api.pxxis.cn")).toBeNull();
+    expect(normalizeApiBaseUrl("https://user:secret@api.pxxis.cn")).toBeNull();
   });
 
   it("sanitizes snapshots before local persistence or upload", () => {

@@ -43,3 +43,43 @@
 
 - 决策：部署先走服务器 staging，不立即切正式域名。
 - 原因：当前需要先验证腾讯云 Ubuntu Docker 环境、网络、数据库、构建和运行稳定性；未备案时不建议把 `www.pxxis.cn` 指向广州服务器。
+
+### 未确认主体或未复核数据不能产生强动作
+
+- 决策：主体待校准、主体字段冲突、未复核数据、低置信关键指标和模糊 ROI 均阻断预算调整与暂停类动作。
+- 原因：完整字段不等于可信证据；任何强动作必须建立在已确认主体和足够复核覆盖率上。
+
+### 客户端脱敏不能替代服务端安全边界
+
+- 决策：Extension 保存/上传前脱敏，API 在校验后、入库前再次使用共享脱敏器处理全部快照表面。
+- 原因：API 可能被非官方客户端直接调用，服务端必须独立保证认证信息和个人信息不落库。
+
+### 关键写入使用事务和幂等键
+
+- 决策：快照、DecisionRun、ActionOutcome 使用作用域唯一幂等键，业务写入与 AuditLog 处于同一事务。
+- 原因：网络重试、并发提交或审计失败不得产生重复业务记录或审计缺口。
+
+### 旧分析接口只保留解释兼容
+
+- 决策：`/explain` 为解释入口，旧 `/analyze` 仅兼容并返回弃用头，不再创建 `Recommendation` 或最终动作。
+- 原因：诊断和动作必须只有 `decision-engine` 一个口径，避免 Web/API 出现双轨结论。
+
+### Staging 默认不暴露数据服务
+
+- 决策：PostgreSQL 仅加入 Compose 内网；Web/API 端口仅绑定宿主机 `127.0.0.1`，由反向代理对外服务。
+- 原因：数据库和应用进程不应直接暴露公网，生产入口统一交给 HTTPS 反向代理。
+
+### Web 会话使用 HttpOnly Cookie，Extension 保留 Bearer token
+
+- 决策：Web 浏览器通过 `HttpOnly + SameSite=Lax` Cookie 维持一小时会话，不在浏览器 Storage 保存 JWT；Extension 仍使用用户手动配置的 SaaS Bearer token。
+- 原因：降低 Web XSS 读取 JWT 的风险，同时不破坏插件手动上传快照的独立认证链路。
+
+### Extension 最终发布物必须进入自动测试
+
+- 决策：构建同步 unpacked 发布目录，release 命令生成唯一版本 ZIP，测试直接解压 ZIP 检查安全边界。
+- 原因：源码安全不代表旧发布包安全，最终交付物必须和源码接受同一套护栏。
+
+### 旧诊断和策略表以 ignored legacy model 过渡
+
+- 决策：删除旧 Recommendation API/DTO 和未启用 StrategyRule 运行时代码，数据库旧表暂以 `@@ignore` 保留。
+- 原因：先消除双口径和客户端认知负担，同时避免未经 migration 直接删除历史数据。

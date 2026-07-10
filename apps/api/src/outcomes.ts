@@ -1,6 +1,7 @@
 import { Prisma, type ActionOutcome, type OutcomeObservationWindow } from "@prisma/client";
 import type { ActionOutcomeDTO, CreateActionOutcomeInput, ObservationWindow, ProjectOutcomeSummary } from "@douyin-local-life/shared";
 import { prisma } from "./prisma.js";
+import { cursorArgs } from "./pagination.js";
 
 const apiToDbWindow: Record<ObservationWindow, OutcomeObservationWindow> = {
   "30m": "THIRTY_MINUTES",
@@ -40,10 +41,12 @@ export async function createActionOutcome(input: {
   collectionTaskId: string;
   userId: string;
   body: CreateActionOutcomeInput;
-}) {
-  return prisma.actionOutcome.create({
+  idempotencyKey?: string | null;
+}, db: Pick<Prisma.TransactionClient, "actionOutcome"> = prisma) {
+  return db.actionOutcome.create({
     data: {
       actionProposalId: input.actionProposalId,
+      idempotencyKey: input.idempotencyKey || null,
       projectId: input.projectId,
       collectionTaskId: input.collectionTaskId,
       userId: input.userId,
@@ -58,20 +61,27 @@ export async function createActionOutcome(input: {
   });
 }
 
-export async function listActionOutcomes(actionProposalId: string) {
+export async function listActionOutcomes(actionProposalId: string, pagination: { take: number; cursor: string | null }) {
   const outcomes = await prisma.actionOutcome.findMany({
     where: { actionProposalId },
-    orderBy: { createdAt: "desc" }
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: pagination.take,
+    ...cursorArgs(pagination.cursor)
   });
   return outcomes.map(toActionOutcomeDTO);
 }
 
 export async function getProjectOutcomeSummary(projectId: string): Promise<ProjectOutcomeSummary> {
-  const outcomes = await prisma.actionOutcome.findMany({
-    where: { projectId },
-    include: { actionProposal: { select: { actionType: true } } },
-    orderBy: { createdAt: "desc" }
-  });
+  const [resultRows, actionRows] = await Promise.all([
+    prisma.actionOutcome.groupBy({ by: ["result"], where: { projectId }, _count: { _all: true } }),
+    prisma.$queryRaw<Array<{ actionType: string; result: string; total: bigint }>>(Prisma.sql`
+      SELECT ap."actionType"::text AS "actionType", ao."result"::text AS "result", COUNT(*)::bigint AS total
+      FROM "ActionOutcome" ao
+      INNER JOIN "ActionProposal" ap ON ap.id = ao."actionProposalId"
+      WHERE ao."projectId" = ${projectId}
+      GROUP BY ap."actionType", ao."result"
+    `)
+  ]);
 
   const byResult: ProjectOutcomeSummary["byResult"] = {
     IMPROVED: 0,
@@ -84,9 +94,11 @@ export async function getProjectOutcomeSummary(projectId: string): Promise<Proje
     { actionType: ProjectOutcomeSummary["byActionType"][number]["actionType"]; total: number; improved: number; worsened: number; noChange: number; unclear: number }
   >();
 
-  for (const outcome of outcomes) {
-    byResult[outcome.result] += 1;
-    const actionType = outcome.actionProposal.actionType as ProjectOutcomeSummary["byActionType"][number]["actionType"];
+  for (const row of resultRows) byResult[row.result] = row._count._all;
+
+  for (const row of actionRows) {
+    const actionType = row.actionType as ProjectOutcomeSummary["byActionType"][number]["actionType"];
+    const total = Number(row.total);
     const bucket =
       byActionType.get(actionType) ||
       {
@@ -97,17 +109,17 @@ export async function getProjectOutcomeSummary(projectId: string): Promise<Proje
         noChange: 0,
         unclear: 0
       };
-    bucket.total += 1;
-    if (outcome.result === "IMPROVED") bucket.improved += 1;
-    if (outcome.result === "WORSENED") bucket.worsened += 1;
-    if (outcome.result === "NO_CHANGE") bucket.noChange += 1;
-    if (outcome.result === "UNCLEAR") bucket.unclear += 1;
+    bucket.total += total;
+    if (row.result === "IMPROVED") bucket.improved += total;
+    if (row.result === "WORSENED") bucket.worsened += total;
+    if (row.result === "NO_CHANGE") bucket.noChange += total;
+    if (row.result === "UNCLEAR") bucket.unclear += total;
     byActionType.set(actionType, bucket);
   }
 
   return {
     projectId,
-    total: outcomes.length,
+    total: resultRows.reduce((sum, row) => sum + row._count._all, 0),
     byResult,
     byActionType: [...byActionType.values()].sort((a, b) => b.total - a.total)
   };

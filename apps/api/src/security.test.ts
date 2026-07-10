@@ -15,6 +15,7 @@ let server: Server;
 let baseUrl = "";
 const originalNodeEnv = process.env.NODE_ENV;
 const originalJwtSecret = process.env.JWT_SECRET;
+const originalExtensionOrigins = process.env.EXTENSION_ORIGINS;
 
 beforeAll(async () => {
   await new Promise<void>((resolve) => {
@@ -38,6 +39,11 @@ afterEach(() => {
     delete process.env.JWT_SECRET;
   } else {
     process.env.JWT_SECRET = originalJwtSecret;
+  }
+  if (originalExtensionOrigins === undefined) {
+    delete process.env.EXTENSION_ORIGINS;
+  } else {
+    process.env.EXTENSION_ORIGINS = originalExtensionOrigins;
   }
 });
 
@@ -111,6 +117,25 @@ describe("auth security controls", () => {
     expect(wrongPassword.status).toBe(401);
     expect(missing.envelope.error?.code).toBe("INVALID_CREDENTIALS");
     expect(wrongPassword.envelope.error?.code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("stores browser sessions in an HttpOnly cookie while keeping Bearer support", async () => {
+    const registered = await rawApi("/auth/register", {
+      method: "POST",
+      body: { email: `cookie-session-${unique()}@example.com`, password: "password123", name: "Cookie Session" }
+    });
+    const setCookie = registered.headers.get("set-cookie") || "";
+    const cookie = setCookie.split(";")[0] || "";
+
+    expect(registered.status).toBe(201);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+    expect(setCookie).toContain("Max-Age=3600");
+    expect((await rawApi("/auth/me", { cookie })).status).toBe(200);
+
+    const logout = await rawApi("/auth/logout", { method: "POST", cookie });
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 });
 
@@ -217,17 +242,32 @@ describe.sequential("production error hardening", () => {
       expect(response.envelope.error?.code).toBe("UNAUTHORIZED");
     });
   });
+
+  it("allows only configured Chrome extension origins", async () => {
+    await withIsolatedServer(
+      { nodeEnv: "production", extensionOrigins: "chrome-extension://approved-extension-id" },
+      async (url) => {
+        const allowed = await fetch(`${url}/health`, { headers: { origin: "chrome-extension://approved-extension-id" } });
+        const denied = await fetch(`${url}/health`, { headers: { origin: "chrome-extension://untrusted-extension-id" } });
+
+        expect(allowed.headers.get("access-control-allow-origin")).toBe("chrome-extension://approved-extension-id");
+        expect(allowed.headers.get("access-control-allow-credentials")).toBe("true");
+        expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+      }
+    );
+  });
 });
 
 async function rawApi(
   path: string,
-  options: { base?: string; method?: string; token?: string; body?: unknown; requestId?: string } = {}
+  options: { base?: string; method?: string; token?: string; cookie?: string; body?: unknown; requestId?: string } = {}
 ): Promise<{ status: number; envelope: ApiEnvelope<unknown>; headers: Headers }> {
   const response = await fetch(`${options.base || baseUrl}${path}`, {
     method: options.method || "GET",
     headers: {
       "content-type": "application/json",
       ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+      ...(options.cookie ? { cookie: options.cookie } : {}),
       ...(options.requestId ? { "x-request-id": options.requestId } : {})
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
@@ -310,11 +350,12 @@ async function createActionProposalFixture(status: "PENDING_APPROVAL" | "APPROVE
 }
 
 async function withIsolatedServer(
-  env: { nodeEnv: "production" | "development" },
+  env: { nodeEnv: "production" | "development"; extensionOrigins?: string },
   callback: (url: string) => Promise<void>
 ) {
   process.env.NODE_ENV = env.nodeEnv;
   process.env.JWT_SECRET = "strong-jwt-secret-for-isolated-server-tests-12345";
+  if (env.extensionOrigins) process.env.EXTENSION_ORIGINS = env.extensionOrigins;
   resetAuthRateLimiters();
   const isolatedApp = createServer();
   let isolatedServer: Server | undefined;

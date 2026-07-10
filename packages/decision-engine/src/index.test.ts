@@ -8,7 +8,7 @@ function metric(key: string, name: string, value: number | string | null): Visib
 
 function completeMetrics(overrides: VisibleMetric[] = []) {
   const base = [
-    metric("verify_roi", "核销 ROI", 1.5),
+    metric("gross_profit_roi", "毛利 ROI", 1.5),
     metric("spend", "消耗", 1000),
     metric("orders", "成交订单数", 20),
     metric("impressions", "曝光量", 20000),
@@ -45,6 +45,8 @@ function input(overrides: Partial<DecisionEngineInput> = {}): DecisionEngineInpu
     networkJsonSummary: [],
     targetRoi: 1.4,
     targetCpa: 80,
+    dataReviewStatus: "REVIEWED",
+    metricLayer: "REVIEWED_METRIC",
     ...overrides
   };
 }
@@ -53,7 +55,7 @@ describe("decision-engine", () => {
   it("adds manual check when ROI is missing", () => {
     const result = runDecisionRules(
       input({
-        metrics: completeMetrics([metric("verify_roi", "核销 ROI", null)])
+        metrics: completeMetrics([metric("gross_profit_roi", "毛利 ROI", null)])
       })
     );
 
@@ -65,7 +67,7 @@ describe("decision-engine", () => {
   it("marks ROI below 1 as HIGH risk", () => {
     const result = runDecisionRules(
       input({
-        metrics: completeMetrics([metric("verify_roi", "核销 ROI", 0.8)])
+        metrics: completeMetrics([metric("gross_profit_roi", "毛利 ROI", 0.8)])
       })
     );
 
@@ -77,7 +79,7 @@ describe("decision-engine", () => {
     const result = runDecisionRules(
       input({
         metrics: completeMetrics([
-          metric("verify_roi", "核销 ROI", 0.9),
+          metric("gross_profit_roi", "毛利 ROI", 0.9),
           metric("spend", "消耗", 1200),
           metric("orders", "成交订单数", 0)
         ])
@@ -120,7 +122,7 @@ describe("decision-engine", () => {
   it("requires approval for HIGH risk actions", () => {
     const result = runDecisionRules(
       input({
-        metrics: completeMetrics([metric("verify_roi", "核销 ROI", 0.7)])
+        metrics: completeMetrics([metric("gross_profit_roi", "毛利 ROI", 0.7)])
       })
     );
     const highRiskActions = result.actionProposals.filter((proposal) => proposal.riskLevel === "HIGH");
@@ -142,7 +144,7 @@ describe("decision-engine", () => {
           serviceMode: "代播",
           serviceFee: 200
         },
-        metrics: completeMetrics([metric("verify_roi", "核销 ROI", 0.7)])
+        metrics: completeMetrics([metric("gross_profit_roi", "毛利 ROI", 0.7)])
       })
     );
     const actions = result.actionProposals.map((proposal) => proposal.actionType);
@@ -180,5 +182,125 @@ describe("decision-engine", () => {
     expect(result.manualCheckItems.some((item) => item.title.includes("ROI"))).toBe(true);
     expect(actions).not.toContain("PAUSE_TASK");
     expect(actions).not.toContain("DECREASE_BUDGET");
+  });
+
+  it("blocks strong actions when the subject is pending even with high subject confidence", () => {
+    const result = runDecisionRules(
+      input({
+        subject: {
+          subjectType: "SUBJECT_PENDING",
+          operatorType: "OPERATOR_PENDING",
+          cooperationType: "COOPERATION_PENDING",
+          controlLevel: "PENDING",
+          confidence: 0.9
+        },
+        dataReviewStatus: "REVIEWED",
+        metrics: completeMetrics([metric("verify_roi", "核销 ROI", 0.5)])
+      })
+    );
+    const actions = result.actionProposals.map((proposal) => proposal.actionType);
+
+    expect(result.dataQuality.subjectReady).toBe(false);
+    expect(result.dataQuality.blocksStrongActions).toBe(true);
+    expect(actions.every((action) => action === "OBSERVE" || action === "REQUEST_MANUAL_REVIEW")).toBe(true);
+  });
+
+  it("blocks strong actions for unreviewed data", () => {
+    const result = runDecisionRules(
+      input({
+        dataReviewStatus: "UNREVIEWED",
+        metricLayer: "NORMALIZED_METRIC",
+        metrics: completeMetrics([metric("gross_profit_roi", "毛利 ROI", 0.5)])
+      })
+    );
+
+    expect(result.dataQuality.reviewReady).toBe(false);
+    expect(result.actionProposals.every((proposal) => proposal.actionType === "OBSERVE" || proposal.actionType === "REQUEST_MANUAL_REVIEW")).toBe(true);
+  });
+
+  it("blocks strong actions when reviewed critical metrics still have low source confidence", () => {
+    const domMetrics = completeMetrics([metric("gross_profit_roi", "毛利 ROI", 0.5)]).map((item) => ({
+      ...item,
+      source: "dom" as const,
+      metricSource: "DOM_TEXT" as const,
+      confidence: 0.6
+    }));
+    const result = runDecisionRules(input({ dataReviewStatus: "REVIEWED", metrics: domMetrics }));
+
+    expect(result.dataQuality.lowConfidenceFields?.length).toBeGreaterThan(0);
+    expect(result.actionProposals.some((proposal) => proposal.actionType === "PAUSE_TASK")).toBe(false);
+  });
+
+  it("keeps diagnosis risk aligned with guarded output", () => {
+    const result = runDecisionRules(
+      input({
+        subject: { ...input().subject, confidence: 0.69 },
+        dataReviewStatus: "REVIEWED"
+      })
+    );
+
+    expect(result.diagnosis).toContain(`风险=${result.riskLevel}`);
+    expect(result.diagnosis).toContain(result.actionProposals[0]?.title || "继续观察");
+  });
+
+  it("calculates service-provider after-cost gross-profit ROI", () => {
+    const result = runDecisionRules(
+      input({
+        metrics: completeMetrics([
+          metric("gross_profit_roi", "毛利 ROI", null),
+          metric("gross_profit", "核销毛利", 1800),
+          metric("merchant_subsidy", "商家补贴", 100),
+          metric("activity_verified", "活动已核验", 1),
+          metric("platform_subsidy", "平台补贴", 100)
+        ])
+      })
+    );
+
+    expect(result.calculatedMetrics?.serviceProviderAfterCost).toBe(1200);
+    expect(result.calculatedMetrics?.serviceProviderGrossProfitRoi).toBe(1.5);
+    expect(result.diagnosis).toContain("服务商后成本=1200");
+  });
+
+  it("recommends renegotiating service fees when account ROI is good but after-cost margin is weak", () => {
+    const result = runDecisionRules(
+      input({
+        metrics: completeMetrics([
+          metric("gross_profit_roi", "毛利 ROI", null),
+          metric("verify_roi", "核销 ROI", 1.8),
+          metric("gross_profit", "核销毛利", 900)
+        ])
+      })
+    );
+
+    expect(result.actionProposals.some((proposal) => proposal.actionType === "RENEGOTIATE_SERVICE_FEE")).toBe(true);
+  });
+
+  it("prioritizes reputation and fulfillment risk before ROI", () => {
+    const result = runDecisionRules(
+      input({
+        metrics: completeMetrics([metric("refund_rate", "退款率", 0.2)])
+      })
+    );
+
+    expect(result.riskLevel).toBe("HIGH");
+    expect(result.actionProposals[0]?.actionType).toBe("PAUSE_TASK");
+    expect(result.actionProposals.some((proposal) => proposal.actionType === "REPAIR_REPUTATION")).toBe(true);
+  });
+
+  it("does not pause a zero-order stream before the minimum sample", () => {
+    const result = runDecisionRules(
+      input({
+        metrics: completeMetrics([
+          metric("spend", "消耗", 0.01),
+          metric("orders", "成交订单数", 0),
+          metric("clicks", "点击量", 1),
+          metric("live_viewers", "直播间观看人数", 5),
+          metric("live_duration_minutes", "开播时长", 2)
+        ])
+      })
+    );
+
+    expect(result.actionProposals.some((proposal) => proposal.actionType === "PAUSE_TASK")).toBe(false);
+    expect(result.actionProposals.some((proposal) => proposal.actionType === "OBSERVE")).toBe(true);
   });
 });

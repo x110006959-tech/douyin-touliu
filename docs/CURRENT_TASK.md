@@ -2,42 +2,37 @@
 
 ## 任务名称
 
-服务器 Staging 部署准备
+腾讯云服务器 staging 实机部署
 
-## 目标
+## 已完成前置
 
-让 V0.1.2 可以在腾讯云 Ubuntu Docker 环境中通过 Docker Compose 跑起来。
+- V0.1.2 安全加固代码已完成。
+- 主体/复核/置信度强动作护栏已完成。
+- 服务端二次脱敏、幂等事务和旧分析链路收口已完成。
+- 测试数据库自动化、Web 测试和 Extension 安全回归已完成。
+- 本地 typecheck、64 项测试、build、Prisma validate 和依赖审计通过。
+- 本地 Docker 镜像、容器健康检查和容器内 HTTP 冒烟通过；Windows Docker Desktop 宿主端口发布异常待在 Ubuntu staging 复验。
+- Extension `0.1.2` 最终 ZIP 安全校验通过。
+- Web 已使用 HttpOnly Cookie，会话不再写入浏览器 Storage。
+- 旧 Recommendation 双轨和未启用 BullMQ 主线代码已清理。
 
-## 当前约束
+## 当前目标
 
-- 正式域名为 `www.pxxis.cn`，当前暂不切换正式流量。
-- 暂用服务器 IP 测试。
-- PostgreSQL 不暴露公网。
-- 不改业务功能。
-- 先输出部署方案，再改部署文件。
+在腾讯云 Ubuntu 22.04 的 `/opt/pxxis` 使用真实 staging 环境变量启动 Compose，并验证 Web/API/数据库、持久卷和反向代理链路。
 
-## 接力状态
+## 约束
 
-- Codex 上下文防丢失体系已建立。
-- 本次文档同步后，当前实际开发任务仍然是服务器 Staging 部署准备。
-- 新对话接力时先读 `AGENTS.md`、`docs/CODEX_HANDOFF.md`、`docs/PROJECT_STATE.md`、`docs/SAFETY_BOUNDARY.md`、`docs/CURRENT_TASK.md`。
-- 进入部署工作前，仍需先输出服务器 staging 部署方案。
-- 未经新的任务确认，不直接修改业务功能、API、Web、Extension 或 Prisma schema。
-
-## 本任务不做
-
-- 不切换 `www.pxxis.cn` 正式流量。
-- 不开放 PostgreSQL 公网端口。
-- 不新增自动投放执行能力。
-- 不改 API 业务语义。
-- 不改 Web 业务流程。
-- 不改 Chrome Extension 采集边界。
-- 不改 Prisma schema。
+- 暂不切换 `www.pxxis.cn` 正式流量。
+- PostgreSQL 不开放公网端口。
+- Web/API 宿主端口只绑定回环地址。
+- `.env` 不提交 Git，不使用示例密码。
+- 不新增任何自动投放执行能力。
+- 不修改 Extension 权限和平台操作边界。
 
 ## 下一步动作
 
-1. 读取 `docs/DEPLOYMENT_STATE.md`，确认服务器、域名和部署目录计划。
-2. 输出服务器 staging 部署方案。
-3. 经确认后再新增或修改部署文件。
-4. 在服务器 IP staging 环境验证 Web/API/Docker Compose。
-5. 更新 `docs/CODEX_HANDOFF.md`、`docs/PROJECT_STATE.md`、`docs/DEPLOYMENT_STATE.md` 和本文件。
+1. 在服务器创建 `/opt/pxxis` 并准备代码。
+2. 生成强密码与 JWT secret，填写 staging `.env`。
+3. 执行 Compose 配置校验、构建和启动。
+4. 验证 `/ready`、Web 首页、注册登录和一次完整人工决策闭环。
+5. 配置 HTTPS 反向代理后，再评估域名解析与正式切换。

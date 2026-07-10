@@ -45,23 +45,26 @@ export function latestSnapshot(task: TaskReviewInput) {
   return task.snapshots[0] || null;
 }
 
-export async function ensureReviewMetricsForTask(task: TaskReviewInput) {
+export async function ensureReviewMetricsForTask(
+  task: TaskReviewInput,
+  db: Pick<Prisma.TransactionClient, "reviewedMetric"> = prisma
+) {
   const snapshot = latestSnapshot(task);
   if (!snapshot) return { metrics: [] as ReviewedMetric[], createdCount: 0 };
 
-  const existing = await prisma.reviewedMetric.findMany({
+  const existing = await db.reviewedMetric.findMany({
     where: { taskId: task.id, snapshotId: snapshot.id },
     orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
   });
   if (existing.length) return { metrics: existing, createdCount: 0 };
   if (!snapshot.normalizedMetrics.length) return { metrics: [] as ReviewedMetric[], createdCount: 0 };
 
-  await prisma.reviewedMetric.createMany({
+  await db.reviewedMetric.createMany({
     data: snapshot.normalizedMetrics.map((metric) => toReviewedMetricCreate(task.id, snapshot, metric)),
     skipDuplicates: true
   });
 
-  const metrics = await prisma.reviewedMetric.findMany({
+  const metrics = await db.reviewedMetric.findMany({
     where: { taskId: task.id, snapshotId: snapshot.id },
     orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
   });
@@ -117,7 +120,7 @@ export function reviewedMetricsToVisibleMetrics(metrics: ReviewedMetric[]): Visi
         unit: metric.metricUnit,
         source: legacySourceFromMetricSource(metric.metricSource),
         metricSource: metric.metricSource,
-        confidence: metric.confidence,
+        confidence: 1,
         rawEvidence: toMetricRawEvidence(metric.rawEvidence)
       }
     ];

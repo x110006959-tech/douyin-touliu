@@ -1,0 +1,15 @@
+.git
+.codebase-memory
+.next
+**/.next
+dist
+**/dist
+node_modules
+**/node_modules
+.pnpm-store
+.env
+.env.*
+!.env.example
+coverage
+00_全局工作台
+10_项目档案

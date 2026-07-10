@@ -16,7 +16,7 @@ type Project = {
   operatorType: string;
   status: string;
   subjectConfidence: number;
-  tasks: Array<{ id: string; status: string; pageTitle: string | null }>;
+  _count?: { tasks: number };
 };
 
 export default function DashboardPage() {
@@ -102,7 +102,7 @@ export default function DashboardPage() {
                     {subjectTypeLabels[project.subjectType]} / {project.operatorType} / 置信度 {project.subjectConfidence}
                   </p>
                 </div>
-                <span className="rounded-md border border-border px-2 py-1 text-xs text-muted">任务 {project.tasks.length}</span>
+                <span className="rounded-md border border-border px-2 py-1 text-xs text-muted">任务 {project._count?.tasks ?? 0}</span>
               </div>
             </Card>
           </Link>

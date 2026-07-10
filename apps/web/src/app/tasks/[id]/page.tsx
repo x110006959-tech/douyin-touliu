@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, createIdempotencyKey } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 
 type TaskDetail = {
@@ -57,15 +57,12 @@ type TaskDetail = {
     status: string;
     provider: string;
     model: string;
-    recommendations: Array<{
-      id: string;
-      summary: string;
-      riskLevel: string;
-      problemsJson: unknown;
-      suggestionsJson: unknown;
-      manualCheckItemsJson: unknown;
-      confidence: number;
-    }>;
+    responsePayload?: {
+      summary?: string;
+      manualCheckItems?: Array<{ title: string; reason: string }>;
+      confidence?: number;
+      finalActionsSource?: string;
+    } | null;
   }>;
   auditLogs: Array<{ id: string; action: string; createdAt: string }>;
 };
@@ -88,6 +85,14 @@ type DecisionRun = {
     requiresApproval: boolean;
     manualExecutedAt: string | null;
   }>;
+  finalResultJson?: {
+    calculatedMetrics?: {
+      serviceProviderAfterCost?: number | null;
+      serviceProviderGrossProfitRoi?: number | null;
+      verifiedPlatformBenefits?: number | null;
+      evidence?: string[];
+    };
+  };
 };
 
 export default function TaskDetailPage() {
@@ -123,15 +128,15 @@ export default function TaskDetailPage() {
 
   useEffect(load, [token, params.id]);
 
-  async function analyze() {
+  async function explain() {
     if (!token) return;
-    setBusy("analyze");
+    setBusy("explain");
     setError("");
     try {
-      await apiFetch(`/collection-tasks/${params.id}/analyze`, token, { method: "POST", body: "{}" });
+      await apiFetch(`/collection-tasks/${params.id}/explain`, token, { method: "POST", body: "{}" });
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "分析失败");
+      setError(err instanceof Error ? err.message : "解释生成失败");
     } finally {
       setBusy("");
     }
@@ -142,7 +147,11 @@ export default function TaskDetailPage() {
     setBusy("decision");
     setError("");
     try {
-      const nextDecisionRun = await apiFetch<DecisionRun>(`/collection-tasks/${params.id}/decision-runs`, token, { method: "POST", body: "{}" });
+      const nextDecisionRun = await apiFetch<DecisionRun>(`/collection-tasks/${params.id}/decision-runs`, token, {
+        method: "POST",
+        headers: { "idempotency-key": createIdempotencyKey(`decision:${params.id}`) },
+        body: "{}"
+      });
       setDecisionRun(nextDecisionRun);
       load();
     } catch (err) {
@@ -236,10 +245,6 @@ export default function TaskDetailPage() {
 
   const latestSnapshot = task.snapshots[0];
   const latestAnalysis = task.analyses[0] || null;
-  const recommendation = latestAnalysis?.recommendations[0] || null;
-  const suggestions = asArray(recommendation?.suggestionsJson);
-  const problems = asArray(recommendation?.problemsJson);
-  const manualChecks = asArray(recommendation?.manualCheckItemsJson);
   const reviewState = summarizeReviewState(reviewMetrics);
 
   return (
@@ -251,8 +256,8 @@ export default function TaskDetailPage() {
           <p className="text-sm text-muted">状态：{task.status}</p>
         </div>
         <div className="flex gap-2">
-          <Button className="border border-border bg-white text-foreground" type="button" onClick={analyze} disabled={!latestSnapshot || busy === "analyze"}>
-            运行诊断
+          <Button className="border border-border bg-white text-foreground" type="button" onClick={explain} disabled={!latestSnapshot || busy === "explain"}>
+            生成解释
           </Button>
           <Button type="button" onClick={runDecision} disabled={!latestSnapshot || busy === "decision"}>
             运行决策
@@ -293,7 +298,7 @@ export default function TaskDetailPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardTitle>诊断状态</CardTitle>
+          <CardTitle>解释层状态</CardTitle>
           {latestAnalysis ? (
             <div className="grid gap-2 text-sm">
               <div className="flex justify-between rounded-md border border-border px-3 py-2">
@@ -310,7 +315,7 @@ export default function TaskDetailPage() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted">暂无诊断任务。</p>
+            <p className="text-sm text-muted">暂无解释记录。</p>
           )}
         </Card>
 
@@ -324,6 +329,16 @@ export default function TaskDetailPage() {
                 <Info label="置信度" value={String(decisionRun.confidence)} />
                 <Info label="动作建议" value={String(decisionRun.actionProposals.length)} />
               </div>
+              {decisionRun.finalResultJson?.calculatedMetrics ? (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Info label="服务商后成本" value={formatOptionalNumber(decisionRun.finalResultJson.calculatedMetrics.serviceProviderAfterCost)} />
+                  <Info
+                    label="服务商后毛利 ROI"
+                    value={formatOptionalNumber(decisionRun.finalResultJson.calculatedMetrics.serviceProviderGrossProfitRoi)}
+                  />
+                  <Info label="已核验平台权益" value={formatOptionalNumber(decisionRun.finalResultJson.calculatedMetrics.verifiedPlatformBenefits)} />
+                </div>
+              ) : null}
               <p className="text-xs text-muted">
                 {decisionRun.strategyVersion} / {new Date(decisionRun.createdAt).toLocaleString("zh-CN")}
               </p>
@@ -485,26 +500,17 @@ export default function TaskDetailPage() {
         </Card>
 
         <Card>
-          <CardTitle>诊断建议</CardTitle>
-          {recommendation ? (
+          <CardTitle>解释摘要</CardTitle>
+          {latestAnalysis?.responsePayload?.summary ? (
             <div className="grid gap-3 text-sm">
-              <p className="text-base font-semibold">{recommendation.summary}</p>
-              <p className="text-muted">
-                风险：{recommendation.riskLevel} / 置信度：{recommendation.confidence}
-              </p>
-              <div className="grid gap-2">
-                {suggestions.map((item, index) => (
-                  <div className="rounded-md border border-border px-3 py-2" key={index}>
-                    <strong>{String(item.action || item.title || "操作指令")}</strong>
-                    <p className="text-muted">{String(item.reason || item.expectedImpact || "")}</p>
-                  </div>
-                ))}
-              </div>
-              {manualChecks.length ? <p className="text-muted">待校准：{manualChecks.map((item) => String(item.title || "")).join("、")}</p> : null}
-              {problems.length ? <p className="text-danger">风险项：{problems.map((item) => String(item.title || "")).join("、")}</p> : null}
+              <p className="text-base font-semibold">{latestAnalysis.responsePayload.summary}</p>
+              <p className="text-muted">解释层不生成最终投流动作，正式结论以右侧 DecisionRun 和 ActionProposal 为准。</p>
+              {latestAnalysis.responsePayload.manualCheckItems?.length ? (
+                <p className="text-muted">待校准：{latestAnalysis.responsePayload.manualCheckItems.map((item) => item.title).join("、")}</p>
+              ) : null}
             </div>
           ) : (
-            <p className="text-sm text-muted">暂无诊断结果。</p>
+            <p className="text-sm text-muted">暂无解释摘要。</p>
           )}
         </Card>
 
@@ -550,10 +556,6 @@ export default function TaskDetailPage() {
   );
 }
 
-function asArray(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
-}
-
 function summarizeReviewState(metrics: ReviewedMetricDTO[]) {
   if (!metrics.length) {
     return { label: "无指标：不建议运行", tone: "text-danger" };
@@ -595,4 +597,9 @@ function Info({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function formatOptionalNumber(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "数据缺失";
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }

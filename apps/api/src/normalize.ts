@@ -11,6 +11,10 @@ const metricPatterns: Array<{ key: MetricKey; unit?: string; pattern: RegExp }> 
   { key: "spend", unit: "元", pattern: /(?:消耗|广告消耗|今日消耗|投放消耗)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
   { key: "daily_budget", unit: "元", pattern: /(?:日预算|预算)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
   { key: "remaining_budget", unit: "元", pattern: /(?:剩余预算)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
+  { key: "recent_30m_spend", unit: "元", pattern: /(?:近\s*30\s*分钟消耗)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
+  { key: "recent_30m_orders", pattern: /(?:近\s*30\s*分钟订单(?:数)?)[^\d-]*([\d,.]+)/i },
+  { key: "live_duration_minutes", unit: "分钟", pattern: /(?:开播时长|直播时长)[^\d-]*([\d,.]+)/i },
+  { key: "minutes_since_last_adjustment", unit: "分钟", pattern: /(?:距上次调价|距上次调整)[^\d-]*([\d,.]+)/i },
   { key: "impressions", pattern: /(?:曝光量|曝光次数|商品曝光人数|直播曝光人数|累计曝光次数)[^\d-]*([\d,.]+(?:万|千)?)/i },
   { key: "clicks", pattern: /(?:点击量|点击人数|商品点击人数)[^\d-]*([\d,.]+(?:万|千)?)/i },
   { key: "ctr", unit: "%", pattern: /(?:点击率|CTR|商品点击率)[^\d-]*([\d,.]+%?)/i },
@@ -30,7 +34,15 @@ const metricPatterns: Array<{ key: MetricKey; unit?: string; pattern: RegExp }> 
   { key: "search_gmv", unit: "元", pattern: /(?:搜索成交)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
   { key: "gross_profit", unit: "元", pattern: /(?:核销毛利|毛利)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
   { key: "merchant_subsidy", unit: "元", pattern: /(?:商家补贴)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "service_fee", unit: "元", pattern: /(?:服务费|服务商费用)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i }
+  { key: "service_fee", unit: "元", pattern: /(?:服务费|服务商费用)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
+  { key: "store_rating", pattern: /(?:门店评分|体验分|经营分)[^\d-]*([\d,.]+)/i },
+  { key: "complaint_rate", unit: "%", pattern: /(?:投诉率|客诉率)[^\d-]*([\d,.]+%?)/i },
+  { key: "refund_rate", unit: "%", pattern: /(?:退款率)[^\d-]*([\d,.]+%?)/i },
+  { key: "fulfillment_exception_rate", unit: "%", pattern: /(?:履约异常率)[^\d-]*([\d,.]+%?)/i },
+  { key: "inventory_capacity", pattern: /(?:库存承接|预约承接|可接待量)[^\d-]*([\d,.]+)/i },
+  { key: "platform_subsidy", unit: "元", pattern: /(?:平台补贴)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
+  { key: "ad_coupon", unit: "元", pattern: /(?:投放券)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
+  { key: "rebate_coupon", unit: "元", pattern: /(?:消返券)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i }
 ];
 
 export function normalizeMetrics(snapshot: CollectionSnapshotPayload): VisibleMetric[] {
@@ -42,7 +54,9 @@ export function normalizeMetrics(snapshot: CollectionSnapshotPayload): VisibleMe
     if (normalized.key === "unknown") {
       unknown.push(normalized);
     } else {
-      known.set(normalized.key as MetricKey, normalized);
+      const key = normalized.key as MetricKey;
+      const existing = known.get(key);
+      if (!existing || metricPriority(normalized) > metricPriority(existing)) known.set(key, normalized);
     }
   }
 
@@ -114,4 +128,17 @@ function defaultConfidence(source: NonNullable<VisibleMetric["metricSource"]>, k
   if (source === "TABLE") return 0.75;
   if (source === "DOM_TEXT") return 0.6;
   return 0.5;
+}
+
+function metricPriority(metric: VisibleMetric) {
+  const source = metric.metricSource || metricSourceFromLegacy(metric.source);
+  const sourceRank: Record<NonNullable<VisibleMetric["metricSource"]>, number> = {
+    MANUAL_INPUT: 5,
+    XHR_JSON: 4,
+    TABLE: 3,
+    SCREENSHOT: 2,
+    DOM_TEXT: 1,
+    UNKNOWN: 0
+  };
+  return sourceRank[source] * 10 + (metric.confidence ?? defaultConfidence(source, String(metric.key)));
 }

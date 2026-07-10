@@ -1,6 +1,6 @@
 import type { CollectionSnapshotPayload } from "@douyin-local-life/shared";
 import { MESSAGE, STORAGE } from "./messages";
-import { sanitizeSnapshotPayload } from "./safety";
+import { normalizeApiBaseUrl, sanitizeSnapshotPayload } from "./safety";
 
 type ExtensionConfig = {
   apiBaseUrl?: string;
@@ -51,8 +51,10 @@ async function saveSnapshot(snapshot: CollectionSnapshotPayload, tabId?: number)
 }
 
 async function saveConfig(payload: ExtensionConfig & { token?: string }) {
+  const apiBaseUrl = normalizeApiBaseUrl(payload.apiBaseUrl || "http://localhost:4000");
+  if (!apiBaseUrl) return { ok: false, error: "API address must use HTTPS, except for localhost development." };
   const config: ExtensionConfig = {
-    apiBaseUrl: payload.apiBaseUrl || "http://localhost:4000",
+    apiBaseUrl,
     collectionTaskId: payload.collectionTaskId
   };
   await chrome.storage.local.set({ [STORAGE.CONFIG]: config });
@@ -83,13 +85,16 @@ async function uploadLatestSnapshot() {
   const token = session[STORAGE.TOKEN] as string | undefined;
 
   if (!config.apiBaseUrl || !config.collectionTaskId) return { ok: false, error: "Configure API base URL and collection task ID first." };
+  const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
+  if (!apiBaseUrl) return { ok: false, error: "Configured API address is not allowed." };
   if (!token) return { ok: false, error: "Missing SaaS API token. Configure it in the popup." };
   if (!snapshot) return { ok: false, error: "No local snapshot available." };
 
-  const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/collection-tasks/${config.collectionTaskId}/snapshots`, {
+  const response = await fetch(`${apiBaseUrl}/collection-tasks/${config.collectionTaskId}/snapshots`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
+      "Idempotency-Key": `snapshot:${config.collectionTaskId}:${snapshot.localCollectedAt}`.slice(0, 128),
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify(sanitizeSnapshotPayload(snapshot))

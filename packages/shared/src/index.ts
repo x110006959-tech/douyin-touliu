@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { snapshotSafetyLimits } from "./safety.js";
+
+export * from "./safety.js";
 
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
@@ -80,6 +83,10 @@ export const metricKeys = [
   "spend",
   "daily_budget",
   "remaining_budget",
+  "recent_30m_spend",
+  "recent_30m_orders",
+  "live_duration_minutes",
+  "minutes_since_last_adjustment",
   "orders",
   "impressions",
   "clicks",
@@ -92,12 +99,22 @@ export const metricKeys = [
   "gross_profit",
   "merchant_subsidy",
   "service_fee",
+  "store_rating",
+  "complaint_rate",
+  "refund_rate",
+  "fulfillment_exception_rate",
+  "inventory_capacity",
+  "wrong_price_promise_risk",
+  "activity_verified",
+  "platform_subsidy",
+  "ad_coupon",
+  "rebate_coupon",
   "shelf_gmv",
   "search_gmv",
   "poi_visits",
   "store_searches"
 ] as const;
-export const metricCategories = ["ROI", "COST", "CONVERSION", "TRAFFIC", "LIVE_ROOM", "FULL_DOMAIN", "SERVICE_PROVIDER", "UNKNOWN"] as const;
+export const metricCategories = ["ROI", "COST", "CONVERSION", "TRAFFIC", "LIVE_ROOM", "FULL_DOMAIN", "SERVICE_PROVIDER", "RISK", "ACTIVITY", "TIMING", "UNKNOWN"] as const;
 export const observationWindows = ["30m", "2h", "1d", "custom"] as const;
 export const actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"] as const;
 
@@ -251,6 +268,10 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   spend: "消耗",
   daily_budget: "日预算",
   remaining_budget: "剩余预算",
+  recent_30m_spend: "近 30 分钟消耗",
+  recent_30m_orders: "近 30 分钟订单数",
+  live_duration_minutes: "开播时长（分钟）",
+  minutes_since_last_adjustment: "距上次调价（分钟）",
   orders: "成交订单数",
   impressions: "曝光量",
   clicks: "点击量",
@@ -263,6 +284,16 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   gross_profit: "核销毛利",
   merchant_subsidy: "商家补贴",
   service_fee: "服务商费用",
+  store_rating: "门店评分",
+  complaint_rate: "投诉率",
+  refund_rate: "退款率",
+  fulfillment_exception_rate: "履约异常率",
+  inventory_capacity: "库存/预约承接量",
+  wrong_price_promise_risk: "错价/承诺风险",
+  activity_verified: "活动后台核验状态",
+  platform_subsidy: "平台补贴",
+  ad_coupon: "投放券",
+  rebate_coupon: "消返券",
   shelf_gmv: "货架成交 GMV",
   search_gmv: "搜索成交 GMV",
   poi_visits: "POI 访问量",
@@ -278,6 +309,10 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   spend: "COST",
   daily_budget: "COST",
   remaining_budget: "COST",
+  recent_30m_spend: "TIMING",
+  recent_30m_orders: "TIMING",
+  live_duration_minutes: "TIMING",
+  minutes_since_last_adjustment: "TIMING",
   orders: "CONVERSION",
   impressions: "TRAFFIC",
   clicks: "TRAFFIC",
@@ -290,6 +325,16 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   gross_profit: "CONVERSION",
   merchant_subsidy: "COST",
   service_fee: "SERVICE_PROVIDER",
+  store_rating: "RISK",
+  complaint_rate: "RISK",
+  refund_rate: "RISK",
+  fulfillment_exception_rate: "RISK",
+  inventory_capacity: "RISK",
+  wrong_price_promise_risk: "RISK",
+  activity_verified: "ACTIVITY",
+  platform_subsidy: "ACTIVITY",
+  ad_coupon: "ACTIVITY",
+  rebate_coupon: "ACTIVITY",
   shelf_gmv: "FULL_DOMAIN",
   search_gmv: "FULL_DOMAIN",
   poi_visits: "FULL_DOMAIN",
@@ -298,13 +343,17 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
 
 export const metricAliases: Record<MetricKey, readonly string[]> = {
   unknown: [],
-  verify_roi: ["verify_roi", "核销 ROI", "核销ROI", "核销roi", "roi"],
+  verify_roi: ["verify_roi", "核销 ROI", "核销ROI", "核销roi"],
   gross_profit_roi: ["gross_profit_roi", "毛利 ROI", "毛利ROI", "核销毛利 ROI", "核销毛利ROI"],
   pay_roi: ["pay_roi", "支付 ROI", "支付ROI", "付款 ROI", "付款ROI"],
   target_roi: ["target_roi", "目标 ROI", "目标ROI"],
   spend: ["spend", "消耗", "广告消耗", "今日消耗", "投放消耗"],
   daily_budget: ["daily_budget", "日预算", "预算"],
   remaining_budget: ["remaining_budget", "剩余预算"],
+  recent_30m_spend: ["recent_30m_spend", "近30分钟消耗", "近 30 分钟消耗"],
+  recent_30m_orders: ["recent_30m_orders", "近30分钟订单", "近 30 分钟订单数"],
+  live_duration_minutes: ["live_duration_minutes", "开播时长", "直播时长", "已开播分钟"],
+  minutes_since_last_adjustment: ["minutes_since_last_adjustment", "距上次调价", "距上次调整", "最近一次调价时间"],
   orders: ["orders", "order_count", "conversions", "成交订单数", "成交人数", "支付订单", "支付订单数"],
   impressions: ["impressions", "曝光量", "曝光次数", "商品曝光人数", "直播曝光人数", "直播曝光次数"],
   clicks: ["clicks", "点击量", "点击人数", "商品点击人数"],
@@ -317,6 +366,16 @@ export const metricAliases: Record<MetricKey, readonly string[]> = {
   gross_profit: ["gross_profit", "核销毛利", "毛利"],
   merchant_subsidy: ["merchant_subsidy", "商家补贴"],
   service_fee: ["service_fee", "服务费", "服务商费用"],
+  store_rating: ["store_rating", "门店评分", "体验分", "经营分"],
+  complaint_rate: ["complaint_rate", "投诉率", "客诉率"],
+  refund_rate: ["refund_rate", "退款率"],
+  fulfillment_exception_rate: ["fulfillment_exception_rate", "履约异常率", "履约异常"],
+  inventory_capacity: ["inventory_capacity", "库存承接", "预约承接", "可接待量"],
+  wrong_price_promise_risk: ["wrong_price_promise_risk", "错价风险", "虚假承诺", "承诺风险"],
+  activity_verified: ["activity_verified", "活动已核验", "后台核验", "活动核验状态"],
+  platform_subsidy: ["platform_subsidy", "平台补贴"],
+  ad_coupon: ["ad_coupon", "投放券"],
+  rebate_coupon: ["rebate_coupon", "消返券"],
   shelf_gmv: ["shelf_gmv", "货架成交 GMV", "货架成交GMV", "团购货架"],
   search_gmv: ["search_gmv", "搜索成交 GMV", "搜索成交GMV", "搜索成交"],
   poi_visits: ["poi_visits", "POI 访问量", "POI访问量", "POI访问", "门店访问"],
@@ -370,10 +429,21 @@ export const decisionEngineActionTypes = [
   "PAUSE_TASK",
   "INCREASE_BUDGET",
   "DECREASE_BUDGET",
+  "KEEP_BUDGET",
+  "DECREASE_BID",
   "ADJUST_ROI_TARGET",
   "CHECK_LIVE_ROOM",
   "CHECK_CREATIVE",
   "CHECK_AUDIENCE",
+  "VERIFY_ACTIVITY",
+  "OPTIMIZE_SCRIPT",
+  "REPAIR_REPUTATION",
+  "STRENGTHEN_SHELF",
+  "CHECK_INVENTORY_BOOKING",
+  "OPTIMIZE_POI_SEARCH",
+  "ADJUST_SERVICE_PROVIDER_SOP",
+  "RENEGOTIATE_SERVICE_FEE",
+  "REUSE_MATERIAL",
   "REQUEST_MANUAL_REVIEW"
 ] as const satisfies readonly ActionType[];
 
@@ -518,6 +588,9 @@ export type ManualCheckItem = {
 export type DecisionDataQuality = {
   missingFields: string[];
   lowConfidenceFields?: string[];
+  blockingReasons?: string[];
+  subjectReady?: boolean;
+  reviewReady?: boolean;
   completeness: number;
   blocksStrongActions: boolean;
 };
@@ -614,6 +687,12 @@ export type DecisionEngineOutput = {
   actionProposals: ActionProposalDTO[];
   manualCheckItems: ManualCheckItem[];
   dataQuality: DecisionDataQuality;
+  calculatedMetrics?: {
+    serviceProviderAfterCost?: number | null;
+    serviceProviderGrossProfitRoi?: number | null;
+    verifiedPlatformBenefits?: number | null;
+    evidence?: string[];
+  };
 };
 
 export type AnalyzeOutput = {
@@ -672,11 +751,11 @@ export const createActionOutcomeInputSchema = z
   });
 
 export const networkRecordSchema = z.object({
-  url: z.string().url(),
-  method: z.string().min(1),
-  status: z.number().int(),
-  responseJson: z.any(),
-  capturedAt: z.string().min(1)
+  url: z.string().url().max(snapshotSafetyLimits.urlChars),
+  method: z.string().min(1).max(16),
+  status: z.number().int().min(0).max(599),
+  responseJson: z.unknown(),
+  capturedAt: z.string().datetime()
 });
 
 export const subjectContextSchema = z.object({
@@ -692,14 +771,14 @@ export const subjectContextSchema = z.object({
 
 export const collectionSnapshotSchema = z.object({
   pageType: z.enum(pageTypes).default("UNKNOWN"),
-  sourceUrl: z.string().url(),
-  pageTitle: z.string().default(""),
-  rawDomText: z.string().default(""),
-  rawNetworkJson: z.array(networkRecordSchema).max(50).default([]),
-  rawTableData: z.array(z.unknown()).default([]),
-  visibleMetricsJson: z.array(visibleMetricSchema).default([]),
-  screenshotUrl: z.string().url().nullable().optional(),
-  localCollectedAt: z.string().min(1)
+  sourceUrl: z.string().url().max(snapshotSafetyLimits.urlChars),
+  pageTitle: z.string().max(snapshotSafetyLimits.pageTitleChars).default(""),
+  rawDomText: z.string().max(snapshotSafetyLimits.rawDomTextChars).default(""),
+  rawNetworkJson: z.array(networkRecordSchema).max(snapshotSafetyLimits.networkRecords).default([]),
+  rawTableData: z.array(z.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
+  visibleMetricsJson: z.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
+  screenshotUrl: z.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
+  localCollectedAt: z.string().datetime()
 });
 
 export const manualCheckItemSchema = z.object({
@@ -710,6 +789,9 @@ export const manualCheckItemSchema = z.object({
 export const decisionDataQualitySchema = z.object({
   missingFields: z.array(z.string()),
   lowConfidenceFields: z.array(z.string()).optional(),
+  blockingReasons: z.array(z.string()).optional(),
+  subjectReady: z.boolean().optional(),
+  reviewReady: z.boolean().optional(),
   completeness: z.number().min(0).max(1),
   blocksStrongActions: z.boolean()
 });
@@ -830,7 +912,15 @@ export const decisionEngineOutputSchema = z.object({
   diagnosis: z.string().min(1),
   actionProposals: z.array(actionProposalDTOSchema),
   manualCheckItems: z.array(manualCheckItemSchema),
-  dataQuality: decisionDataQualitySchema
+  dataQuality: decisionDataQualitySchema,
+  calculatedMetrics: z
+    .object({
+      serviceProviderAfterCost: z.number().nullable().optional(),
+      serviceProviderGrossProfitRoi: z.number().nullable().optional(),
+      verifiedPlatformBenefits: z.number().nullable().optional(),
+      evidence: z.array(z.string()).optional()
+    })
+    .optional()
 });
 
 export const createProjectSchema = z.object({

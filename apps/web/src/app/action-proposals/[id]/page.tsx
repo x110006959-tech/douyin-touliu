@@ -24,7 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, createIdempotencyKey } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 
 type ActionProposalDetail = {
@@ -148,6 +148,7 @@ export default function ActionProposalDetailPage() {
       const afterMetrics = parseOptionalJson(afterMetricsJson, "执行后指标");
       const created = await apiFetch<ActionOutcomeDetail>(`/action-proposals/${proposal.id}/outcomes`, token, {
         method: "POST",
+        headers: { "idempotency-key": createIdempotencyKey(`outcome:${proposal.id}`) },
         body: JSON.stringify({
           observationWindow: outcomeWindow,
           customWindow: outcomeWindow === "custom" ? customWindow : null,

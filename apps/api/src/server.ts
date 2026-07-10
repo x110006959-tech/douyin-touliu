@@ -1,14 +1,9 @@
 import "express-async-errors";
-import { randomUUID } from "node:crypto";
-import bcrypt from "bcryptjs";
 import cors from "cors";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import type { Prisma } from "@prisma/client";
 import {
   actionProposalStatuses,
-  authLoginSchema,
-  authRegisterSchema,
   bulkReviewMetricInputSchema,
   collectionSnapshotSchema,
   type CollectionSnapshotPayload,
@@ -16,6 +11,7 @@ import {
   createCollectionTaskSchema,
   createProjectSchema,
   reviewMetricInputSchema,
+  sanitizeCollectionSnapshotPayload,
   updateCollectionTaskStatusSchema,
   type AnalyzeInput,
   type VisibleMetric
@@ -27,14 +23,19 @@ import {
   observeActionProposal,
   rejectActionProposal
 } from "./action-proposals.js";
-import { authMiddleware, ensureJwtSecretConfigured, signToken, type AuthenticatedRequest } from "./auth.js";
+import { authMiddleware, ensureJwtSecretConfigured } from "./auth.js";
 import { writeAuditLog } from "./audit.js";
 import { buildDecisionInput, runDecisionEngine, strategyVersion, toActionProposalCreate } from "./decision.js";
 import { normalizeMetrics } from "./normalize.js";
 import { createActionOutcome, getProjectOutcomeSummary, listActionOutcomes, toActionOutcomeDTO } from "./outcomes.js";
+import { isUniqueConstraintError, readIdempotencyKey } from "./idempotency.js";
+import { assignRequestId, corsOrigin, getRequestId, sanitizeErrorForLog, sanitizeErrorMessage } from "./http-security.js";
+import { getOwnedActionProposal, getOwnedProject, getOwnedReviewedMetric, getOwnedTask } from "./ownership.js";
+import { cursorArgs, readPagination } from "./pagination.js";
 import { prisma } from "./prisma.js";
-import { checkLoginRateLimit, checkRegisterRateLimit } from "./rate-limit.js";
 import { sendError, sendSuccess } from "./response.js";
+import { createAuthRouter } from "./routes/auth.js";
+import { actionProposalAudit, currentUser, readOptionalText, toJson } from "./server-utils.js";
 import {
   ensureReviewMetricsForTask,
   normalizedMetricsToVisibleMetrics,
@@ -46,72 +47,23 @@ export function createServer() {
   ensureJwtSecretConfigured();
 
   const app = express();
+  const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+  if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) app.set("trust proxy", trustProxyHops);
   app.use(assignRequestId);
   app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(express.json({ limit: "5mb" }));
 
   app.get("/health", (_req, res) => sendSuccess(res, { ok: true }));
-
-  app.post("/auth/register", async (req, res) => {
-    const parsed = authRegisterSchema.safeParse(req.body);
-    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "参数错误");
-
-    const rateLimit = checkRegisterRateLimit({ ip: req.ip, email: parsed.data.email });
-    if (!rateLimit.allowed) {
-      res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
-      return sendError(res, 429, "RATE_LIMITED", "请求过于频繁，请稍后再试。");
+  app.get("/ready", async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return sendSuccess(res, { ok: true, database: "ready" });
+    } catch {
+      return sendError(res, 503, "DATABASE_NOT_READY", "数据库暂不可用");
     }
-
-    const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-    if (existing) return sendError(res, 400, "REGISTER_FAILED", "注册失败，请检查信息或稍后再试。");
-
-    const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-    const user = await prisma.user.create({
-      data: {
-        email: parsed.data.email,
-        passwordHash,
-        name: parsed.data.name || parsed.data.email.split("@")[0],
-        workspaces: {
-          create: { name: "默认工作区" }
-        }
-      },
-      include: { workspaces: true }
-    });
-    const workspaceId = user.workspaces[0]?.id;
-    const token = signToken({ id: user.id, email: user.email, workspaceId });
-    return sendSuccess(res, { token, user: { id: user.id, email: user.email, name: user.name, workspaceId } }, 201);
   });
 
-  app.post("/auth/login", async (req, res) => {
-    const parsed = authLoginSchema.safeParse(req.body);
-    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "参数错误");
-
-    const rateLimit = checkLoginRateLimit({ ip: req.ip, email: parsed.data.email });
-    if (!rateLimit.allowed) {
-      res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
-      return sendError(res, 429, "RATE_LIMITED", "请求过于频繁，请稍后再试。");
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.data.email },
-      include: { workspaces: { orderBy: { createdAt: "asc" }, take: 1 } }
-    });
-    if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-      return sendError(res, 401, "INVALID_CREDENTIALS", "邮箱或密码错误。");
-    }
-    const workspaceId = user.workspaces[0]?.id;
-    const token = signToken({ id: user.id, email: user.email, workspaceId });
-    return sendSuccess(res, { token, user: { id: user.id, email: user.email, name: user.name, workspaceId } });
-  });
-
-  app.get("/auth/me", authMiddleware, async (req, res) => {
-    const user = await prisma.user.findUnique({
-      where: { id: currentUser(req).id },
-      select: { id: true, email: true, name: true, role: true, createdAt: true }
-    });
-    if (!user) return sendError(res, 404, "USER_NOT_FOUND", "用户不存在");
-    return sendSuccess(res, user);
-  });
+  app.use("/auth", createAuthRouter());
 
   app.use(authMiddleware);
 
@@ -132,10 +84,28 @@ export function createServer() {
 
   app.get("/projects", async (req, res) => {
     const user = currentUser(req);
+    const pagination = readPagination(req);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
     const projects = await prisma.project.findMany({
       where: { workspace: { ownerId: user.id } },
-      include: { workspace: true, tasks: { orderBy: { createdAt: "desc" }, take: 5 } },
-      orderBy: { createdAt: "desc" }
+      select: {
+        id: true,
+        workspaceId: true,
+        name: true,
+        businessType: true,
+        subjectType: true,
+        operatorType: true,
+        cooperationType: true,
+        controlLevel: true,
+        subjectConfidence: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { tasks: true } }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pagination.take,
+      ...cursorArgs(pagination.cursor)
     });
     return sendSuccess(res, projects);
   });
@@ -180,8 +150,7 @@ export function createServer() {
   app.get("/projects/:id", async (req, res) => {
     const project = await getOwnedProject(currentUser(req).id, req.params.id);
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const recommendation = await latestRecommendationForProject(project.id);
-    return sendSuccess(res, { ...project, latestRecommendation: recommendation });
+    return sendSuccess(res, project);
   });
 
   app.get("/projects/:id/action-proposals", async (req, res) => {
@@ -191,17 +160,34 @@ export function createServer() {
     if (status && !actionProposalStatuses.includes(status as (typeof actionProposalStatuses)[number])) {
       return sendError(res, 400, "VALIDATION_ERROR", "动作建议状态不合法");
     }
+    const pagination = readPagination(req, 100);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
     const proposals = await prisma.actionProposal.findMany({
       where: {
         projectId: project.id,
         ...(status ? { status: status as (typeof actionProposalStatuses)[number] } : {})
       },
-      include: {
-        decisionRun: true,
-        approvalRecords: { orderBy: { createdAt: "desc" } },
-        executionLogs: { orderBy: { createdAt: "desc" } }
+      select: {
+        id: true,
+        decisionRunId: true,
+        projectId: true,
+        collectionTaskId: true,
+        actionType: true,
+        title: true,
+        summary: true,
+        reason: true,
+        expectedImpact: true,
+        riskLevel: true,
+        confidence: true,
+        requiresApproval: true,
+        blockedReason: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pagination.take,
+      ...cursorArgs(pagination.cursor)
     });
     return sendSuccess(res, proposals);
   });
@@ -239,7 +225,7 @@ export function createServer() {
   });
 
   app.get("/collection-tasks/:id", async (req, res) => {
-    const task = await getOwnedTask(currentUser(req).id, req.params.id);
+    const task = await getOwnedTask(currentUser(req).id, req.params.id || "");
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     return sendSuccess(res, task);
   });
@@ -270,74 +256,123 @@ export function createServer() {
   app.post("/collection-tasks/:id/snapshots", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const idempotency = readIdempotencyKey(req);
+    if (idempotency.error) return sendError(res, 400, "INVALID_IDEMPOTENCY_KEY", idempotency.error);
+    if (idempotency.key) {
+      const existing = await prisma.dataSnapshot.findUnique({
+        where: { taskId_idempotencyKey: { taskId: task.id, idempotencyKey: idempotency.key } },
+        include: { normalizedMetrics: true }
+      });
+      if (existing) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return sendSuccess(res, existing);
+      }
+    }
     const parsed = collectionSnapshotSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "快照参数错误");
 
-    const snapshotPayload = parsed.data as CollectionSnapshotPayload;
+    const snapshotPayload = sanitizeCollectionSnapshotPayload(parsed.data) as CollectionSnapshotPayload;
     const normalized = normalizeMetrics(snapshotPayload);
-    const snapshot = await prisma.dataSnapshot.create({
-      data: {
-        taskId: task.id,
-        pageType: snapshotPayload.pageType,
-        rawDomText: snapshotPayload.rawDomText,
-        rawNetworkJson: toJson(snapshotPayload.rawNetworkJson),
-        rawTableData: toJson(snapshotPayload.rawTableData),
-        visibleMetricsJson: toJson(normalized),
-        screenshotUrl: snapshotPayload.screenshotUrl || null,
-        localCollectedAt: new Date(snapshotPayload.localCollectedAt),
-        normalizedMetrics: {
-          create: normalized.map((metric: VisibleMetric) => ({
-            metricKey: metric.key,
-            metricName: metric.name,
-            metricValue: metric.value == null ? "" : String(metric.value),
-            metricUnit: metric.unit || null,
-            metricSource: metric.metricSource || metric.source,
-            confidence: metric.confidence ?? 0.5,
-            rawEvidence: metric.rawEvidence ? toJson(metric.rawEvidence) : undefined
-          }))
+    try {
+      const snapshot = await prisma.$transaction(async (tx) => {
+        const created = await tx.dataSnapshot.create({
+          data: {
+            taskId: task.id,
+            idempotencyKey: idempotency.key,
+            pageType: snapshotPayload.pageType,
+            rawDomText: snapshotPayload.rawDomText,
+            rawNetworkJson: toJson(snapshotPayload.rawNetworkJson),
+            rawTableData: toJson(snapshotPayload.rawTableData),
+            visibleMetricsJson: toJson(normalized),
+            screenshotUrl: snapshotPayload.screenshotUrl || null,
+            localCollectedAt: new Date(snapshotPayload.localCollectedAt),
+            normalizedMetrics: {
+              create: normalized.map((metric: VisibleMetric) => ({
+                metricKey: metric.key,
+                metricName: metric.name,
+                metricValue: metric.value == null ? "" : String(metric.value),
+                metricUnit: metric.unit || null,
+                metricSource: metric.metricSource || metric.source,
+                confidence: metric.confidence ?? 0.5,
+                rawEvidence: metric.rawEvidence ? toJson(metric.rawEvidence) : undefined
+              }))
+            }
+          },
+          include: { normalizedMetrics: true }
+        });
+        const initialized = await ensureReviewMetricsForTask({ id: task.id, snapshots: [created] }, tx);
+        await tx.collectionTask.update({
+          where: { id: task.id },
+          data: {
+            status: "UPLOADED",
+            sourceUrl: task.sourceUrl || snapshotPayload.sourceUrl,
+            pageTitle: task.pageTitle || snapshotPayload.pageTitle,
+            finishedAt: new Date()
+          }
+        });
+        await writeAuditLog(
+          req,
+          "snapshot.uploaded",
+          {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            taskId: task.id,
+            detailJson: {
+              metricCount: normalized.length,
+              sourceUrl: snapshotPayload.sourceUrl,
+              pageType: snapshotPayload.pageType,
+              idempotencyKey: idempotency.key
+            }
+          },
+          tx
+        );
+        if (initialized.createdCount > 0) {
+          await writeAuditLog(
+            req,
+            "REVIEW_METRICS_INITIALIZED",
+            {
+              workspaceId: task.project.workspaceId,
+              projectId: task.projectId,
+              taskId: task.id,
+              detailJson: {
+                taskId: task.id,
+                snapshotId: created.id,
+                metricCount: initialized.createdCount,
+                source: "NormalizedMetric"
+              }
+            },
+            tx
+          );
         }
-      },
-      include: { normalizedMetrics: true }
-    });
-    const initialized = await ensureReviewMetricsForTask({ id: task.id, snapshots: [snapshot] });
-    await prisma.collectionTask.update({
-      where: { id: task.id },
-      data: {
-        status: "UPLOADED",
-        sourceUrl: task.sourceUrl || snapshotPayload.sourceUrl,
-        pageTitle: task.pageTitle || snapshotPayload.pageTitle,
-        finishedAt: new Date()
-      }
-    });
-    await writeAuditLog(req, "snapshot.uploaded", {
-      workspaceId: task.project.workspaceId,
-      projectId: task.projectId,
-      taskId: task.id,
-      detailJson: { metricCount: normalized.length, sourceUrl: snapshotPayload.sourceUrl, pageType: snapshotPayload.pageType }
-    });
-    if (initialized.createdCount > 0) {
-      await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: {
-          taskId: task.id,
-          snapshotId: snapshot.id,
-          metricCount: initialized.createdCount,
-          source: "NormalizedMetric"
-        }
+        return created;
       });
+      return sendSuccess(res, snapshot, 201);
+    } catch (error) {
+      if (idempotency.key && isUniqueConstraintError(error)) {
+        const existing = await prisma.dataSnapshot.findUnique({
+          where: { taskId_idempotencyKey: { taskId: task.id, idempotencyKey: idempotency.key } },
+          include: { normalizedMetrics: true }
+        });
+        if (existing) {
+          res.setHeader("Idempotent-Replayed", "true");
+          return sendSuccess(res, existing);
+        }
+      }
+      throw error;
     }
-    return sendSuccess(res, snapshot, 201);
   });
 
   app.get("/collection-tasks/:id/snapshots", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const pagination = readPagination(req);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
     const snapshots = await prisma.dataSnapshot.findMany({
       where: { taskId: task.id },
       include: { normalizedMetrics: true },
-      orderBy: { createdAt: "desc" }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pagination.take,
+      ...cursorArgs(pagination.cursor)
     });
     return sendSuccess(res, snapshots);
   });
@@ -393,7 +428,8 @@ export function createServer() {
             }
           : {}),
         reviewerId: user.id,
-        reviewedAt: new Date()
+        reviewedAt: new Date(),
+        confidence: 1
       }
     });
     await writeAuditLog(req, "REVIEW_METRIC_UPDATE", {
@@ -447,7 +483,8 @@ export function createServer() {
                 }
               : {}),
             reviewerId: user.id,
-            reviewedAt: now
+            reviewedAt: now,
+            confidence: 1
           }
         });
       })
@@ -487,7 +524,8 @@ export function createServer() {
               reviewStatus: "CONFIRMED",
               reviewedValue: metric.originalValue || "",
               reviewerId: user.id,
-              reviewedAt: now
+              reviewedAt: now,
+              confidence: 1
             }
           })
         )
@@ -515,92 +553,135 @@ export function createServer() {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     if (!task.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-
-    const initialized = await ensureReviewMetricsForTask(task);
-    if (initialized.createdCount > 0) {
-      await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: {
-          taskId: task.id,
-          snapshotId: task.snapshots[0]?.id || null,
-          metricCount: initialized.createdCount,
-          source: "NormalizedMetric"
-        }
-      });
-    }
-    const input = buildDecisionInput({
-      ...task,
-      reviewedMetrics: initialized.metrics.length ? initialized.metrics : task.reviewedMetrics
-    });
-    const { ruleOutput, finalOutput } = runDecisionEngine(input);
-    const decisionRun = await prisma.$transaction(async (tx) => {
-      const created = await tx.decisionRun.create({
-        data: {
-          projectId: task.projectId,
-          collectionTaskId: task.id,
-          engineVersion: finalOutput.engineVersion || "decision-engine-v0.1.0",
-          ruleVersion: finalOutput.ruleVersion || strategyVersion,
-          strategyVersion: finalOutput.strategyVersion || strategyVersion,
-          inputJson: toJson(input),
-          ruleResultJson: toJson(ruleOutput),
-          finalResultJson: toJson(finalOutput),
-          manualCheckItemsJson: toJson(finalOutput.manualCheckItems),
-          riskLevel: finalOutput.riskLevel,
-          confidence: finalOutput.confidence,
-          diagnosis: finalOutput.diagnosis
-        }
-      });
-
-      if (finalOutput.actionProposals.length > 0) {
-        await tx.actionProposal.createMany({
-          data: finalOutput.actionProposals.map((proposal) =>
-            toActionProposalCreate(proposal, created.id, task.projectId, task.id)
-          )
-        });
-      }
-
-      return tx.decisionRun.findUniqueOrThrow({
-        where: { id: created.id },
+    const idempotency = readIdempotencyKey(req);
+    if (idempotency.error) return sendError(res, 400, "INVALID_IDEMPOTENCY_KEY", idempotency.error);
+    if (idempotency.key) {
+      const existing = await prisma.decisionRun.findUnique({
+        where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
         include: { actionProposals: { orderBy: { createdAt: "asc" } } }
       });
-    });
+      if (existing) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return sendSuccess(res, existing);
+      }
+    }
 
-    await writeAuditLog(req, "CREATE_DECISION_RUN", {
-      workspaceId: task.project.workspaceId,
-      projectId: task.projectId,
-      taskId: task.id,
-      detailJson: {
-        decisionRunId: decisionRun.id,
-        strategyVersion: decisionRun.strategyVersion,
-        riskLevel: decisionRun.riskLevel,
-        confidence: decisionRun.confidence
-      }
-    });
-    await writeAuditLog(req, "CREATE_ACTION_PROPOSALS", {
-      workspaceId: task.project.workspaceId,
-      projectId: task.projectId,
-      taskId: task.id,
-      detailJson: {
-        decisionRunId: decisionRun.id,
-        actionProposalCount: decisionRun.actionProposals.length
-      }
-    });
-    await writeAuditLog(req, input.metricLayer === "REVIEWED_METRIC" ? "DECISION_RUN_USE_REVIEWED_METRICS" : "DECISION_RUN_FALLBACK_NORMALIZED_METRICS", {
-      workspaceId: task.project.workspaceId,
-      projectId: task.projectId,
-      taskId: task.id,
-      detailJson: {
-        taskId: task.id,
-        decisionRunId: decisionRun.id,
-        source: input.metricLayer,
-        dataReviewStatus: input.dataReviewStatus,
-        reviewCoverage: input.reviewCoverage || null
-      }
-    });
+    try {
+      const decisionRun = await prisma.$transaction(async (tx) => {
+        const initialized = await ensureReviewMetricsForTask(task, tx);
+        if (initialized.createdCount > 0) {
+          await writeAuditLog(
+            req,
+            "REVIEW_METRICS_INITIALIZED",
+            {
+              workspaceId: task.project.workspaceId,
+              projectId: task.projectId,
+              taskId: task.id,
+              detailJson: {
+                taskId: task.id,
+                snapshotId: task.snapshots[0]?.id || null,
+                metricCount: initialized.createdCount,
+                source: "NormalizedMetric"
+              }
+            },
+            tx
+          );
+        }
+        const input = buildDecisionInput({
+          ...task,
+          reviewedMetrics: initialized.metrics.length ? initialized.metrics : task.reviewedMetrics
+        });
+        const { ruleOutput, finalOutput } = runDecisionEngine(input);
+        const created = await tx.decisionRun.create({
+          data: {
+            projectId: task.projectId,
+            collectionTaskId: task.id,
+            idempotencyKey: idempotency.key,
+            engineVersion: finalOutput.engineVersion || "decision-engine-v0.1.0",
+            ruleVersion: finalOutput.ruleVersion || strategyVersion,
+            strategyVersion: finalOutput.strategyVersion || strategyVersion,
+            inputJson: toJson(input),
+            ruleResultJson: toJson(ruleOutput),
+            finalResultJson: toJson(finalOutput),
+            manualCheckItemsJson: toJson(finalOutput.manualCheckItems),
+            riskLevel: finalOutput.riskLevel,
+            confidence: finalOutput.confidence,
+            diagnosis: finalOutput.diagnosis
+          }
+        });
 
-    return sendSuccess(res, decisionRun, 201);
+        if (finalOutput.actionProposals.length > 0) {
+          await tx.actionProposal.createMany({
+            data: finalOutput.actionProposals.map((proposal) =>
+              toActionProposalCreate(proposal, created.id, task.projectId, task.id)
+            )
+          });
+        }
+        const withProposals = await tx.decisionRun.findUniqueOrThrow({
+          where: { id: created.id },
+          include: { actionProposals: { orderBy: { createdAt: "asc" } } }
+        });
+        await writeAuditLog(
+          req,
+          "CREATE_DECISION_RUN",
+          {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            taskId: task.id,
+            detailJson: {
+              decisionRunId: withProposals.id,
+              strategyVersion: withProposals.strategyVersion,
+              riskLevel: withProposals.riskLevel,
+              confidence: withProposals.confidence,
+              idempotencyKey: idempotency.key
+            }
+          },
+          tx
+        );
+        await writeAuditLog(
+          req,
+          "CREATE_ACTION_PROPOSALS",
+          {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            taskId: task.id,
+            detailJson: { decisionRunId: withProposals.id, actionProposalCount: withProposals.actionProposals.length }
+          },
+          tx
+        );
+        await writeAuditLog(
+          req,
+          input.metricLayer === "REVIEWED_METRIC" ? "DECISION_RUN_USE_REVIEWED_METRICS" : "DECISION_RUN_FALLBACK_NORMALIZED_METRICS",
+          {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            taskId: task.id,
+            detailJson: {
+              taskId: task.id,
+              decisionRunId: withProposals.id,
+              source: input.metricLayer,
+              dataReviewStatus: input.dataReviewStatus,
+              reviewCoverage: input.reviewCoverage || null
+            }
+          },
+          tx
+        );
+        return withProposals;
+      });
+      return sendSuccess(res, decisionRun, 201);
+    } catch (error) {
+      if (idempotency.key && isUniqueConstraintError(error)) {
+        const existing = await prisma.decisionRun.findUnique({
+          where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
+          include: { actionProposals: { orderBy: { createdAt: "asc" } } }
+        });
+        if (existing) {
+          res.setHeader("Idempotent-Replayed", "true");
+          return sendSuccess(res, existing);
+        }
+      }
+      throw error;
+    }
   });
 
   app.get("/collection-tasks/:id/decision-runs/latest", async (req, res) => {
@@ -614,8 +695,13 @@ export function createServer() {
     return sendSuccess(res, decisionRun);
   });
 
-  app.post("/collection-tasks/:id/analyze", async (req, res) => {
-    const task = await getOwnedTask(currentUser(req).id, req.params.id);
+  app.post(["/collection-tasks/:id/explain", "/collection-tasks/:id/analyze"], async (req, res) => {
+    if (req.path.endsWith("/analyze")) {
+      res.setHeader("Deprecation", "true");
+      res.setHeader("Sunset", "Wed, 31 Dec 2026 23:59:59 GMT");
+      res.setHeader("Link", '</collection-tasks/:id/explain>; rel="successor-version"');
+    }
+    const task = await getOwnedTask(currentUser(req).id, req.params.id || "");
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const latestSnapshot = task.snapshots[0];
     if (!latestSnapshot) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
@@ -660,22 +746,15 @@ export function createServer() {
         where: { id: analysisTask.id },
         data: {
           status: "SUCCEEDED",
-          responsePayload: toJson(output),
-          recommendations: {
-            create: {
-              summary: output.summary,
-              riskLevel: output.riskLevel,
-              problemsJson: toJson(output.problems),
-              suggestionsJson: toJson(output.suggestions),
-              manualCheckItemsJson: toJson(output.manualCheckItems),
-              confidence: output.confidence
-            }
-          }
-        },
-        include: { recommendations: true }
+          responsePayload: toJson({
+            summary: output.summary,
+            manualCheckItems: output.manualCheckItems,
+            confidence: output.confidence,
+            finalActionsSource: "decision-engine"
+          })
+        }
       });
-      await prisma.collectionTask.update({ where: { id: task.id }, data: { status: "ANALYZED" } });
-      await writeAuditLog(req, "ai_analysis.succeeded", {
+      await writeAuditLog(req, "ai_explanation.succeeded", {
         workspaceId: task.project.workspaceId,
         projectId: task.projectId,
         taskId: task.id,
@@ -688,7 +767,7 @@ export function createServer() {
         where: { id: analysisTask.id },
         data: { status: "FAILED", errorMessage: message }
       });
-      await writeAuditLog(req, "ai_analysis.failed", {
+      await writeAuditLog(req, "ai_explanation.failed", {
         workspaceId: task.project.workspaceId,
         projectId: task.projectId,
         taskId: task.id,
@@ -701,22 +780,15 @@ export function createServer() {
   app.get("/collection-tasks/:id/analysis", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const pagination = readPagination(req, 20);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
     const analyses = await prisma.aiAnalysisTask.findMany({
       where: { collectionTaskId: task.id },
-      include: { recommendations: true },
-      orderBy: { createdAt: "desc" }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pagination.take,
+      ...cursorArgs(pagination.cursor)
     });
     return sendSuccess(res, analyses);
-  });
-
-  app.get("/collection-tasks/:id/recommendation", async (req, res) => {
-    const task = await getOwnedTask(currentUser(req).id, req.params.id);
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const recommendation = await prisma.recommendation.findFirst({
-      where: { aiAnalysisTask: { collectionTaskId: task.id } },
-      orderBy: { createdAt: "desc" }
-    });
-    return sendSuccess(res, recommendation);
   });
 
   app.get("/action-proposals/:id", async (req, res) => {
@@ -728,7 +800,9 @@ export function createServer() {
   app.get("/action-proposals/:id/outcomes", async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
-    return sendSuccess(res, await listActionOutcomes(proposal.id));
+    const pagination = readPagination(req);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
+    return sendSuccess(res, await listActionOutcomes(proposal.id, pagination));
   });
 
   app.post("/action-proposals/:id/outcomes", async (req, res) => {
@@ -738,30 +812,67 @@ export function createServer() {
     if (proposal.status !== "MANUAL_EXECUTED") {
       return sendError(res, 409, "ACTION_NOT_MANUAL_EXECUTED", "只有人工已执行的动作建议才能记录执行后结果");
     }
+    const idempotency = readIdempotencyKey(req);
+    if (idempotency.error) return sendError(res, 400, "INVALID_IDEMPOTENCY_KEY", idempotency.error);
+    if (idempotency.key) {
+      const existing = await prisma.actionOutcome.findUnique({
+        where: { actionProposalId_idempotencyKey: { actionProposalId: proposal.id, idempotencyKey: idempotency.key } }
+      });
+      if (existing) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return sendSuccess(res, toActionOutcomeDTO(existing));
+      }
+    }
     const parsed = createActionOutcomeInputSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "结果复盘参数错误");
 
-    const outcome = await createActionOutcome({
-      actionProposalId: proposal.id,
-      projectId: proposal.projectId,
-      collectionTaskId: proposal.collectionTaskId,
-      userId: user.id,
-      body: parsed.data
-    });
-    await writeAuditLog(req, "CREATE_ACTION_OUTCOME", {
-      workspaceId: proposal.project.workspaceId,
-      projectId: proposal.projectId,
-      taskId: proposal.collectionTaskId,
-      detailJson: {
-        actionProposalId: proposal.id,
-        actionType: proposal.actionType,
-        outcomeId: outcome.id,
-        result: outcome.result,
-        observationWindow: parsed.data.observationWindow,
-        platformAutoExecuted: false
+    try {
+      const outcome = await prisma.$transaction(async (tx) => {
+        const created = await createActionOutcome(
+          {
+            actionProposalId: proposal.id,
+            projectId: proposal.projectId,
+            collectionTaskId: proposal.collectionTaskId,
+            userId: user.id,
+            body: parsed.data,
+            idempotencyKey: idempotency.key
+          },
+          tx
+        );
+        await writeAuditLog(
+          req,
+          "CREATE_ACTION_OUTCOME",
+          {
+            workspaceId: proposal.project.workspaceId,
+            projectId: proposal.projectId,
+            taskId: proposal.collectionTaskId,
+            detailJson: {
+              actionProposalId: proposal.id,
+              actionType: proposal.actionType,
+              outcomeId: created.id,
+              result: created.result,
+              observationWindow: parsed.data.observationWindow,
+              platformAutoExecuted: false,
+              idempotencyKey: idempotency.key
+            }
+          },
+          tx
+        );
+        return created;
+      });
+      return sendSuccess(res, toActionOutcomeDTO(outcome), 201);
+    } catch (error) {
+      if (idempotency.key && isUniqueConstraintError(error)) {
+        const existing = await prisma.actionOutcome.findUnique({
+          where: { actionProposalId_idempotencyKey: { actionProposalId: proposal.id, idempotencyKey: idempotency.key } }
+        });
+        if (existing) {
+          res.setHeader("Idempotent-Replayed", "true");
+          return sendSuccess(res, toActionOutcomeDTO(existing));
+        }
       }
-    });
-    return sendSuccess(res, toActionOutcomeDTO(outcome), 201);
+      throw error;
+    }
   });
 
   app.post("/action-proposals/:id/approve", async (req, res) => {
@@ -859,7 +970,14 @@ export function createServer() {
   app.get("/projects/:id/audit-logs", async (req, res) => {
     const project = await getOwnedProject(currentUser(req).id, req.params.id);
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    const logs = await prisma.auditLog.findMany({ where: { projectId: project.id }, orderBy: { createdAt: "desc" }, take: 100 });
+    const pagination = readPagination(req, 100);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
+    const logs = await prisma.auditLog.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pagination.take,
+      ...cursorArgs(pagination.cursor)
+    });
     return sendSuccess(res, logs);
   });
 
@@ -874,141 +992,4 @@ export function createServer() {
     return sendError(res, 500, "INTERNAL_ERROR", message, { requestId });
   });
   return app;
-}
-
-function assignRequestId(req: Request, res: Response, next: NextFunction) {
-  const incoming = req.header("x-request-id");
-  const requestId = isValidRequestId(incoming) ? incoming : randomUUID();
-  res.locals.requestId = requestId;
-  res.setHeader("x-request-id", requestId);
-  next();
-}
-
-function getRequestId(res: Response) {
-  return typeof res.locals.requestId === "string" ? res.locals.requestId : randomUUID();
-}
-
-function isValidRequestId(value: string | undefined): value is string {
-  return Boolean(value && /^[A-Za-z0-9._:-]{1,128}$/.test(value));
-}
-
-function sanitizeErrorForLog(error: unknown) {
-  if (error instanceof Error) {
-    return sanitizeErrorMessage(error.stack || error.message);
-  }
-  return sanitizeErrorMessage(String(error));
-}
-
-function sanitizeErrorMessage(message: string) {
-  let sanitized = message;
-  const secret = process.env.JWT_SECRET;
-  if (secret) sanitized = sanitized.split(secret).join("[REDACTED]");
-  return sanitized
-    .replace(/(jwt_secret|password|token|authorization|cookie|secret)\s*[:=]\s*[^,\s;]+/gi, "$1=[REDACTED]")
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
-}
-
-function actionProposalAudit(
-  req: Request,
-  proposal: {
-    project: { workspaceId: string };
-    projectId: string;
-    collectionTaskId: string;
-  },
-  action: string,
-  detailJson: unknown
-) {
-  return {
-    action,
-    workspaceId: proposal.project.workspaceId,
-    projectId: proposal.projectId,
-    taskId: proposal.collectionTaskId,
-    detailJson,
-    ip: req.ip,
-    userAgent: req.header("user-agent") || null
-  };
-}
-
-function corsOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-  if (!origin) return callback(null, true);
-  const allowed = new Set([
-    process.env.WEB_ORIGIN || "https://www.pxxis.cn",
-    "https://www.pxxis.cn",
-    "https://pxxis.cn",
-    "http://127.0.0.1:3000",
-    "http://localhost:3000"
-  ]);
-  if (origin.startsWith("chrome-extension://") || allowed.has(origin)) return callback(null, true);
-  return callback(null, false);
-}
-
-function currentUser(req: Request) {
-  return (req as unknown as AuthenticatedRequest).user;
-}
-
-function toJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-}
-
-async function getOwnedProject(userId: string, projectId: string) {
-  return prisma.project.findFirst({
-    where: { id: projectId, workspace: { ownerId: userId } },
-    include: {
-      workspace: true,
-      tasks: { orderBy: { createdAt: "desc" }, include: { analyses: { include: { recommendations: true } } } }
-    }
-  });
-}
-
-async function getOwnedTask(userId: string, taskId: string) {
-  return prisma.collectionTask.findFirst({
-    where: { id: taskId, project: { workspace: { ownerId: userId } } },
-    include: {
-      project: true,
-      snapshots: { orderBy: { createdAt: "desc" }, include: { normalizedMetrics: true } },
-      reviewedMetrics: { orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }] },
-      analyses: { orderBy: { createdAt: "desc" }, include: { recommendations: true } },
-      auditLogs: { orderBy: { createdAt: "desc" }, take: 100 }
-    }
-  });
-}
-
-async function getOwnedActionProposal(userId: string, actionProposalId: string) {
-  return prisma.actionProposal.findFirst({
-    where: {
-      id: actionProposalId,
-      project: { workspace: { ownerId: userId } }
-    },
-    include: {
-      project: true,
-      collectionTask: true,
-      decisionRun: true,
-      approvalRecords: { orderBy: { createdAt: "desc" } },
-      executionLogs: { orderBy: { createdAt: "desc" } },
-      outcomes: { orderBy: { createdAt: "desc" } }
-    }
-  });
-}
-
-async function getOwnedReviewedMetric(userId: string, metricId: string) {
-  return prisma.reviewedMetric.findFirst({
-    where: {
-      id: metricId,
-      task: { project: { workspace: { ownerId: userId } } }
-    },
-    include: {
-      task: { include: { project: true } }
-    }
-  });
-}
-
-async function latestRecommendationForProject(projectId: string) {
-  return prisma.recommendation.findFirst({
-    where: { aiAnalysisTask: { collectionTask: { projectId } } },
-    orderBy: { createdAt: "desc" }
-  });
-}
-
-function readOptionalText(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim().slice(0, 1000) : null;
 }

@@ -19,4 +19,4 @@ prisma/dev.db-journal
 /src/
 collector/
 chrome-extension-mvp/
-scripts/
+/scripts/

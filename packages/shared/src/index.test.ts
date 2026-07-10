@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { identifyMetricKey, standardizeMetricKey } from "./index";
 
 describe("metric dictionary", () => {
-  it("maps ROI aliases to the standard verification ROI key", () => {
+  it("maps explicit verification ROI aliases to the standard key", () => {
     expect(identifyMetricKey("verify_roi")).toBe("verify_roi");
     expect(identifyMetricKey("核销 ROI")).toBe("verify_roi");
-    expect(identifyMetricKey("ROI")).toBe("verify_roi");
+  });
+
+  it("does not guess the meaning of a bare ROI label", () => {
+    expect(identifyMetricKey("ROI")).toBe("unknown");
   });
 
   it("maps metric names when raw keys are not standard", () => {

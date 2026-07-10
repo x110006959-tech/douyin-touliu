@@ -34,7 +34,6 @@ type ProjectDetail = {
   serviceFee: number | null;
   status: string;
   tasks: Array<{ id: string; status: string; pageTitle: string | null; sourceUrl: string | null; createdAt: string }>;
-  latestRecommendation?: { summary: string; riskLevel: string; confidence: number } | null;
 };
 
 export default function ProjectDetailPage() {
@@ -113,16 +112,6 @@ export default function ProjectDetailPage() {
           <p className="text-sm">{project.subjectType === "SERVICE_PROVIDER" ? "服务商算法" : "主体框架算法"}</p>
         </Card>
       </section>
-
-      {project.latestRecommendation ? (
-        <Card className="mb-4">
-          <CardTitle>最近一次诊断</CardTitle>
-          <p>{project.latestRecommendation.summary}</p>
-          <p className="mt-2 text-sm text-muted">
-            风险：{project.latestRecommendation.riskLevel} / 置信度：{project.latestRecommendation.confidence}
-          </p>
-        </Card>
-      ) : null}
 
       <section className="grid gap-4 md:grid-cols-[360px_1fr]">
         <Card>

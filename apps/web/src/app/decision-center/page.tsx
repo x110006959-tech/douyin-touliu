@@ -21,7 +21,6 @@ type Project = {
   id: string;
   name: string;
   subjectType: SubjectType;
-  tasks: Array<{ id: string; status: string }>;
 };
 
 type ActionProposal = {

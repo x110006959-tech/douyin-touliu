@@ -80,3 +80,16 @@ V0.2 可以继续做：
 - 服务商合同、排班、SOP、服务费证据结构化。
 - 更细的服务商算法。
 - Web E2E 自动化测试。
+
+## V0.1.2 数据库变更
+
+- `DataSnapshot` 新增任务作用域 `idempotencyKey` 唯一约束。
+- `DecisionRun` 新增采集任务作用域 `idempotencyKey` 唯一约束。
+- `ActionOutcome` 新增动作建议作用域 `idempotencyKey` 唯一约束。
+- staging 当前使用 `prisma db push --skip-generate` 同步 schema；切换正式生产前应固化为可审阅的 Prisma migration。
+
+## Legacy 表过渡
+
+- `Recommendation` 已退出 API、Web 和 Prisma Client 主线，schema 中映射为 `LegacyRecommendation @@ignore`，旧数据暂不删除。
+- `StrategyRule` 未投入使用，schema 中映射为 `LegacyStrategyRule @@ignore`。
+- 正式生产 migration 应先备份和确认历史数据，再决定归档或删除这两张旧表。

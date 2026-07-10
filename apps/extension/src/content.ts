@@ -14,6 +14,7 @@ window.addEventListener("message", (event) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== MESSAGE.START_COLLECTION) return false;
+  enableNetworkCapture();
   const snapshot = collectSnapshot();
   chrome.runtime.sendMessage({ type: MESSAGE.SNAPSHOT_CAPTURED, payload: snapshot }, () => void chrome.runtime.lastError);
   sendResponse({ ok: true, snapshot });
@@ -26,6 +27,17 @@ function injectMainWorldScript() {
   script.dataset.owner = "douyin-local-life-diagnosis";
   script.onload = () => script.remove();
   (document.documentElement || document.head).appendChild(script);
+}
+
+function enableNetworkCapture() {
+  window.postMessage(
+    {
+      source: "DOUYIN_LOCAL_LIFE_DIAGNOSIS_CONTENT",
+      type: MESSAGE.PAGE_CAPTURE_CONTROL,
+      enabled: true
+    },
+    window.location.origin
+  );
 }
 
 function collectSnapshot(): CollectionSnapshotPayload {
@@ -60,8 +72,7 @@ function visibleText() {
       if (!text) return NodeFilter.FILTER_REJECT;
       const parent = node.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
-      const style = window.getComputedStyle(parent);
-      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return NodeFilter.FILTER_REJECT;
+      if (!isVisibleElement(parent)) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     }
   });
@@ -76,11 +87,29 @@ function visibleText() {
 }
 
 function collectTables() {
-  return [...document.querySelectorAll("table")].slice(0, 20).map((table) => {
+  return [...document.querySelectorAll("table")]
+    .filter(isVisibleElement)
+    .slice(0, 20)
+    .map((table) => {
     return [...table.querySelectorAll("tr")].slice(0, 200).map((row) => {
-      return [...row.querySelectorAll("th,td")].map((cell) => (cell.textContent || "").trim());
+      return [...row.querySelectorAll("th,td")]
+        .filter(isVisibleElement)
+        .slice(0, 100)
+        .map((cell) => (cell.textContent || "").trim());
     });
   });
+}
+
+function isVisibleElement(element: Element) {
+  let current: Element | null = element;
+  while (current) {
+    if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") return false;
+    if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(current.tagName)) return false;
+    const style = window.getComputedStyle(current);
+    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0") return false;
+    current = current.parentElement;
+  }
+  return true;
 }
 
 function extractMetrics(text: string): VisibleMetric[] {

@@ -1,21 +1,76 @@
+name: pxxis
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ai-ad-diagnosis-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: diagnosis
-      POSTGRES_PASSWORD: diagnosis
-      POSTGRES_DB: douyin_subject_diagnosis
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-diagnosis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-douyin_subject_diagnosis}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diagnosis} -d ${POSTGRES_DB:-douyin_subject_diagnosis}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - backend
 
-  redis:
-    image: redis:7-alpine
-    container_name: ai-ad-diagnosis-redis
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      WEB_ORIGIN: ${WEB_ORIGIN:?WEB_ORIGIN is required}
+      EXTENSION_ORIGINS: ${EXTENSION_ORIGINS:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${API_BIND_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - backend
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_BIND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - backend
 
 volumes:
   postgres-data:
+
+networks:
+  backend:
+    driver: bridge

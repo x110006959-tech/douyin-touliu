@@ -220,7 +220,6 @@ model Project {
   decisionRuns        DecisionRun[]
   actionProposals     ActionProposal[]
   executionLogs       ExecutionLog[]
-  strategyRules       StrategyRule[]
   actionOutcomes      ActionOutcome[]
 
   @@index([workspaceId])
@@ -257,6 +256,7 @@ model CollectionTask {
 model DataSnapshot {
   id                 String             @id @default(cuid())
   taskId             String
+  idempotencyKey     String?
   pageType           String?
   rawDomText          String?
   rawNetworkJson      Json?
@@ -271,6 +271,7 @@ model DataSnapshot {
   reviewedMetrics     ReviewedMetric[]
 
   @@index([taskId])
+  @@unique([taskId, idempotencyKey])
 }
 
 model NormalizedMetric {
@@ -338,14 +339,13 @@ model AiAnalysisTask {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   collectionTask   CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
-  recommendations  Recommendation[]
   decisionRuns     DecisionRun[]
 
   @@index([collectionTaskId])
   @@index([status])
 }
 
-model Recommendation {
+model LegacyRecommendation {
   id                   String         @id @default(cuid())
   aiAnalysisTaskId      String
   summary              String
@@ -355,16 +355,17 @@ model Recommendation {
   manualCheckItemsJson Json?
   confidence           Float
   createdAt            DateTime       @default(now())
-  aiAnalysisTask        AiAnalysisTask @relation(fields: [aiAnalysisTaskId], references: [id], onDelete: Cascade)
-
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
+  @@map("Recommendation")
+  @@ignore
 }
 
 model DecisionRun {
   id                 String           @id @default(cuid())
   projectId          String
   collectionTaskId   String
+  idempotencyKey     String?
   aiAnalysisTaskId   String?
   engineVersion      String
   ruleVersion        String
@@ -388,6 +389,7 @@ model DecisionRun {
   @@index([collectionTaskId])
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
+  @@unique([collectionTaskId, idempotencyKey])
 }
 
 model ActionProposal {
@@ -465,6 +467,7 @@ model ExecutionLog {
 model ActionOutcome {
   id                String                   @id @default(cuid())
   actionProposalId  String
+  idempotencyKey    String?
   projectId         String
   collectionTaskId  String
   userId            String
@@ -488,9 +491,10 @@ model ActionOutcome {
   @@index([userId])
   @@index([result])
   @@index([createdAt])
+  @@unique([actionProposalId, idempotencyKey])
 }
 
-model StrategyRule {
+model LegacyStrategyRule {
   id            String       @id @default(cuid())
   projectId     String?
   name          String
@@ -503,12 +507,12 @@ model StrategyRule {
   effectJson    Json
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
-  project       Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
   @@index([projectId])
   @@index([subjectType])
   @@index([actionType])
   @@index([enabled])
+  @@map("StrategyRule")
+  @@ignore
 }
 
 model AuditLog {
