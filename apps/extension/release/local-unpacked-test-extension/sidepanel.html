@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>实时投流信号</title>
+    <style>
+      :root { color-scheme: light; font: 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; color:#172033; background:#f6f7f9; }
+      body { margin:0; min-width:300px; }
+      header,main,footer { padding:12px; }
+      header { position:sticky; top:0; background:#fff; border-bottom:1px solid #dfe3ea; z-index:1; }
+      h1,h2 { margin:0; letter-spacing:0; } h1 { font-size:16px; } h2 { font-size:14px; margin-bottom:8px; }
+      main { display:grid; gap:10px; }
+      section { background:#fff; border:1px solid #dfe3ea; border-radius:8px; padding:10px; }
+      .row { display:flex; justify-content:space-between; gap:8px; }
+      .muted { color:#667085; } .warning { color:#9a6700; } .critical { color:#b42318; }
+      .signal,.proposal { border-top:1px solid #eef0f3; padding:8px 0; } .signal:first-child,.proposal:first-child { border-top:0; }
+      button { min-height:32px; border:1px solid #cfd5df; border-radius:6px; background:#fff; cursor:pointer; }
+      .actions { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+      footer { color:#667085; border-top:1px solid #dfe3ea; background:#fff; }
+    </style>
+  </head>
+  <body>
+    <header><h1>实时投流信号</h1><div id="status" class="muted">正在连接</div></header>
+    <main>
+      <section><div class="row"><span>插件版本</span><span id="version">-</span></div><div class="row"><span>页面状态</span><span id="activity">-</span></div><div class="row"><span>巡检批次</span><span id="runId">-</span></div></section>
+      <section><h2>只读实时信号</h2><div id="signals" class="muted">暂无信号</div></section>
+      <section><h2>正式建议</h2><div id="proposals" class="muted">暂无正式建议</div></section>
+    </main>
+    <footer>AI诊断仅供投流决策参考。所有平台操作必须由用户人工确认并在平台页面手动完成，本插件不会自动点击、改预算、暂停计划或提交表单。</footer>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

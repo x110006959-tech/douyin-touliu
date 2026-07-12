@@ -112,7 +112,8 @@ describe("decision-engine", () => {
     );
     const actions = result.actionProposals.map((proposal) => proposal.actionType);
 
-    expect(result.dataQuality.blocksStrongActions).toBe(true);
+    expect(result.dataQuality.globalSafetyBlock).toBe(false);
+    expect(result.dataQuality.actionEligibility?.PAUSE_TASK?.eligible).toBe(false);
     expect(actions).not.toContain("PAUSE_TASK");
     expect(actions).not.toContain("INCREASE_BUDGET");
     expect(actions).not.toContain("DECREASE_BUDGET");
@@ -321,5 +322,18 @@ describe("decision-engine", () => {
 
     expect(result.dataQuality.blocksStrongActions).toBe(true);
     expect(result.dataQuality.blockingReasons).toContain("采集路线已过期：LIVE_DATA_SCREEN");
+  });
+
+  it("does not let an unknown optional field globally block unrelated actions", () => {
+    const result = runDecisionRules(input({ metrics: completeMetrics([metric("new_ab_metric", "灰度新指标", 12)]) }));
+    expect(result.dataQuality.globalSafetyBlock).toBe(false);
+    expect(result.dataQuality.actionEligibility?.INCREASE_BUDGET?.eligible).toBe(true);
+  });
+
+  it("limits missing ROI to ROI-dependent actions", () => {
+    const result = runDecisionRules(input({ metrics: completeMetrics([metric("gross_profit_roi", "毛利 ROI", null)]) }));
+    expect(result.dataQuality.globalSafetyBlock).toBe(false);
+    expect(result.dataQuality.actionEligibility?.INCREASE_BUDGET?.eligible).toBe(false);
+    expect(result.dataQuality.actionEligibility?.REPAIR_REPUTATION?.eligible).toBe(true);
   });
 });

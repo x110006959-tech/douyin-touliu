@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeCollectionSnapshotPayload, sanitizeSensitiveData, snapshotSafetyLimits } from "./safety";
+import { sanitizeCollectionSnapshotPayload, sanitizeSensitiveData } from "./safety";
 
 describe("shared collection safety", () => {
   it("redacts nested credentials and personal data", () => {
@@ -32,7 +32,7 @@ describe("shared collection safety", () => {
     expect(snapshot.visibleMetricsJson[0]).toMatchObject({ key: "spend", name: "消耗" });
   });
 
-  it("caps network record count and oversized responses", () => {
+  it("drops production network response bodies instead of sanitizing large payloads on the page", () => {
     const snapshot = sanitizeCollectionSnapshotPayload({
       sourceUrl: "https://life.douyin.com",
       pageTitle: "page",
@@ -55,7 +55,18 @@ describe("shared collection safety", () => {
       visibleMetricsJson: []
     });
 
-    expect(snapshot.rawNetworkJson.length).toBeLessThanOrEqual(snapshotSafetyLimits.networkRecords);
-    expect(snapshot.rawNetworkJson[0]?.responseJson).toMatchObject({ truncated: true });
+    expect(snapshot.rawNetworkJson).toEqual([]);
+  });
+
+  it("bounds deeply nested multi-megabyte input without overflowing the call stack", () => {
+    const startedAt = performance.now();
+    let nested: Record<string, unknown> = { password: "secret", payload: "x".repeat(5 * 1024 * 1024) };
+    for (let depth = 0; depth < 5_000; depth += 1) nested = { child: nested };
+
+    const sanitized = sanitizeSensitiveData(nested);
+
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(JSON.stringify(sanitized)).not.toContain("secret");
+    expect(JSON.stringify(sanitized)).toContain("[TRUNCATED]");
   });
 });

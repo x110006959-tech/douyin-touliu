@@ -13,6 +13,7 @@ const els = {
   collectionRunId: document.getElementById("collectionRunId")!,
   snapshot: document.getElementById("snapshot")!,
   configBtn: document.getElementById("configBtn")!,
+  sidePanelBtn: document.getElementById("sidePanelBtn")!,
   startBtn: document.getElementById("startBtn")!,
   startPatrolBtn: document.getElementById("startPatrolBtn")!,
   stopPatrolBtn: document.getElementById("stopPatrolBtn")!,
@@ -23,6 +24,7 @@ const els = {
 
 void render();
 els.configBtn.addEventListener("click", configure);
+els.sidePanelBtn.addEventListener("click", openSidePanel);
 els.startBtn.addEventListener("click", startCollection);
 els.startPatrolBtn.addEventListener("click", startPatrol);
 els.stopPatrolBtn.addEventListener("click", stopPatrol);
@@ -92,6 +94,11 @@ async function configure() {
     payload: { apiBaseUrl, collectionTaskId, token: token || undefined }
   });
   await render();
+}
+
+async function openSidePanel() {
+  await chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+  window.close();
 }
 
 async function startCollection() {

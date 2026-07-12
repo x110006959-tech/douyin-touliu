@@ -1,9 +1,10 @@
-import {
-  collectionFreshnessPolicy,
-  defaultRequiredCollectionRoutes,
-  type CollectionRouteKey,
-  type CollectionSnapshotPayload
+import type {
+  CollectionRouteKey,
+  CollectionSnapshotPayload,
+  MetricPulse,
+  RealtimeSignal
 } from "@douyin-local-life/shared";
+import { collectionFreshnessPolicy, defaultRequiredCollectionRoutes } from "@douyin-local-life/shared/collection-routes";
 import { MESSAGE, STORAGE } from "./messages";
 import { normalizeApiBaseUrl, sanitizeSnapshotPayload } from "./safety";
 
@@ -30,6 +31,14 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === MESSAGE.SNAPSHOT_CAPTURED) {
     void saveSnapshot(message.payload as CollectionSnapshotPayload, sender.tab?.id).then(sendResponse);
+    return true;
+  }
+  if (message?.type === MESSAGE.METRIC_PULSE_CAPTURED) {
+    void uploadMetricPulse(message.payload as MetricPulse).then(sendResponse);
+    return true;
+  }
+  if (message?.type === MESSAGE.PAGE_ACTIVITY) {
+    void chrome.storage.local.set({ [STORAGE.PAGE_ACTIVITY]: message.payload }).then(() => sendResponse({ ok: true }));
     return true;
   }
   if (message?.type === MESSAGE.GET_STATE) {
@@ -96,7 +105,7 @@ async function saveConfig(payload: ExtensionConfig & { token?: string }) {
 }
 
 async function getState() {
-  const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS, STORAGE.PATROL, STORAGE.ROUTE_UPLOAD_STATE]);
+  const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS, STORAGE.PATROL, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY]);
   const session = await chrome.storage.session.get([STORAGE.TOKEN]);
   return {
     ok: true,
@@ -105,8 +114,30 @@ async function getState() {
     logs: local[STORAGE.LOGS] || [],
     patrol: local[STORAGE.PATROL] || { enabled: false },
     routeUploadState: local[STORAGE.ROUTE_UPLOAD_STATE] || {},
+    latestSignals: local[STORAGE.LATEST_SIGNALS] || [],
+    pageActivity: local[STORAGE.PAGE_ACTIVITY] || null,
     hasToken: Boolean(session[STORAGE.TOKEN])
   };
+}
+
+async function uploadMetricPulse(pulse: MetricPulse) {
+  const context = await apiContext();
+  if (!context.ok) return context;
+  if (pulse.tabState !== "VISIBLE") return { ok: true, skipped: true, reason: "PAGE_INACTIVE" };
+  try {
+    const response = await fetch(`${context.apiBaseUrl}/collection-tasks/${context.collectionTaskId}/metric-pulses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${context.token}` },
+      body: JSON.stringify(pulse)
+    });
+    const body = await response.json();
+    if (!response.ok) return { ok: false, error: body?.error?.message || `HTTP ${response.status}` };
+    const signals = (body?.data?.signals || []) as RealtimeSignal[];
+    await chrome.storage.local.set({ [STORAGE.LATEST_SIGNALS]: signals, [STORAGE.PAGE_ACTIVITY]: { tabState: pulse.tabState, observedAt: pulse.localCapturedAt } });
+    return { ok: true, signals };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Metric pulse upload failed" };
+  }
 }
 
 async function uploadLatestSnapshot() {

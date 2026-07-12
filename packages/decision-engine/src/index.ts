@@ -15,8 +15,8 @@ import {
   type VisibleMetric
 } from "@douyin-local-life/shared";
 
-export const decisionEngineVersion = "decision-engine-v0.1.0";
-export const decisionRuleVersion = "local-life-rules-v0.1.0";
+export const decisionEngineVersion = "decision-engine-v0.2.1";
+export const decisionRuleVersion = "local-life-rules-v0.2.1";
 
 const allowedActionTypes = new Set<ActionType>(decisionEngineActionTypes);
 const budgetActions = new Set<ActionType>(budgetActionTypes);
@@ -318,16 +318,24 @@ export function runDecisionRules(input: DecisionEngineInput): DecisionEngineOutp
 
 export function applyApprovalGuard(output: DecisionEngineOutput): DecisionEngineOutput {
   const lowConfidence = output.confidence < 0.7;
-  const restrictToSafe = lowConfidence || output.dataQuality.blocksStrongActions;
+  const restrictToSafe = lowConfidence || output.dataQuality.globalSafetyBlock === true;
   const guardReason = lowConfidence
     ? "诊断置信度低于 0.7，只允许人工复核或继续观察。"
-    : output.dataQuality.blocksStrongActions
-      ? "关键数据缺失，禁止生成强动作。"
+    : output.dataQuality.globalSafetyBlock
+      ? "全局安全证据不足，禁止生成强动作。"
       : null;
+  const blockedByEvidence: string[] = [];
 
   let proposals: ActionProposalDTO[] = output.actionProposals
     .filter((proposal) => allowedActionTypes.has(proposal.actionType))
     .filter((proposal) => !restrictToSafe || safeFallbackActions.has(proposal.actionType))
+    .filter((proposal) => {
+      if (safeFallbackActions.has(proposal.actionType)) return true;
+      const eligibility = output.dataQuality.actionEligibility?.[proposal.actionType];
+      if (!eligibility || eligibility.eligible) return true;
+      blockedByEvidence.push(...eligibility.blockingEvidence, ...eligibility.missingEvidence);
+      return false;
+    })
     .map((proposal) => ({
       ...proposal,
       requiresApproval: true,
@@ -335,12 +343,13 @@ export function applyApprovalGuard(output: DecisionEngineOutput): DecisionEngine
       blockedReason: proposal.blockedReason ?? (restrictToSafe && !safeFallbackActions.has(proposal.actionType) ? guardReason : proposal.blockedReason)
     }));
 
-  if (restrictToSafe && proposals.length === 0) {
+  if ((restrictToSafe || blockedByEvidence.length > 0) && !proposals.some((proposal) => proposal.actionType === "REQUEST_MANUAL_REVIEW")) {
     proposals = [
+      ...proposals,
       makeProposal({
         actionType: "REQUEST_MANUAL_REVIEW",
-        title: lowConfidence ? "低置信度人工复核" : "数据缺失人工复核",
-        reason: guardReason || "需要人工复核后再进入动作审批。",
+        title: lowConfidence ? "低置信度人工复核" : "动作证据待补齐",
+        reason: guardReason || [...new Set(blockedByEvidence)].join("；") || "需要人工复核后再进入动作审批。",
         riskLevel: "MEDIUM",
         confidence: Math.min(output.confidence, 0.69),
         blockedReason: guardReason
@@ -511,14 +520,20 @@ function assessDataQuality(input: DecisionEngineInput, metrics: MetricReader, se
   ];
   const subject = assessSubjectReadiness(input);
   const reviewReady = input.dataReviewStatus === "REVIEWED";
-  const blockingReasons = [
-    ...(missingFields.includes("ROI") ? ["ROI 缺失"] : []),
-    ...(missingFields.length >= 3 ? ["关键指标缺失过多"] : []),
+  const globalBlockingReasons = [
     ...(!subject.ready ? ["主体识别未完成"] : []),
     ...(!reviewReady ? ["数据未人工复核"] : []),
-    ...(lowConfidenceFields.length ? ["关键指标置信度不足"] : []),
     ...(input.collectionQuality?.missingRoutes.length ? [`采集路线缺失：${input.collectionQuality.missingRoutes.join("、")}`] : []),
     ...(input.collectionQuality?.staleRoutes.length ? [`采集路线已过期：${input.collectionQuality.staleRoutes.join("、")}`] : [])
+  ];
+  const actionEligibility = Object.fromEntries(
+    decisionEngineActionTypes.map((actionType) => [actionType, assessActionEligibility(actionType, input, metrics, selectedRoi, globalBlockingReasons)])
+  ) as NonNullable<DecisionDataQuality["actionEligibility"]>;
+  const blockingReasons = [
+    ...globalBlockingReasons,
+    ...(missingFields.includes("ROI") ? ["ROI 缺失，仅阻断依赖 ROI 的动作"] : []),
+    ...(missingFields.length >= 3 ? ["关键指标缺失较多，按动作证据降级"] : []),
+    ...(lowConfidenceFields.length ? [`低置信字段：${lowConfidenceFields.join("、")}`] : [])
   ];
   const completeness = round((required.length - missingFields.length) / required.length, 2);
   return {
@@ -528,9 +543,57 @@ function assessDataQuality(input: DecisionEngineInput, metrics: MetricReader, se
     subjectReady: subject.ready,
     reviewReady,
     completeness,
-    blocksStrongActions: blockingReasons.length > 0,
+    blocksStrongActions: globalBlockingReasons.length > 0,
+    globalSafetyBlock: globalBlockingReasons.length > 0,
+    actionEligibility,
+    blockingEvidence: globalBlockingReasons,
+    missingEvidence: missingFields,
     collectionQuality: input.collectionQuality
   };
+}
+
+function assessActionEligibility(
+  actionType: ActionType,
+  input: DecisionEngineInput,
+  metrics: MetricReader,
+  selectedRoi: number | null,
+  globalBlockingReasons: string[]
+) {
+  const safe = safeFallbackActions.has(actionType) || ["KEEP_BUDGET", "CHECK_LIVE_ROOM", "CHECK_CREATIVE", "CHECK_AUDIENCE", "VERIFY_ACTIVITY", "CALIBRATE_SUBJECT"].includes(actionType);
+  const requirements: Partial<Record<ActionType, Array<{ key: MetricKey | "roi"; label: string }>>> = {
+    INCREASE_BUDGET: [{ key: "roi", label: "ROI" }, { key: "spend", label: "消耗" }, { key: "orders", label: "订单数" }, { key: "impressions", label: "曝光量" }, { key: "ctr", label: "点击率" }],
+    DECREASE_BUDGET: [{ key: "roi", label: "ROI" }, { key: "spend", label: "消耗" }, { key: "orders", label: "订单数" }],
+    DECREASE_BID: [{ key: "roi", label: "ROI" }, { key: "spend", label: "消耗" }],
+    ADJUST_ROI_TARGET: [{ key: "roi", label: "ROI" }, { key: "target_roi", label: "目标ROI" }],
+    PAUSE_TASK: [{ key: "roi", label: "ROI" }, { key: "spend", label: "消耗" }, { key: "orders", label: "订单数" }],
+    FINE_TUNE_TARGETING: [{ key: "impressions", label: "曝光量" }, { key: "clicks", label: "点击量" }, { key: "orders", label: "订单数" }]
+  };
+  const required = requirements[actionType] || [];
+  const missingEvidence = required.flatMap((requirement) => {
+    const metric = requirement.key === "roi" ? selectedRoi : metrics.number(requirement.key);
+    return metric == null ? [requirement.label] : [];
+  });
+  const lowConfidenceEvidence = required.flatMap((requirement) => {
+    if (requirement.key === "roi") {
+      const metric = metrics.firstMetric(input.subject.subjectType === "SERVICE_PROVIDER" ? ["gross_profit_roi"] : ["verify_roi", "gross_profit_roi", "pay_roi"]);
+      return metric && metricConfidence(metric) < 0.7 ? ["ROI置信度不足"] : [];
+    }
+    const metric = metrics.metric(requirement.key);
+    return metric && metricConfidence(metric) < 0.7 ? [`${requirement.label}置信度不足`] : [];
+  });
+  const maxDataAgeMs = volatileAction(actionType) ? 90_000 : structuralAction(actionType) ? 30 * 60_000 : 5 * 60_000;
+  const oldestAgeMs = input.collectionQuality?.routes.reduce((max, route) => Math.max(max, route.ageMs || 0), 0) || 0;
+  const staleEvidence = oldestAgeMs > maxDataAgeMs ? [`数据年龄 ${oldestAgeMs}ms 超过动作上限 ${maxDataAgeMs}ms`] : [];
+  const blockingEvidence = [...(!safe ? globalBlockingReasons : []), ...lowConfidenceEvidence, ...staleEvidence];
+  return { eligible: safe || (blockingEvidence.length === 0 && missingEvidence.length === 0), blockingEvidence, missingEvidence, maxDataAgeMs };
+}
+
+function volatileAction(actionType: ActionType) {
+  return ["INCREASE_BUDGET", "DECREASE_BUDGET", "DECREASE_BID", "PAUSE_TASK", "ADJUST_ROI_TARGET"].includes(actionType);
+}
+
+function structuralAction(actionType: ActionType) {
+  return ["ADJUST_SERVICE_PROVIDER_SOP", "RENEGOTIATE_SERVICE_FEE", "REPAIR_REPUTATION", "CHECK_INVENTORY_BOOKING"].includes(actionType);
 }
 
 function parseBooleanMetric(metric: VisibleMetric | null) {

@@ -76,16 +76,56 @@ export function sanitizeVisibleText(text: string, maxChars: number = snapshotSaf
 
 export function sanitizeSensitiveData(value: unknown, depth = 0): unknown {
   if (depth > snapshotSafetyLimits.depth) return truncated;
-  if (Array.isArray(value)) {
-    return value.slice(0, snapshotSafetyLimits.arrayItems).map((item) => sanitizeSensitiveData(item, depth + 1));
+  const holder: { value?: unknown } = {};
+  const stack: Array<{ input: unknown; parent: Record<string | number, unknown>; key: string | number; depth: number }> = [
+    { input: value, parent: holder as Record<string | number, unknown>, key: "value", depth }
+  ];
+  const seen = new WeakSet<object>();
+  while (stack.length) {
+    const current = stack.pop()!;
+    if (current.depth > snapshotSafetyLimits.depth) {
+      current.parent[current.key] = truncated;
+      continue;
+    }
+    if (typeof current.input === "string") {
+      current.parent[current.key] = sanitizeVisibleText(current.input);
+      continue;
+    }
+    if (!current.input || typeof current.input !== "object") {
+      current.parent[current.key] = current.input;
+      continue;
+    }
+    if (seen.has(current.input)) {
+      current.parent[current.key] = truncated;
+      continue;
+    }
+    seen.add(current.input);
+    if (Array.isArray(current.input)) {
+      const output: unknown[] = [];
+      current.parent[current.key] = output;
+      const length = Math.min(current.input.length, snapshotSafetyLimits.arrayItems);
+      for (let index = length - 1; index >= 0; index -= 1) {
+        stack.push({ input: current.input[index], parent: output as Record<number, unknown>, key: index, depth: current.depth + 1 });
+      }
+      continue;
+    }
+    const output: Record<string, unknown> = {};
+    current.parent[current.key] = output;
+    const entries: Array<[string, unknown]> = [];
+    let count = 0;
+    for (const key in current.input as Record<string, unknown>) {
+      if (!Object.prototype.hasOwnProperty.call(current.input, key)) continue;
+      entries.push([key, (current.input as Record<string, unknown>)[key]]);
+      count += 1;
+      if (count >= snapshotSafetyLimits.objectKeys) break;
+    }
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const [key, raw] = entries[index]!;
+      if (shouldRedactSensitiveKey(key)) output[key] = redacted;
+      else stack.push({ input: raw, parent: output, key, depth: current.depth + 1 });
+    }
   }
-  if (typeof value === "string") return sanitizeVisibleText(value);
-  if (!value || typeof value !== "object") return value;
-  const result: Record<string, unknown> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>).slice(0, snapshotSafetyLimits.objectKeys)) {
-    result[key] = shouldRedactSensitiveKey(key) ? redacted : sanitizeSensitiveData(raw, depth + 1);
-  }
-  return result;
+  return holder.value;
 }
 
 export function sanitizeCaptureUrl(inputUrl: string, baseUrl = "https://example.invalid") {
@@ -122,25 +162,35 @@ export function addSafeNetworkRecord<T extends NetworkRecordLike>(records: T[], 
 }
 
 export function sanitizeCollectionSnapshotPayload<T extends SnapshotLike>(snapshot: T): T {
-  const networkRecords: NetworkRecordLike[] = [];
-  for (const record of snapshot.rawNetworkJson.slice(0, snapshotSafetyLimits.networkRecords)) {
-    networkRecords.push(sanitizeCapturedNetworkRecord(record));
-  }
-  trimNetworkRecordsToTotalLimit(networkRecords);
-
-  return {
+  const truncatedFields = [
+    ...(snapshot.rawDomText.length > snapshotSafetyLimits.rawDomTextChars ? ["rawDomText"] : []),
+    ...(snapshot.rawNetworkJson.length ? ["rawNetworkJson"] : []),
+    ...(snapshot.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : []),
+    ...((snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : [])
+  ];
+  const sanitized = {
     ...snapshot,
     sourceUrl: sanitizeCaptureUrl(snapshot.sourceUrl || ""),
     pageTitle: sanitizeVisibleText(snapshot.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
     rawDomText: sanitizeVisibleText(snapshot.rawDomText || "", snapshotSafetyLimits.rawDomTextChars),
-    rawNetworkJson: networkRecords,
+    rawNetworkJson: [],
     rawTableData: limitArrayValue(
       sanitizeSensitiveData(snapshot.rawTableData.slice(0, snapshotSafetyLimits.tableItems)) as unknown[],
       snapshotSafetyLimits.networkTotalChars
     ),
     visibleMetricsJson: (snapshot.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
     screenshotUrl: snapshot.screenshotUrl ? sanitizeCaptureUrl(snapshot.screenshotUrl) : snapshot.screenshotUrl
-  };
+  } as T;
+  if ("captureMeta" in snapshot && snapshot.captureMeta && typeof snapshot.captureMeta === "object") {
+    const meta = snapshot.captureMeta as Record<string, unknown>;
+    (sanitized as T & { captureMeta: Record<string, unknown> }).captureMeta = {
+      ...meta,
+      acceptedBytes: serializedLength({ rawDomText: sanitized.rawDomText, rawTableData: sanitized.rawTableData, visibleMetricsJson: sanitized.visibleMetricsJson }),
+      truncatedFields: [...new Set([...(Array.isArray(meta.truncatedFields) ? meta.truncatedFields.map(String) : []), ...truncatedFields])],
+      truncationReasons: [...new Set([...(Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : []), ...(snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : []), ...(truncatedFields.length ? ["SNAPSHOT_SAFETY_LIMIT"] : [])])]
+    };
+  }
+  return sanitized;
 }
 
 function sanitizeVisibleMetric(value: unknown) {

@@ -1,237 +1,23 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const MESSAGE = {
-    PAGE_NETWORK_CAPTURED: "AI_DIAGNOSIS_PAGE_NETWORK_CAPTURED",
-    PAGE_CAPTURE_CONTROL: "AI_DIAGNOSIS_PAGE_CAPTURE_CONTROL",
+(() => {
+  // src/messages.ts
+  var MESSAGE = {
     START_COLLECTION: "AI_DIAGNOSIS_START_COLLECTION",
     SNAPSHOT_CAPTURED: "AI_DIAGNOSIS_SNAPSHOT_CAPTURED",
+    METRIC_PULSE_CAPTURED: "AI_DIAGNOSIS_METRIC_PULSE_CAPTURED",
+    PAGE_ACTIVITY: "AI_DIAGNOSIS_PAGE_ACTIVITY",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     SAVE_CONFIG: "AI_DIAGNOSIS_SAVE_CONFIG",
     UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
     CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
     START_PATROL: "AI_DIAGNOSIS_START_PATROL",
-    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL"
-};
-const STORAGE = {
-    CONFIG: "douyinLocalLifeDiagnosisConfig",
-    TOKEN: "douyinLocalLifeDiagnosisToken",
-    LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
-    LOGS: "douyinLocalLifeDiagnosisLogs",
-    PATROL: "douyinLocalLifeDiagnosisPatrol",
-    ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState"
-};
-const snapshotSafetyLimits = {
-    rawDomTextChars: 200000,
-    pageTitleChars: 500,
-    urlChars: 2048,
-    networkRecords: 50,
-    networkRecordChars: 256000,
-    networkTotalChars: 1000000,
-    tableItems: 20,
-    visibleMetrics: 200,
-    arrayItems: 200,
-    objectKeys: 500,
-    depth: 12,
-    stringChars: 200000
-};
-const redacted = "[REDACTED]";
-const truncated = "[TRUNCATED]";
-const sensitiveContains = ["token", "cookie", "password", "passwd", "authorization", "secret", "session", "credential"];
-const sensitiveExact = new Set([
-    "accesstoken",
-    "refreshtoken",
-    "phone",
-    "mobile",
-    "idcard",
-    "identitycard",
-    "email",
-    "name",
-    "realname",
-    "username",
-    "nickname",
-    "contactname",
-    "legalperson",
-    "身份证",
-    "手机号",
-    "姓名"
-]);
-function shouldRedactSensitiveKey(key) {
-    const normalized = normalizeKey(key);
-    return sensitiveExact.has(normalized) || sensitiveContains.some((part) => normalized.includes(part));
-}
-function sanitizeVisibleText(text, maxChars = snapshotSafetyLimits.stringChars) {
-    let sanitized = truncateText(text, maxChars);
-    if (sanitized.includes("@"))
-        sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, redacted);
-    if (/\d/.test(sanitized)) {
-        sanitized = sanitized.replace(/\b1[3-9]\d{9}\b/g, redacted).replace(/\b\d{17}[\dXx]\b/g, redacted);
-    }
-    if (/bearer/i.test(sanitized))
-        sanitized = sanitized.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, `$1${redacted}`);
-    if (/password|passwd|token|authorization|cookie|secret|session|credential/i.test(sanitized)) {
-        sanitized = sanitized.replace(/((?:password|passwd|token|authorization|cookie|secret|session|credential)\s*[:=]\s*)[^\s,;&]+/gi, `$1${redacted}`);
-    }
-    return truncateText(sanitized, maxChars);
-}
-function sanitizeSensitiveData(value, depth = 0) {
-    if (depth > snapshotSafetyLimits.depth)
-        return truncated;
-    if (Array.isArray(value)) {
-        return value.slice(0, snapshotSafetyLimits.arrayItems).map((item) => sanitizeSensitiveData(item, depth + 1));
-    }
-    if (typeof value === "string")
-        return sanitizeVisibleText(value);
-    if (!value || typeof value !== "object")
-        return value;
-    const result = {};
-    for (const [key, raw] of Object.entries(value).slice(0, snapshotSafetyLimits.objectKeys)) {
-        result[key] = shouldRedactSensitiveKey(key) ? redacted : sanitizeSensitiveData(raw, depth + 1);
-    }
-    return result;
-}
-function sanitizeCaptureUrl(inputUrl, baseUrl = "https://example.invalid") {
-    try {
-        const url = new URL(inputUrl, baseUrl);
-        url.username = url.username ? redacted : "";
-        url.password = url.password ? redacted : "";
-        for (const key of [...url.searchParams.keys()]) {
-            if (shouldRedactSensitiveKey(key))
-                url.searchParams.set(key, redacted);
-        }
-        return truncateText(url.href, snapshotSafetyLimits.urlChars);
-    }
-    catch {
-        return sanitizeVisibleText(inputUrl, snapshotSafetyLimits.urlChars);
-    }
-}
-function sanitizeCapturedNetworkRecord(record) {
-    const responseJson = limitSerializedValue(sanitizeSensitiveData(record.responseJson), snapshotSafetyLimits.networkRecordChars);
-    return {
-        ...record,
-        url: sanitizeCaptureUrl(String(record.url || "")),
-        method: String(record.method || "GET").toUpperCase().slice(0, 16),
-        status: Number.isInteger(record.status) ? record.status : 0,
-        responseJson,
-        capturedAt: record.capturedAt || new Date().toISOString()
-    };
-}
-function addSafeNetworkRecord(records, record, limit = snapshotSafetyLimits.networkRecords) {
-    records.unshift(sanitizeCapturedNetworkRecord(record));
-    if (records.length > limit)
-        records.length = limit;
-    trimNetworkRecordsToTotalLimit(records);
-    return records;
-}
-function sanitizeCollectionSnapshotPayload(snapshot) {
-    const networkRecords = [];
-    for (const record of snapshot.rawNetworkJson.slice(0, snapshotSafetyLimits.networkRecords)) {
-        networkRecords.push(sanitizeCapturedNetworkRecord(record));
-    }
-    trimNetworkRecordsToTotalLimit(networkRecords);
-    return {
-        ...snapshot,
-        sourceUrl: sanitizeCaptureUrl(snapshot.sourceUrl || ""),
-        pageTitle: sanitizeVisibleText(snapshot.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
-        rawDomText: sanitizeVisibleText(snapshot.rawDomText || "", snapshotSafetyLimits.rawDomTextChars),
-        rawNetworkJson: networkRecords,
-        rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
-        visibleMetricsJson: (snapshot.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
-        screenshotUrl: snapshot.screenshotUrl ? sanitizeCaptureUrl(snapshot.screenshotUrl) : snapshot.screenshotUrl
-    };
-}
-function sanitizeVisibleMetric(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value))
-        return sanitizeSensitiveData(value);
-    const metric = value;
-    const sanitized = sanitizeSensitiveData(metric);
-    return {
-        ...sanitized,
-        key: sanitizeVisibleText(String(metric.key || "unknown"), 100),
-        name: sanitizeVisibleText(String(metric.name || ""), 200)
-    };
-}
-function trimNetworkRecordsToTotalLimit(records) {
-    let total = 0;
-    const kept = [];
-    for (const record of records) {
-        const size = serializedLength(record);
-        if (total + size > snapshotSafetyLimits.networkTotalChars)
-            break;
-        kept.push(record);
-        total += size;
-    }
-    records.splice(0, records.length, ...kept);
-}
-function limitSerializedValue(value, maxChars) {
-    const serialized = safeStringify(value);
-    if (serialized.length <= maxChars)
-        return value;
-    return {
-        truncated: true,
-        originalChars: serialized.length,
-        preview: truncateText(serialized, Math.min(10000, maxChars))
-    };
-}
-function limitArrayValue(value, maxChars) {
-    const limited = limitSerializedValue(value, maxChars);
-    return Array.isArray(limited) ? limited : [limited];
-}
-function serializedLength(value) {
-    return safeStringify(value).length;
-}
-function safeStringify(value) {
-    try {
-        return JSON.stringify(value) || "";
-    }
-    catch {
-        return JSON.stringify({ truncated: true, reason: "non_serializable" });
-    }
-}
-function truncateText(value, maxChars) {
-    return value.length <= maxChars ? value : `${value.slice(0, maxChars)}${truncated}`;
-}
-function normalizeKey(key) {
-    return key.replace(/[^a-z0-9\u4e00-\u9fa5]/gi, "").toLowerCase();
-}
-const sanitizeSnapshotPayload = sanitizeCollectionSnapshotPayload;
-const sanitizeSensitiveFields = sanitizeSensitiveData;
-const shouldRedactKey = shouldRedactSensitiveKey;
-const sanitizeNetworkRecord = sanitizeCapturedNetworkRecord;
-const allowedHostSuffixes = ["douyin.com", "douyinlife.com", "juliangengine.com", "oceanengine.com", "bytedance.com"];
-const networkRecordLimit = snapshotSafetyLimits.networkRecords;
-const networkResponseByteLimit = snapshotSafetyLimits.networkRecordChars;
-function isAllowedCaptureUrl(inputUrl, pageHref = globalThis.location?.href || "") {
-    try {
-        const url = new URL(inputUrl, pageHref);
-        const pageUrl = new URL(pageHref || url.href);
-        return url.origin === pageUrl.origin || allowedHostSuffixes.some((suffix) => url.hostname === suffix || url.hostname.endsWith(`.${suffix}`));
-    }
-    catch {
-        return false;
-    }
-}
-function isJsonContentType(contentType) {
-    return /\bjson\b|\+json\b/i.test(contentType || "");
-}
-function normalizeApiBaseUrl(value) {
-    try {
-        const url = new URL(value);
-        const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-        if (url.username || url.password || (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)))
-            return null;
-        return url.href.replace(/\/$/, "");
-    }
-    catch {
-        return null;
-    }
-}
-function addNetworkRecord(records, record, limit = networkRecordLimit) {
-    return addSafeNetworkRecord(records, record, limit);
-}
-// Keep these imports visible to the extension's source-concatenating build script.
-void sanitizeVisibleText;
-const allowedHostPattern = /(douyin|douyinlife|juliangengine|oceanengine|bytedance)\.com$/i;
-const els = {
+    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL",
+    OPEN_SIDE_PANEL: "AI_DIAGNOSIS_OPEN_SIDE_PANEL"
+  };
+
+  // src/popup.ts
+  var allowedHostPattern = /(douyin|douyinlife|juliangengine|oceanengine|bytedance)\.com$/i;
+  var els = {
     status: document.getElementById("status"),
     currentUrl: document.getElementById("currentUrl"),
     pageType: document.getElementById("pageType"),
@@ -242,26 +28,28 @@ const els = {
     collectionRunId: document.getElementById("collectionRunId"),
     snapshot: document.getElementById("snapshot"),
     configBtn: document.getElementById("configBtn"),
+    sidePanelBtn: document.getElementById("sidePanelBtn"),
     startBtn: document.getElementById("startBtn"),
     startPatrolBtn: document.getElementById("startPatrolBtn"),
     stopPatrolBtn: document.getElementById("stopPatrolBtn"),
     refreshBtn: document.getElementById("refreshBtn"),
     uploadBtn: document.getElementById("uploadBtn"),
     clearBtn: document.getElementById("clearBtn")
-};
-void render();
-els.configBtn.addEventListener("click", configure);
-els.startBtn.addEventListener("click", startCollection);
-els.startPatrolBtn.addEventListener("click", startPatrol);
-els.stopPatrolBtn.addEventListener("click", stopPatrol);
-els.refreshBtn.addEventListener("click", render);
-els.uploadBtn.addEventListener("click", uploadSnapshot);
-els.clearBtn.addEventListener("click", clearSnapshot);
-async function activeTab() {
+  };
+  void render();
+  els.configBtn.addEventListener("click", configure);
+  els.sidePanelBtn.addEventListener("click", openSidePanel);
+  els.startBtn.addEventListener("click", startCollection);
+  els.startPatrolBtn.addEventListener("click", startPatrol);
+  els.stopPatrolBtn.addEventListener("click", stopPatrol);
+  els.refreshBtn.addEventListener("click", render);
+  els.uploadBtn.addEventListener("click", uploadSnapshot);
+  els.clearBtn.addEventListener("click", clearSnapshot);
+  async function activeTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     return tab;
-}
-async function render() {
+  }
+  async function render() {
     const tab = await activeTab();
     const state = await chrome.runtime.sendMessage({ type: MESSAGE.GET_STATE });
     const url = tab?.url || "";
@@ -270,85 +58,83 @@ async function render() {
     els.collectable.textContent = isCollectable(url) ? "YES" : "NO";
     els.hasToken.textContent = state?.hasToken ? "Configured in session storage" : "Not configured";
     els.taskId.textContent = state?.config?.collectionTaskId || "-";
-    els.patrolStatus.textContent = state?.patrol?.enabled ? "运行中（仅采集已打开页面）" : "未开启";
+    els.patrolStatus.textContent = state?.patrol?.enabled ? "\u8FD0\u884C\u4E2D\uFF08\u4EC5\u91C7\u96C6\u5DF2\u6253\u5F00\u9875\u9762\uFF09" : "\u672A\u5F00\u542F";
     els.collectionRunId.textContent = state?.patrol?.collectionRunId || "-";
     els.snapshot.textContent = JSON.stringify({ latestSnapshot: state?.latestSnapshot || null, routeUploadState: state?.routeUploadState || {} }, null, 2);
     els.status.textContent = "Ready";
-}
-async function startPatrol() {
+  }
+  async function startPatrol() {
     const requiredRoutes = selectedRoutes();
     if (!requiredRoutes.length) {
-        els.status.textContent = "请至少选择一个目标页面";
-        return;
+      els.status.textContent = "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u76EE\u6807\u9875\u9762";
+      return;
     }
     const response = await chrome.runtime.sendMessage({ type: MESSAGE.START_PATROL, payload: { requiredRoutes } });
-    els.status.textContent = response?.ok ? "固定页面巡检已开启" : response?.error || "巡检启动失败";
+    els.status.textContent = response?.ok ? "\u56FA\u5B9A\u9875\u9762\u5DE1\u68C0\u5DF2\u5F00\u542F" : response?.error || "\u5DE1\u68C0\u542F\u52A8\u5931\u8D25";
     await render();
-}
-async function stopPatrol() {
+  }
+  async function stopPatrol() {
     const response = await chrome.runtime.sendMessage({ type: MESSAGE.STOP_PATROL });
-    els.status.textContent = response?.ok ? "巡检已停止" : response?.error || "巡检停止失败";
+    els.status.textContent = response?.ok ? "\u5DE1\u68C0\u5DF2\u505C\u6B62" : response?.error || "\u5DE1\u68C0\u505C\u6B62\u5931\u8D25";
     await render();
-}
-function selectedRoutes() {
+  }
+  function selectedRoutes() {
     const choices = [
-        ["routeDashboard", "LOCAL_PROMOTION_DASHBOARD"],
-        ["routeLive", "LIVE_DATA_SCREEN"],
-        ["routeTask", "TASK_TABLE"],
-        ["routeMaterial", "MATERIAL_LIBRARY"],
-        ["routeTrend", "HOURLY_TREND"]
+      ["routeDashboard", "LOCAL_PROMOTION_DASHBOARD"],
+      ["routeLive", "LIVE_DATA_SCREEN"],
+      ["routeTask", "TASK_TABLE"],
+      ["routeMaterial", "MATERIAL_LIBRARY"],
+      ["routeTrend", "HOURLY_TREND"]
     ];
-    return choices
-        .filter(([id]) => document.getElementById(id)?.checked)
-        .map(([, route]) => route);
-}
-async function configure() {
+    return choices.filter(([id]) => document.getElementById(id)?.checked).map(([, route]) => route);
+  }
+  async function configure() {
     const state = await chrome.runtime.sendMessage({ type: MESSAGE.GET_STATE });
     const apiBaseUrl = prompt("API base URL", state?.config?.apiBaseUrl || "http://localhost:4000");
-    if (!apiBaseUrl)
-        return;
+    if (!apiBaseUrl) return;
     const collectionTaskId = prompt("Collection task ID", state?.config?.collectionTaskId || "");
-    if (!collectionTaskId)
-        return;
+    if (!collectionTaskId) return;
     const token = prompt("SaaS API token. Stored only in chrome.storage.session.", "");
     await chrome.runtime.sendMessage({
-        type: MESSAGE.SAVE_CONFIG,
-        payload: { apiBaseUrl, collectionTaskId, token: token || undefined }
+      type: MESSAGE.SAVE_CONFIG,
+      payload: { apiBaseUrl, collectionTaskId, token: token || void 0 }
     });
     await render();
-}
-async function startCollection() {
+  }
+  async function openSidePanel() {
+    await chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+    window.close();
+  }
+  async function startCollection() {
     const tab = await activeTab();
     if (!tab?.id || !isCollectable(tab.url || "")) {
-        els.status.textContent = "Current page is outside the allowlist";
-        return;
+      els.status.textContent = "Current page is outside the allowlist";
+      return;
     }
     const response = await chrome.tabs.sendMessage(tab.id, { type: MESSAGE.START_COLLECTION });
     els.status.textContent = response?.ok ? "Local snapshot captured" : "Capture failed";
     await render();
-}
-async function uploadSnapshot() {
+  }
+  async function uploadSnapshot() {
     const response = await chrome.runtime.sendMessage({ type: MESSAGE.UPLOAD_SNAPSHOT });
     els.status.textContent = response?.ok ? "Snapshot uploaded" : response?.error || "Upload failed";
     await render();
-}
-async function clearSnapshot() {
+  }
+  async function clearSnapshot() {
     await chrome.runtime.sendMessage({ type: MESSAGE.CLEAR_SNAPSHOT });
     els.status.textContent = "Local snapshot cleared";
     await render();
-}
-function isCollectable(url) {
+  }
+  function isCollectable(url) {
     try {
-        return allowedHostPattern.test(new URL(url).hostname);
+      return allowedHostPattern.test(new URL(url).hostname);
+    } catch {
+      return false;
     }
-    catch {
-        return false;
-    }
-}
-function inferPageTypeFromUrl(url) {
-    if (/live|room|screen|dashboard/i.test(url))
-        return "LIVE_DATA_SCREEN";
-    if (/task|campaign|ad|promotion|local/i.test(url))
-        return "LOCAL_PROMOTION_DASHBOARD";
+  }
+  function inferPageTypeFromUrl(url) {
+    if (/live|room|screen|dashboard/i.test(url)) return "LIVE_DATA_SCREEN";
+    if (/task|campaign|ad|promotion|local/i.test(url)) return "LOCAL_PROMOTION_DASHBOARD";
     return "UNKNOWN";
-}
+  }
+})();

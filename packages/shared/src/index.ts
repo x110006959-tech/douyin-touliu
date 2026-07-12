@@ -119,6 +119,10 @@ export const metricKeys = [
 export const metricCategories = ["ROI", "COST", "CONVERSION", "TRAFFIC", "LIVE_ROOM", "FULL_DOMAIN", "SERVICE_PROVIDER", "RISK", "ACTIVITY", "TIMING", "UNKNOWN"] as const;
 export const observationWindows = ["30m", "2h", "1d", "custom"] as const;
 export const actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"] as const;
+export const captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"] as const;
+export const captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"] as const;
+export const realtimeSignalKinds = ["ROI_CHANGE", "SPEND_ACCELERATION", "ORDER_STALL", "TRAFFIC_CHANGE", "DATA_STALE", "PAGE_INACTIVE"] as const;
+export const realtimeSignalSeverities = ["INFO", "WARNING", "CRITICAL"] as const;
 
 export type BusinessType = (typeof businessTypes)[number];
 export type SubjectType = (typeof subjectTypes)[number];
@@ -142,6 +146,10 @@ export type MetricKey = (typeof metricKeys)[number];
 export type MetricCategory = (typeof metricCategories)[number];
 export type ObservationWindow = (typeof observationWindows)[number];
 export type ActionOutcomeResult = (typeof actionOutcomeResults)[number];
+export type CaptureCompleteness = (typeof captureCompletenessValues)[number];
+export type CaptureTabState = (typeof captureTabStates)[number];
+export type RealtimeSignalKind = (typeof realtimeSignalKinds)[number];
+export type RealtimeSignalSeverity = (typeof realtimeSignalSeverities)[number];
 
 export const subjectTypeLabels: Record<SubjectType, string> = {
   SUBJECT_PENDING: "主体待校准",
@@ -536,6 +544,23 @@ export type CapturedNetworkRecord = {
   capturedAt: string;
 };
 
+export type CaptureMeta = {
+  adapterId: string;
+  adapterVersion: string;
+  pageFingerprint: string;
+  completeness: CaptureCompleteness;
+  coverageRatio: number;
+  expectedFields: string[];
+  extractedFields: string[];
+  visibleRegions: string[];
+  renderModes: Array<"DOM" | "TABLE" | "CANVAS" | "VIRTUALIZED">;
+  tabState: CaptureTabState;
+  originalBytes: number;
+  acceptedBytes: number;
+  truncatedFields: string[];
+  truncationReasons: string[];
+};
+
 export type CollectionSnapshotPayload = {
   pageType: PageType;
   sourceUrl: string;
@@ -548,6 +573,44 @@ export type CollectionSnapshotPayload = {
   localCollectedAt: string;
   collectionRunId?: string | null;
   routeKey?: import("./collection-routes.js").CollectionRouteKey;
+  captureMeta?: CaptureMeta;
+};
+
+export type MetricPulse = {
+  collectionRunId?: string | null;
+  routeKey: import("./collection-routes.js").CollectionRouteKey;
+  pageType: PageType;
+  localCapturedAt: string;
+  tabState: CaptureTabState;
+  metrics: VisibleMetric[];
+  captureMeta: CaptureMeta;
+};
+
+export type RealtimeSignal = {
+  id: string;
+  collectionTaskId: string;
+  kind: RealtimeSignalKind;
+  severity: RealtimeSignalSeverity;
+  message: string;
+  observedAt: string;
+  dataAgeMs: number;
+  evidence: Record<string, number | string | null>;
+};
+
+export type BuildMetadata = {
+  productVersion: string;
+  gitSha: string;
+  buildTime: string;
+  schemaVersion: string;
+  extensionVersion: string;
+  artifactSha256?: string | null;
+};
+
+export type ActionEligibility = {
+  eligible: boolean;
+  blockingEvidence: string[];
+  missingEvidence: string[];
+  maxDataAgeMs: number;
 };
 
 export type SubjectContext = {
@@ -599,6 +662,10 @@ export type DecisionDataQuality = {
   reviewReady?: boolean;
   completeness: number;
   blocksStrongActions: boolean;
+  globalSafetyBlock?: boolean;
+  actionEligibility?: Partial<Record<ActionType, ActionEligibility>>;
+  blockingEvidence?: string[];
+  missingEvidence?: string[];
   collectionQuality?: import("./collection-routes.js").CollectionQuality;
 };
 
@@ -769,6 +836,23 @@ export const networkRecordSchema = z.object({
   capturedAt: z.string().datetime()
 });
 
+export const captureMetaSchema = z.object({
+  adapterId: z.string().min(1).max(100),
+  adapterVersion: z.string().min(1).max(50),
+  pageFingerprint: z.string().min(1).max(128),
+  completeness: z.enum(captureCompletenessValues),
+  coverageRatio: z.number().min(0).max(1),
+  expectedFields: z.array(z.string().max(100)).max(100),
+  extractedFields: z.array(z.string().max(100)).max(100),
+  visibleRegions: z.array(z.string().max(100)).max(50),
+  renderModes: z.array(z.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
+  tabState: z.enum(captureTabStates),
+  originalBytes: z.number().int().min(0),
+  acceptedBytes: z.number().int().min(0),
+  truncatedFields: z.array(z.string().max(100)).max(100),
+  truncationReasons: z.array(z.string().max(200)).max(100)
+});
+
 export const subjectContextSchema = z.object({
   subjectType: z.enum(subjectTypes),
   operatorType: z.enum(operatorTypes),
@@ -791,7 +875,18 @@ export const collectionSnapshotSchema = z.object({
   screenshotUrl: z.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
   localCollectedAt: z.string().datetime(),
   collectionRunId: z.string().min(1).max(128).nullable().optional(),
-  routeKey: z.enum(collectionRouteKeys).optional()
+  routeKey: z.enum(collectionRouteKeys).optional(),
+  captureMeta: captureMetaSchema.optional()
+});
+
+export const metricPulseSchema = z.object({
+  collectionRunId: z.string().min(1).max(128).nullable().optional(),
+  routeKey: z.enum(collectionRouteKeys),
+  pageType: z.enum(pageTypes),
+  localCapturedAt: z.string().datetime(),
+  tabState: z.enum(captureTabStates),
+  metrics: z.array(visibleMetricSchema).max(32),
+  captureMeta: captureMetaSchema
 });
 
 export const manualCheckItemSchema = z.object({
@@ -807,6 +902,15 @@ export const decisionDataQualitySchema = z.object({
   reviewReady: z.boolean().optional(),
   completeness: z.number().min(0).max(1),
   blocksStrongActions: z.boolean(),
+  globalSafetyBlock: z.boolean().optional(),
+  actionEligibility: z.record(z.string(), z.object({
+    eligible: z.boolean(),
+    blockingEvidence: z.array(z.string()),
+    missingEvidence: z.array(z.string()),
+    maxDataAgeMs: z.number().int().min(0)
+  })).optional(),
+  blockingEvidence: z.array(z.string()).optional(),
+  missingEvidence: z.array(z.string()).optional(),
   collectionQuality: z.object({
     requiredRoutes: z.array(z.enum(collectionRouteKeys)),
     routes: z.array(z.object({

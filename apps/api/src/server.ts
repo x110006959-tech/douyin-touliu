@@ -8,6 +8,7 @@ import {
   collectionSnapshotSchema,
   collectionFreshnessPolicy,
   inferCollectionRoute,
+  metricPulseSchema,
   type CollectionSnapshotPayload,
   createActionOutcomeInputSchema,
   createCollectionTaskSchema,
@@ -46,6 +47,10 @@ import {
   toCollectionRunDTO
 } from "./collection-runs.js";
 import { actionProposalAudit, currentUser, readOptionalText, toJson } from "./server-utils.js";
+import { getBuildMetadata } from "./version.js";
+import { latestRealtimeSignals, recordMetricPulse, subscribeRealtimeSignals } from "./realtime-signals.js";
+import { metricAliasOverrideInputSchema, metricDriftStatusSchema, normalizeAlias, recordMetricDriftEvents } from "./metric-drift.js";
+import { AiCircuitOpenError, executeWithAiCircuit, getAiCircuitStatus } from "./ai-circuit.js";
 import {
   ensureReviewMetricsForTask,
   normalizedMetricsToVisibleMetrics,
@@ -64,6 +69,7 @@ export function createServer() {
   app.use(express.json({ limit: "5mb" }));
 
   app.get("/health", (_req, res) => sendSuccess(res, { ok: true }));
+  app.get("/version", (_req, res) => sendSuccess(res, getBuildMetadata()));
   app.get("/ready", async (_req, res) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
@@ -79,7 +85,8 @@ export function createServer() {
 
   app.get("/system-health", async (req, res) => {
     const user = currentUser(req);
-    const [runs, recentAnalyses] = await Promise.all([
+    const aiProvider = createLlmProvider("mock");
+    const [runs, aiCircuit] = await Promise.all([
       prisma.collectionRun.findMany({
         where: { task: { project: { workspace: { ownerId: user.id } } } },
         orderBy: { createdAt: "desc" },
@@ -89,20 +96,12 @@ export function createServer() {
           routeHealth: true
         }
       }),
-      prisma.aiAnalysisTask.findMany({
-        where: { collectionTask: { project: { workspace: { ownerId: user.id } } } },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        select: { status: true, createdAt: true, errorMessage: true }
-      })
+      getAiCircuitStatus(aiProvider.name, aiProvider.model)
     ]);
     const latestByTask = [...new Map(runs.map((run) => [run.taskId, run])).values()];
     const collectionRuns = latestByTask.map(toCollectionRunDTO);
     const degradedRuns = collectionRuns.filter((run) => run.status === "DEGRADED" || run.quality.blocksStrongActions).length;
-    const lastThreeAnalyses = recentAnalyses.slice(0, 3);
-    const aiCircuitOpen = lastThreeAnalyses.length === 3
-      && lastThreeAnalyses.every((analysis) => analysis.status === "FAILED")
-      && Date.now() - lastThreeAnalyses[0]!.createdAt.getTime() < 15 * 60 * 1000;
+    const aiCircuitOpen = aiCircuit.state !== "CLOSED";
     return sendSuccess(res, {
       status: degradedRuns > 0 || aiCircuitOpen ? "DEGRADED" : "HEALTHY",
       database: "READY",
@@ -112,9 +111,10 @@ export function createServer() {
         runs: collectionRuns
       },
       ai: {
-        status: aiCircuitOpen ? "COOLDOWN" : "READY",
-        cooldownEndsAt: aiCircuitOpen ? new Date(lastThreeAnalyses[0]!.createdAt.getTime() + 15 * 60 * 1000).toISOString() : null,
-        recentFailures: recentAnalyses.filter((analysis) => analysis.status === "FAILED").length
+        status: aiCircuit.state,
+        cooldownEndsAt: aiCircuit.cooldownEndsAt,
+        recentFailures: aiCircuit.consecutiveFailures,
+        backoffLevel: aiCircuit.backoffLevel
       },
       checkedAt: new Date().toISOString()
     });
@@ -255,6 +255,58 @@ export function createServer() {
     return sendSuccess(res, await getProjectOutcomeSummary(project.id));
   });
 
+  app.get("/projects/:id/metric-aliases", async (req, res) => {
+    const project = await getOwnedProject(currentUser(req).id, req.params.id);
+    if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    return sendSuccess(res, await prisma.metricAliasOverride.findMany({
+      where: { workspaceId: project.workspaceId },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    }));
+  });
+
+  app.put("/projects/:id/metric-aliases/:alias", async (req, res) => {
+    const user = currentUser(req);
+    const project = await getOwnedProject(user.id, req.params.id);
+    if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const parsed = metricAliasOverrideInputSchema.safeParse(req.body);
+    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "指标映射参数错误");
+    const aliasNormalized = normalizeAlias(req.params.alias);
+    if (!aliasNormalized) return sendError(res, 400, "VALIDATION_ERROR", "指标别名不能为空");
+    const alias = await prisma.$transaction(async (tx) => {
+      const saved = await tx.metricAliasOverride.upsert({
+        where: { workspaceId_aliasNormalized_pageType: { workspaceId: project.workspaceId, aliasNormalized, pageType: parsed.data.pageType } },
+        create: { workspaceId: project.workspaceId, aliasNormalized, pageType: parsed.data.pageType, metricKey: parsed.data.metricKey, createdById: user.id },
+        update: { metricKey: parsed.data.metricKey, active: true, createdById: user.id }
+      });
+      await tx.metricDriftEvent.updateMany({
+        where: { projectId: project.id, aliasNormalized, status: "OPEN", pageType: parsed.data.pageType === "ANY" ? undefined : parsed.data.pageType },
+        data: { status: "RESOLVED", resolvedMetricKey: parsed.data.metricKey, resolvedById: user.id, resolvedAt: new Date() }
+      });
+      await writeAuditLog(req, "METRIC_ALIAS_OVERRIDE_UPSERTED", {
+        workspaceId: project.workspaceId,
+        projectId: project.id,
+        detailJson: { aliasNormalized, pageType: parsed.data.pageType, metricKey: parsed.data.metricKey }
+      }, tx);
+      return saved;
+    });
+    return sendSuccess(res, alias);
+  });
+
+  app.get("/projects/:id/metric-drift-events", async (req, res) => {
+    const project = await getOwnedProject(currentUser(req).id, req.params.id);
+    if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    const status = metricDriftStatusSchema.safeParse(typeof req.query.status === "string" ? req.query.status : "OPEN");
+    if (!status.success) return sendError(res, 400, "VALIDATION_ERROR", "漂移状态不合法");
+    const pagination = readPagination(req, 100);
+    if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
+    return sendSuccess(res, await prisma.metricDriftEvent.findMany({
+      where: { projectId: project.id, status: status.data },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pagination.take,
+      ...cursorArgs(pagination.cursor)
+    }));
+  });
+
   app.post("/collection-tasks", async (req, res) => {
     const user = currentUser(req);
     const parsed = createCollectionTaskSchema.safeParse(req.body);
@@ -310,6 +362,43 @@ export function createServer() {
     return sendSuccess(res, updated);
   });
 
+  app.post("/collection-tasks/:id/metric-pulses", async (req, res) => {
+    const task = await getOwnedTask(currentUser(req).id, req.params.id);
+    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const parsed = metricPulseSchema.safeParse(req.body);
+    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "实时指标参数错误");
+    const capturedAt = new Date(parsed.data.localCapturedAt).getTime();
+    if (capturedAt > Date.now() + 60_000 || Date.now() - capturedAt > 5 * 60_000) {
+      return sendError(res, 400, "PULSE_TIME_INVALID", "实时指标时间超出允许范围");
+    }
+    if (parsed.data.tabState !== "VISIBLE") {
+      return sendError(res, 409, "PAGE_INACTIVE", "页面非活跃，实时信号已停止");
+    }
+    if (parsed.data.collectionRunId) {
+      const run = await prisma.collectionRun.findFirst({ where: { id: parsed.data.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }, select: { id: true } });
+      if (!run) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "巡检批次不存在或已停止");
+    }
+    return sendSuccess(res, recordMetricPulse(task.id, parsed.data), 202);
+  });
+
+  app.get("/collection-tasks/:id/signals/stream", async (req, res) => {
+    const task = await getOwnedTask(currentUser(req).id, req.params.id);
+    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    const push = (signals: ReturnType<typeof latestRealtimeSignals>) => res.write(`event: signals\ndata: ${JSON.stringify(signals)}\n\n`);
+    push(latestRealtimeSignals(task.id));
+    const unsubscribe = subscribeRealtimeSignals(task.id, push);
+    const heartbeat = setInterval(() => res.write(`event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`), 15_000);
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+  });
+
   app.post("/collection-tasks/:id/snapshots", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
@@ -340,7 +429,11 @@ export function createServer() {
       });
       if (!collectionRun) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "采集巡检不存在或已停止");
     }
-    const normalized = normalizeMetrics(snapshotPayload);
+    const aliasOverrides = await prisma.metricAliasOverride.findMany({
+      where: { workspaceId: task.project.workspaceId, active: true, pageType: { in: ["ANY", snapshotPayload.pageType] } },
+      select: { aliasNormalized: true, pageType: true, metricKey: true }
+    });
+    const normalized = normalizeMetrics(snapshotPayload, aliasOverrides as Parameters<typeof normalizeMetrics>[1]);
     try {
       const snapshot = await prisma.$transaction(async (tx) => {
         const created = await tx.dataSnapshot.create({
@@ -349,9 +442,10 @@ export function createServer() {
             idempotencyKey: idempotency.key,
             pageType: snapshotPayload.pageType,
             rawDomText: snapshotPayload.rawDomText,
-            rawNetworkJson: toJson(snapshotPayload.rawNetworkJson),
+            rawNetworkJson: toJson([]),
             rawTableData: toJson(snapshotPayload.rawTableData),
             visibleMetricsJson: toJson(normalized),
+            captureMetaJson: snapshotPayload.captureMeta ? toJson(snapshotPayload.captureMeta) : undefined,
             screenshotUrl: snapshotPayload.screenshotUrl || null,
             localCollectedAt: collectedAt,
             collectionRunId: snapshotPayload.collectionRunId || null,
@@ -394,6 +488,13 @@ export function createServer() {
           await refreshCollectionRunStatus(tx, collectionRun.id);
         }
         const initialized = await ensureReviewMetricsForTask({ id: task.id, snapshots: [created] }, tx);
+        const driftCount = await recordMetricDriftEvents(tx, {
+          projectId: task.projectId,
+          collectionTaskId: task.id,
+          snapshotId: created.id,
+          snapshot: snapshotPayload,
+          normalized
+        });
         await tx.collectionTask.update({
           where: { id: task.id },
           data: {
@@ -438,6 +539,14 @@ export function createServer() {
             },
             tx
           );
+        }
+        if (driftCount > 0) {
+          await writeAuditLog(req, "METRIC_DRIFT_DETECTED", {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            taskId: task.id,
+            detailJson: { snapshotId: created.id, driftCount, adapterId: snapshotPayload.captureMeta?.adapterId || null }
+          }, tx);
         }
         return created;
       });
@@ -769,32 +878,36 @@ export function createServer() {
       }
     }
 
+    const initialized = await prisma.$transaction(async (tx) => {
+      const result = await ensureReviewMetricsForTask(task, tx);
+      if (result.createdCount > 0) {
+        await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
+          workspaceId: task.project.workspaceId,
+          projectId: task.projectId,
+          taskId: task.id,
+          detailJson: {
+            taskId: task.id,
+            snapshotId: task.snapshots[0]?.id || null,
+            metricCount: result.createdCount,
+            source: "NormalizedMetric"
+          }
+        }, tx);
+      }
+      return result;
+    });
+    const refreshedTask = await getOwnedTask(currentUser(req).id, task.id);
+    if (!refreshedTask?.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const input = buildDecisionInput({
+      ...refreshedTask,
+      reviewedMetrics: initialized.metrics.length ? initialized.metrics : refreshedTask.reviewedMetrics
+    });
+    const { ruleOutput, finalOutput } = runDecisionEngine(input);
+
     try {
+      const transactionQueuedAt = performance.now();
+      let transactionStartedAt = transactionQueuedAt;
       const decisionRun = await prisma.$transaction(async (tx) => {
-        const initialized = await ensureReviewMetricsForTask(task, tx);
-        if (initialized.createdCount > 0) {
-          await writeAuditLog(
-            req,
-            "REVIEW_METRICS_INITIALIZED",
-            {
-              workspaceId: task.project.workspaceId,
-              projectId: task.projectId,
-              taskId: task.id,
-              detailJson: {
-                taskId: task.id,
-                snapshotId: task.snapshots[0]?.id || null,
-                metricCount: initialized.createdCount,
-                source: "NormalizedMetric"
-              }
-            },
-            tx
-          );
-        }
-        const input = buildDecisionInput({
-          ...task,
-          reviewedMetrics: initialized.metrics.length ? initialized.metrics : task.reviewedMetrics
-        });
-        const { ruleOutput, finalOutput } = runDecisionEngine(input);
+        transactionStartedAt = performance.now();
         const prepared = await prepareActionProposals(tx, {
           projectId: task.projectId,
           collectionTaskId: task.id,
@@ -898,6 +1011,11 @@ export function createServer() {
         );
         return withProposals;
       });
+      const transactionFinishedAt = performance.now();
+      res.setHeader(
+        "Server-Timing",
+        `decision-queue;dur=${(transactionStartedAt - transactionQueuedAt).toFixed(1)}, decision-write;dur=${(transactionFinishedAt - transactionStartedAt).toFixed(1)}`
+      );
       return sendSuccess(res, decisionRun, 201);
     } catch (error) {
       if (idempotency.key && isUniqueConstraintError(error)) {
@@ -935,15 +1053,6 @@ export function createServer() {
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const latestSnapshot = task.snapshots[0];
     if (!latestSnapshot) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-    const latestFailures = task.analyses.slice(0, 3);
-    if (
-      latestFailures.length === 3
-      && latestFailures.every((analysis) => analysis.status === "FAILED")
-      && Date.now() - latestFailures[0]!.createdAt.getTime() < 15 * 60 * 1000
-    ) {
-      return sendError(res, 503, "AI_CIRCUIT_OPEN", "AI 解释连续失败，已进入 15 分钟冷却；确定性决策仍可继续运行");
-    }
-
     const metrics = normalizedMetricsToVisibleMetrics(latestSnapshot.normalizedMetrics);
     const input: AnalyzeInput = {
       businessType: task.project.businessType as AnalyzeInput["businessType"],
@@ -979,7 +1088,7 @@ export function createServer() {
     });
 
     try {
-      const output = await provider.analyze(input);
+      const output = await executeWithAiCircuit(provider.name, provider.model, () => provider.analyze(input));
       const updated = await prisma.aiAnalysisTask.update({
         where: { id: analysisTask.id },
         data: {
@@ -1000,6 +1109,30 @@ export function createServer() {
       });
       return sendSuccess(res, updated, 201);
     } catch (error) {
+      if (error instanceof AiCircuitOpenError) {
+        const fallback = await prisma.aiAnalysisTask.update({
+          where: { id: analysisTask.id },
+          data: {
+            status: "SUCCEEDED",
+            provider: "deterministic-fallback",
+            model: "rule-template",
+            responsePayload: toJson({
+              summary: "AI解释服务正在渐进退避，当前请以确定性决策诊断、证据和人工复核项为准。",
+              manualCheckItems: [{ title: "AI解释降级", reason: error.retryAt ? `预计 ${error.retryAt.toISOString()} 后进行半开探测。` : "等待下一次半开探测。" }],
+              confidence: 1,
+              finalActionsSource: "decision-engine",
+              fallback: true
+            })
+          }
+        });
+        await writeAuditLog(req, "ai_explanation.fallback", {
+          workspaceId: task.project.workspaceId,
+          projectId: task.projectId,
+          taskId: task.id,
+          detailJson: { analysisTaskId: fallback.id, retryAt: error.retryAt?.toISOString() || null }
+        });
+        return sendSuccess(res, fallback, 201);
+      }
       const message = error instanceof Error ? error.message : "AI 分析失败";
       const failed = await prisma.aiAnalysisTask.update({
         where: { id: analysisTask.id },

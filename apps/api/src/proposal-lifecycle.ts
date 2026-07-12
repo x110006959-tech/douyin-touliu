@@ -1,11 +1,24 @@
-import type { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import type { ActionProposalDTO, ActionType } from "@douyin-local-life/shared";
 
 export const proposalLifecyclePolicy = {
-  expiresAfterMs: 15 * 60 * 1000,
+  expiresAfterMs: 30 * 60 * 1000,
+  volatileExpiresAfterMs: 90 * 1000,
+  tacticalExpiresAfterMs: 5 * 60 * 1000,
   cooldownMs: 30 * 60 * 1000,
   maxActionablePerProjectHour: 3
 } as const;
+
+export function proposalExpiresAfterMs(actionType: ActionType) {
+  if (["INCREASE_BUDGET", "DECREASE_BUDGET", "DECREASE_BID", "PAUSE_TASK", "ADJUST_ROI_TARGET"].includes(actionType)) {
+    return proposalLifecyclePolicy.volatileExpiresAfterMs;
+  }
+  if (["ADJUST_SERVICE_PROVIDER_SOP", "RENEGOTIATE_SERVICE_FEE", "REPAIR_REPUTATION", "CHECK_INVENTORY_BOOKING"].includes(actionType)) {
+    return proposalLifecyclePolicy.expiresAfterMs;
+  }
+  return proposalLifecyclePolicy.tacticalExpiresAfterMs;
+}
 
 const safeActionTypes = new Set<ActionType>([
   "OBSERVE",
@@ -32,7 +45,16 @@ export async function prepareActionProposals(
   }
 ) {
   const now = input.now || new Date();
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.projectId})) IS NULL AS locked`;
+  const batchLock = await tx.$queryRaw<Array<{ acquired: boolean }>>(Prisma.sql`
+    SELECT pg_try_advisory_xact_lock(hashtext(${input.projectId}), hashtext(${input.collectionTaskId})) AS acquired
+  `);
+  if (!batchLock[0]?.acquired) {
+    return {
+      accepted: [] as ActionProposalDTO[],
+      suppressed: input.proposals.map((proposal) => ({ actionType: proposal.actionType, reason: "COOLDOWN" as const })),
+      expiredProposalIds: [] as string[]
+    };
+  }
   const expiredProposals = await tx.actionProposal.findMany({
     where: {
       projectId: input.projectId,
@@ -50,44 +72,25 @@ export async function prepareActionProposals(
     data: { status: "EXPIRED" }
   });
 
-  const recentSince = new Date(now.getTime() - proposalLifecyclePolicy.cooldownMs);
-  const hourSince = new Date(now.getTime() - 60 * 60 * 1000);
-  const recent = await tx.actionProposal.findMany({
-    where: {
-      projectId: input.projectId,
-      collectionTaskId: input.collectionTaskId,
-      createdAt: { gte: recentSince },
-      status: { notIn: ["REJECTED", "EXPIRED", "SUPERSEDED"] }
-    },
-    select: { dedupeKey: true, actionType: true }
-  });
-  const recentKeys = new Set(recent.map((proposal) => proposal.dedupeKey || `${input.projectId}:${input.collectionTaskId}:${proposal.actionType}`));
-  const actionableLastHour = await tx.actionProposal.count({
-    where: {
-      projectId: input.projectId,
-      createdAt: { gte: hourSince },
-      actionType: { notIn: [...safeActionTypes] }
-    }
-  });
-  let actionableSlots = Math.max(0, proposalLifecyclePolicy.maxActionablePerProjectHour - actionableLastHour);
   const accepted: ActionProposalDTO[] = [];
   const suppressed: Array<{ actionType: ActionType; reason: "COOLDOWN" | "FREQUENCY_LIMIT" }> = [];
 
   for (const proposal of input.proposals) {
     const dedupeKey = `${input.projectId}:${input.collectionTaskId}:${proposal.actionType}`;
-    if (recentKeys.has(dedupeKey)) {
+    const gateId = await reserveProposalGate(tx, input.projectId, input.collectionTaskId, proposal.actionType, now);
+    if (!gateId) {
       suppressed.push({ actionType: proposal.actionType, reason: "COOLDOWN" });
       continue;
     }
     if (!isSafeActionType(proposal.actionType)) {
-      if (actionableSlots <= 0) {
+      const quotaReserved = await reserveStrongProposalQuota(tx, input.projectId, now);
+      if (!quotaReserved) {
+        await tx.actionProposalGate.deleteMany({ where: { id: gateId } });
         suppressed.push({ actionType: proposal.actionType, reason: "FREQUENCY_LIMIT" });
         continue;
       }
-      actionableSlots -= 1;
     }
     accepted.push(proposal);
-    recentKeys.add(dedupeKey);
     await tx.actionProposal.updateMany({
       where: {
         projectId: input.projectId,
@@ -99,6 +102,35 @@ export async function prepareActionProposals(
     });
   }
   return { accepted, suppressed, expiredProposalIds: expiredProposals.map((proposal) => proposal.id) };
+}
+
+async function reserveProposalGate(tx: Prisma.TransactionClient, projectId: string, collectionTaskId: string, actionType: ActionType, now: Date) {
+  const nextAllowedAt = new Date(now.getTime() + proposalLifecyclePolicy.cooldownMs);
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    INSERT INTO "ActionProposalGate" ("id", "projectId", "collectionTaskId", "actionType", "nextAllowedAt", "createdAt", "updatedAt")
+    VALUES (${randomUUID()}, ${projectId}, ${collectionTaskId}, ${actionType}::"ActionType", ${nextAllowedAt}, ${now}, ${now})
+    ON CONFLICT ("projectId", "collectionTaskId", "actionType") DO UPDATE
+    SET "nextAllowedAt" = EXCLUDED."nextAllowedAt", "updatedAt" = EXCLUDED."updatedAt"
+    WHERE "ActionProposalGate"."nextAllowedAt" <= ${now}
+    RETURNING "id"
+  `);
+  return rows[0]?.id || null;
+}
+
+async function reserveStrongProposalQuota(tx: Prisma.TransactionClient, projectId: string, now: Date) {
+  const windowStart = new Date(now);
+  windowStart.setUTCMinutes(0, 0, 0);
+  const rows = await tx.$queryRaw<Array<{ strongCount: number }>>(Prisma.sql`
+    INSERT INTO "ActionProposalQuota" ("id", "projectId", "windowStart", "strongCount", "version", "createdAt", "updatedAt")
+    VALUES (${randomUUID()}, ${projectId}, ${windowStart}, 1, 1, ${now}, ${now})
+    ON CONFLICT ("projectId", "windowStart") DO UPDATE
+    SET "strongCount" = "ActionProposalQuota"."strongCount" + 1,
+        "version" = "ActionProposalQuota"."version" + 1,
+        "updatedAt" = EXCLUDED."updatedAt"
+    WHERE "ActionProposalQuota"."strongCount" < ${proposalLifecyclePolicy.maxActionablePerProjectHour}
+    RETURNING "strongCount"
+  `);
+  return rows.length > 0;
 }
 
 export async function expireProposalIfNeeded(tx: Prisma.TransactionClient, actionProposalId: string, now = new Date()) {

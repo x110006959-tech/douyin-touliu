@@ -11,6 +11,7 @@ import {
   type DecisionEngineOutput
 } from "@douyin-local-life/shared";
 import { assessCollectionRunQuality } from "./collection-runs.js";
+import { proposalExpiresAfterMs } from "./proposal-lifecycle.js";
 import {
   normalizedMetricsToVisibleMetrics,
   reviewedMetricsToVisibleMetrics,
@@ -170,7 +171,7 @@ export function toActionProposalCreate(
     requiresApproval: true,
     blockedReason: proposal.blockedReason || null,
     status: "PENDING_APPROVAL",
-    expiresAt,
+    expiresAt: new Date(Math.min(expiresAt.getTime(), now.getTime() + proposalExpiresAfterMs(proposal.actionType))),
     dedupeKey
   };
 }

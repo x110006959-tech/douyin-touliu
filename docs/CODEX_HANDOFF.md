@@ -6,15 +6,15 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 
 ## 当前版本
 
-- 当前版本：V0.2.0
-- 当前状态：已完成
+- 当前版本：V0.2.1
+- 当前状态：本地实现完成，待最终制品与 staging 实机验收
 
 ## 当前已完成能力
 
 - 本地 Web/API 已跑通。
 - Chrome 审核承接页已可访问。
 - 已建立 Codex 上下文防丢失体系，包含 `AGENTS.md` 和 `docs/` 下的项目状态、交接、安全边界、路线图、部署状态、当前任务等文档。
-- Chrome Extension MV3 已具备授权采集可见页面数据和允许 JSON 响应的能力。
+- Chrome Extension MV3 生产版只采集授权页面的可见 DOM、真实表格和白名单指标；网络响应拦截已完全移除。
 - API 已支持 `DataSnapshot`、`NormalizedMetric`、`ReviewedMetric`、`DecisionRun`、`ActionProposal`、`ActionOutcome`。
 - 已完成数据复核表和字段来源标记。
 - 已建立标准指标字典 `MetricKey`。
@@ -32,7 +32,7 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 - 每次完成任务后必须同步更新 `docs/CODEX_HANDOFF.md`、`docs/PROJECT_STATE.md` 和 `docs/CURRENT_TASK.md`。
 - 如有架构决策，更新 `docs/DECISION_LOG.md`。
 - 如有部署变化，更新 `docs/DEPLOYMENT_STATE.md`。
-- 当前开发接力重点是把 V0.2.0 部署到服务器 staging，并用真实固定目标页面校准巡检路线。
+- 当前开发接力重点是发布 V0.2.1 可追溯制品，并在 staging 用真实固定目标页面校准适配器、覆盖率和实时延迟。
 
 ## 当前未完成事项
 
@@ -56,6 +56,19 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 - `corepack pnpm typecheck`：通过
 - `corepack pnpm test`：通过
 - `corepack pnpm build`：通过
+
+## 2026-07-12 V0.2.1 实时性与生产采集安全
+
+- V0.2.0 已以提交 `10caa9f` 固化并创建 `v0.2.0` 标签。
+- 根 `package.json` 是唯一产品版本源；Workspace、Extension manifest、API `/version`、Web 和 Side Panel 统一展示版本与短 Git SHA。
+- 生产 Extension 已删除 `injected.ts`、`injected.js`、`web_accessible_resources` 和 fetch/XHR 响应采集；`rawNetworkJson` 仅为数据库兼容字段且生产入库固定为空数组。
+- 新增页面适配器、`CaptureMeta`、字段覆盖率、页面指纹和 PARTIAL 标记；Canvas、虚拟列表或局部渲染不得伪装成完整证据。
+- 新增 5 秒节流的 `MetricPulse`、进程内有界缓冲、SSE 和只读 `RealtimeSignal`；正式快照和 `ActionProposal` 仍走持久化、规则、审批链路。
+- 强动作资格改为按动作评估；未知可选字段只阻断依赖它的动作。字段漂移进入人工校准队列，模糊 ROI 不自动映射。
+- 项目级串行锁已替换为任务级非阻塞批次门禁、`ActionProposalGate` 和小时 `ActionProposalQuota`；50 并发只落一批建议。
+- AI 解释使用 provider/model 级 `CLOSED / OPEN / HALF_OPEN` 状态机、一次抖动短重试和分级退避；熔断不影响确定性决策。
+- 已新增正式 Prisma baseline 和 V0.2.1 增量 migration；全新库和 V0.2.0 既有库升级路径均在临时 PostgreSQL 实跑通过。
+- 最终本地门禁：75 项测试、typecheck、production build、版本一致性、Prisma validate/generate 和生产依赖审计全部通过。
 
 ## 关键安全边界
 

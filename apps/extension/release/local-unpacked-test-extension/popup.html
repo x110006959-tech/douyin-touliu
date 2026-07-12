@@ -100,7 +100,7 @@
         <label><input id="routeTrend" type="checkbox" /> 小时趋势</label>
       </div>
       <div class="panel notice">
-        本插件仅在用户授权并打开目标后台页面时采集当前页面可见数据和允许的 JSON 响应。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。
+        本插件仅在用户授权并打开目标后台页面时采集当前页面可见数据，不拦截平台网络请求。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。
       </div>
       <div class="panel">
         <div class="muted">&#26412;&#22320;&#24555;&#29031;</div>
@@ -109,6 +109,7 @@
     </section>
     <footer>
       <button id="configBtn">&#37197;&#32622; API</button>
+      <button id="sidePanelBtn">打开实时侧边栏</button>
       <button id="startBtn" class="primary">&#24320;&#22987;&#37319;&#38598;</button>
       <button id="startPatrolBtn" class="primary">开启固定页面巡检</button>
       <button id="stopPatrolBtn">停止巡检</button>

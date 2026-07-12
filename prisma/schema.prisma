@@ -161,6 +161,18 @@ enum ActionOutcomeResult {
   UNCLEAR
 }
 
+enum MetricDriftStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
+enum AiCircuitState {
+  CLOSED
+  OPEN
+  HALF_OPEN
+}
+
 enum MetricSource {
   XHR_JSON
   TABLE
@@ -192,6 +204,8 @@ model User {
   executionLogs   ExecutionLog[]
   reviewedMetrics ReviewedMetric[]
   actionOutcomes  ActionOutcome[]
+  metricAliasesCreated MetricAliasOverride[] @relation("MetricAliasCreatedBy")
+  metricDriftsResolved MetricDriftEvent[] @relation("MetricDriftResolvedBy")
 }
 
 model Workspace {
@@ -203,6 +217,7 @@ model Workspace {
   owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   projects  Project[]
   auditLogs AuditLog[]
+  metricAliasOverrides MetricAliasOverride[]
 
   @@index([ownerId])
 }
@@ -230,6 +245,9 @@ model Project {
   actionProposals     ActionProposal[]
   executionLogs       ExecutionLog[]
   actionOutcomes      ActionOutcome[]
+  metricDriftEvents   MetricDriftEvent[]
+  actionProposalGates ActionProposalGate[]
+  actionProposalQuotas ActionProposalQuota[]
 
   @@index([workspaceId])
   @@index([subjectType, operatorType])
@@ -257,6 +275,8 @@ model CollectionTask {
   reviewedMetrics ReviewedMetric[]
   actionOutcomes  ActionOutcome[]
   collectionRuns  CollectionRun[]
+  metricDriftEvents MetricDriftEvent[]
+  actionProposalGates ActionProposalGate[]
 
   @@index([projectId])
   @@index([userId])
@@ -307,6 +327,7 @@ model DataSnapshot {
   rawNetworkJson     Json?
   rawTableData       Json?
   visibleMetricsJson Json?
+  captureMetaJson    Json?
   screenshotUrl      String?
   localCollectedAt   DateTime
   collectionRunId    String?
@@ -317,6 +338,7 @@ model DataSnapshot {
   normalizedMetrics  NormalizedMetric[]
   reviewedMetrics    ReviewedMetric[]
   collectionRun      CollectionRun?     @relation(fields: [collectionRunId], references: [id], onDelete: SetNull)
+  metricDriftEvents  MetricDriftEvent[]
 
   @@unique([taskId, idempotencyKey])
   @@index([taskId])
@@ -547,6 +569,97 @@ model ActionOutcome {
   @@index([userId])
   @@index([result])
   @@index([createdAt])
+}
+
+model MetricAliasOverride {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  aliasNormalized String
+  pageType        String    @default("ANY")
+  metricKey       String
+  active          Boolean   @default(true)
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy       User      @relation("MetricAliasCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, aliasNormalized, pageType])
+  @@index([workspaceId, active])
+  @@index([metricKey])
+}
+
+model MetricDriftEvent {
+  id              String            @id @default(cuid())
+  dedupeKey       String            @unique
+  projectId       String
+  collectionTaskId String
+  snapshotId      String?
+  rawField        String
+  aliasNormalized String
+  pageType        String
+  reason          String
+  candidateKeysJson Json?
+  status          MetricDriftStatus @default(OPEN)
+  resolvedMetricKey String?
+  resolvedById    String?
+  resolvedAt      DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask  CollectionTask    @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  snapshot        DataSnapshot?     @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  resolvedBy      User?             @relation("MetricDriftResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status, createdAt])
+  @@index([collectionTaskId, status])
+  @@index([aliasNormalized])
+}
+
+model ActionProposalGate {
+  id               String         @id @default(cuid())
+  projectId        String
+  collectionTaskId String
+  actionType       ActionType
+  nextAllowedAt    DateTime
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask   CollectionTask @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, collectionTaskId, actionType])
+  @@index([nextAllowedAt])
+}
+
+model ActionProposalQuota {
+  id          String   @id @default(cuid())
+  projectId   String
+  windowStart DateTime
+  strongCount Int      @default(0)
+  version     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, windowStart])
+  @@index([windowStart])
+}
+
+model AiProviderCircuit {
+  id                  String         @id @default(cuid())
+  provider            String
+  model               String
+  state               AiCircuitState @default(CLOSED)
+  consecutiveFailures Int            @default(0)
+  backoffLevel        Int            @default(0)
+  openedUntil         DateTime?
+  halfOpenLeaseUntil  DateTime?
+  lastError           String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([provider, model])
+  @@index([state, openedUntil])
 }
 
 model LegacyStrategyRule {

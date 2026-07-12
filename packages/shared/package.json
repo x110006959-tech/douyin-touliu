@@ -1,6 +1,6 @@
 {
   "name": "@douyin-local-life/shared",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -8,6 +8,16 @@
       "types": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./collection-routes": {
+      "types": "./src/collection-routes.ts",
+      "import": "./dist/collection-routes.js",
+      "default": "./dist/collection-routes.js"
+    },
+    "./safety": {
+      "types": "./src/safety.ts",
+      "import": "./dist/safety.js",
+      "default": "./dist/safety.js"
     }
   },
   "scripts": {

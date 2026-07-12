@@ -121,6 +121,16 @@ type DecisionPreview = {
   };
 };
 
+type MetricDriftEvent = {
+  id: string;
+  rawField: string;
+  aliasNormalized: string;
+  pageType: string;
+  reason: string;
+  candidateKeysJson: string[] | null;
+  createdAt: string;
+};
+
 export default function TaskDetailPage() {
   const params = useParams<{ id: string }>();
   const { token } = useAuth();
@@ -130,6 +140,7 @@ export default function TaskDetailPage() {
   const [decisionPreview, setDecisionPreview] = useState<DecisionPreview | null>(null);
   const [reviewMetrics, setReviewMetrics] = useState<ReviewedMetricDTO[]>([]);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
+  const [driftEvents, setDriftEvents] = useState<MetricDriftEvent[]>([]);
   const [error, setError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [busy, setBusy] = useState("");
@@ -152,8 +163,25 @@ export default function TaskDetailPage() {
         setDecisionRun(nextDecisionRun);
         applyReviewMetrics(nextReviewMetrics);
         setCollectionRun(nextCollectionRun);
+        void apiFetch<MetricDriftEvent[]>(`/projects/${nextTask.project.id}/metric-drift-events?status=OPEN`, token).then(setDriftEvents).catch(() => setDriftEvents([]));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "读取任务失败"));
+  }
+
+  async function resolveMetricDrift(event: MetricDriftEvent, metricKey: string) {
+    if (!token || !task) return;
+    setBusy(`drift:${event.id}`);
+    try {
+      await apiFetch(`/projects/${task.project.id}/metric-aliases/${encodeURIComponent(event.aliasNormalized)}`, token, {
+        method: "PUT",
+        body: JSON.stringify({ metricKey, pageType: event.pageType })
+      });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "字段映射失败");
+    } finally {
+      setBusy("");
+    }
   }
 
   useEffect(load, [token, params.id]);
@@ -348,6 +376,30 @@ export default function TaskDetailPage() {
               ) : null}
             </div>
           ) : <p className="text-sm text-muted">点击“决策预演”可在不写入正式记录的情况下检查当前数据。</p>}
+        </Card>
+      </section>
+
+      <section className="mb-4">
+        <Card>
+          <CardTitle>字段漂移待校准</CardTitle>
+          {driftEvents.length ? (
+            <div className="grid gap-2 text-sm">
+              {driftEvents.map((event) => (
+                <div className="grid gap-2 rounded-md border border-border p-3" key={event.id}>
+                  <div className="flex flex-wrap justify-between gap-2"><strong>{event.rawField}</strong><span className="text-muted">{event.pageType} / {event.reason}</span></div>
+                  {event.candidateKeysJson?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {event.candidateKeysJson.map((metricKey) => (
+                        <Button className="border border-border bg-white text-foreground" disabled={busy === `drift:${event.id}`} key={metricKey} onClick={() => void resolveMetricDrift(event, metricKey)} type="button">
+                          映射为 {metricKey}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : <p className="text-muted">当前页面覆盖不完整，需要校准页面适配器或改用截图/CSV/人工录入。</p>}
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-muted">当前没有待处理的字段漂移。</p>}
         </Card>
       </section>
 

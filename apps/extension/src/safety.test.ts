@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  addNetworkRecord,
-  isAllowedCaptureUrl,
-  isJsonContentType,
   normalizeApiBaseUrl,
   sanitizeSensitiveFields,
   sanitizeSnapshotPayload
@@ -69,38 +66,6 @@ describe("extension safety helpers", () => {
     });
   });
 
-  it("keeps only the newest 50 network records", () => {
-    const records: Array<{ url: string; method: string; status: number; responseJson: unknown; capturedAt?: string }> = [];
-    for (let i = 0; i < 55; i += 1) {
-      addNetworkRecord(records, {
-        url: `https://www.douyin.com/api/${i}?token=secret`,
-        method: "get",
-        status: 200,
-        responseJson: { index: i, phone: "13800138000" },
-        capturedAt: `2026-01-01T00:00:${String(i).padStart(2, "0")}Z`
-      });
-    }
-
-    expect(records).toHaveLength(50);
-    expect(records[0]?.responseJson).toEqual({ index: 54, phone: "[REDACTED]" });
-    expect(records[0]?.url).toContain("token=%5BREDACTED%5D");
-    expect(records.at(-1)?.responseJson).toEqual({ index: 5, phone: "[REDACTED]" });
-  });
-
-  it("recognizes JSON content types only", () => {
-    expect(isJsonContentType("application/json; charset=utf-8")).toBe(true);
-    expect(isJsonContentType("application/vnd.api+json")).toBe(true);
-    expect(isJsonContentType("text/html")).toBe(false);
-    expect(isJsonContentType(null)).toBe(false);
-  });
-
-  it("allows same-origin and allowlisted hosts only", () => {
-    const pageHref = "https://life.douyin.com/dashboard";
-    expect(isAllowedCaptureUrl("/api/live", pageHref)).toBe(true);
-    expect(isAllowedCaptureUrl("https://analytics.douyin.com/api/live", pageHref)).toBe(true);
-    expect(isAllowedCaptureUrl("https://evil.example.com/api/live", pageHref)).toBe(false);
-  });
-
   it("allows HTTPS SaaS endpoints and localhost development only", () => {
     expect(normalizeApiBaseUrl("https://api.pxxis.cn/")).toBe("https://api.pxxis.cn");
     expect(normalizeApiBaseUrl("http://127.0.0.1:4000")).toBe("http://127.0.0.1:4000");
@@ -124,8 +89,7 @@ describe("extension safety helpers", () => {
     });
 
     expect(snapshot.rawDomText).toBe("contact [REDACTED] [REDACTED] Bearer [REDACTED]");
-    expect(snapshot.rawNetworkJson[0]?.method).toBe("POST");
-    expect(snapshot.rawNetworkJson[0]?.responseJson).toEqual({ session: "[REDACTED]", data: [{ value: 1 }] });
+    expect(snapshot.rawNetworkJson).toEqual([]);
     expect(snapshot.rawTableData).toEqual([{ mobile: "[REDACTED]", safe: "ok" }]);
   });
 });

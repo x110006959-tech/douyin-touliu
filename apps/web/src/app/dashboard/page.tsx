@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { aiDisclaimer, extensionSafetyNotice, subjectTypeLabels, type SubjectType } from "@douyin-local-life/shared";
+import { aiDisclaimer, extensionSafetyNotice, subjectTypeLabels, type BuildMetadata, type SubjectType } from "@douyin-local-life/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
@@ -23,7 +23,7 @@ type SystemHealth = {
   status: "HEALTHY" | "DEGRADED";
   database: string;
   collection: { activeRuns: number; degradedRuns: number };
-  ai: { status: "READY" | "COOLDOWN"; cooldownEndsAt: string | null; recentFailures: number };
+  ai: { status: "CLOSED" | "OPEN" | "HALF_OPEN"; cooldownEndsAt: string | null; recentFailures: number; backoffLevel: number };
   checkedAt: string;
 };
 
@@ -31,14 +31,16 @@ export default function DashboardPage() {
   const { token, setToken } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [buildMetadata, setBuildMetadata] = useState<BuildMetadata | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([apiFetch<Project[]>("/projects", token), apiFetch<SystemHealth>("/system-health", token)])
-      .then(([nextProjects, nextHealth]) => {
+    Promise.all([apiFetch<Project[]>("/projects", token), apiFetch<SystemHealth>("/system-health", token), apiFetch<BuildMetadata>("/version", token)])
+      .then(([nextProjects, nextHealth, nextBuild]) => {
         setProjects(nextProjects);
         setSystemHealth(nextHealth);
+        setBuildMetadata(nextBuild);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "读取项目失败"));
   }, [token]);
@@ -109,11 +111,12 @@ export default function DashboardPage() {
             <strong className={systemHealth?.status === "DEGRADED" ? "text-danger" : "text-primary"}>{systemHealth?.status || "检查中"}</strong>
           </div>
           {systemHealth ? (
-            <div className="grid gap-3 text-sm sm:grid-cols-4">
+            <div className="grid gap-3 text-sm sm:grid-cols-5">
               <div><span className="text-muted">数据库</span><p className="font-semibold">{systemHealth.database}</p></div>
               <div><span className="text-muted">运行中巡检</span><p className="font-semibold">{systemHealth.collection.activeRuns}</p></div>
               <div><span className="text-muted">降级巡检</span><p className="font-semibold">{systemHealth.collection.degradedRuns}</p></div>
               <div><span className="text-muted">AI 解释</span><p className="font-semibold">{systemHealth.ai.status}</p></div>
+              <div><span className="text-muted">版本</span><p className="font-semibold">{buildMetadata ? `${buildMetadata.productVersion} / ${buildMetadata.gitSha.slice(0, 8)}` : "-"}</p></div>
             </div>
           ) : <p className="text-sm text-muted">正在读取数据库、采集路线和 AI 解释状态。</p>}
         </Card>

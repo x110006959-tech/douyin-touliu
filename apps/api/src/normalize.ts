@@ -1,11 +1,14 @@
 import {
   identifyMetricKey,
   metricKeyLabels,
+  normalizeMetricLookupValue,
   standardizeMetricKey,
   type CollectionSnapshotPayload,
   type MetricKey,
   type VisibleMetric
 } from "@douyin-local-life/shared";
+
+export type MetricAliasOverrideInput = { aliasNormalized: string; pageType: string; metricKey: MetricKey };
 
 const metricPatterns: Array<{ key: MetricKey; unit?: string; pattern: RegExp }> = [
   { key: "spend", unit: "元", pattern: /(?:消耗|广告消耗|今日消耗|投放消耗)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
@@ -45,12 +48,12 @@ const metricPatterns: Array<{ key: MetricKey; unit?: string; pattern: RegExp }> 
   { key: "rebate_coupon", unit: "元", pattern: /(?:消返券)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i }
 ];
 
-export function normalizeMetrics(snapshot: CollectionSnapshotPayload): VisibleMetric[] {
+export function normalizeMetrics(snapshot: CollectionSnapshotPayload, aliases: MetricAliasOverrideInput[] = []): VisibleMetric[] {
   const known = new Map<MetricKey, VisibleMetric>();
   const unknown: VisibleMetric[] = [];
 
   for (const metric of snapshot.visibleMetricsJson) {
-    const normalized = withSourceDefaults(metric);
+    const normalized = withSourceDefaults(metric, snapshot.pageType, aliases);
     if (normalized.key === "unknown") {
       unknown.push(normalized);
     } else {
@@ -82,8 +85,10 @@ export function normalizeMetrics(snapshot: CollectionSnapshotPayload): VisibleMe
   return [...known.values(), ...unknown];
 }
 
-function withSourceDefaults(metric: VisibleMetric): VisibleMetric {
-  const standardKey = standardizeMetricKey(metric);
+function withSourceDefaults(metric: VisibleMetric, pageType: string, aliases: MetricAliasOverrideInput[]): VisibleMetric {
+  const aliasCandidates = [metric.key, metric.name].map((value) => normalizeMetricLookupValue(String(value || "")));
+  const override = aliases.find((alias) => aliasCandidates.includes(alias.aliasNormalized) && (alias.pageType === "ANY" || alias.pageType === pageType));
+  const standardKey = override?.metricKey || standardizeMetricKey(metric);
   const metricSource = metric.metricSource || metricSourceFromLegacy(metric.source);
   const isKnown = standardKey !== "unknown";
   return {

@@ -29,6 +29,10 @@ afterAll(async () => {
 describe("V0.1 API smoke flow", () => {
   it("reports database readiness", async () => {
     await expect(api<{ ok: boolean; database: string }>("/ready", null)).resolves.toEqual({ ok: true, database: "ready" });
+    await expect(api<{ productVersion: string; gitSha: string }>("/version", null)).resolves.toMatchObject({
+      productVersion: "0.2.1",
+      gitSha: expect.any(String)
+    });
   });
 
   it("keeps the full decision, approval, manual execution, and audit trail loop", async () => {
@@ -120,12 +124,14 @@ describe("V0.1 API smoke flow", () => {
         metric("daily_budget", "daily budget", 1500),
         metric("cpa", "CPA", 200),
         metric("target_cpa", "target CPA", 80),
-        metric("target_roi", "target ROI", 1.4)
+        metric("target_roi", "target ROI", 1.4),
+        metric("new_ab_ctr", "新点击率", 0.02, "%")
       ],
       screenshotUrl: null,
       localCollectedAt: new Date().toISOString(),
       collectionRunId: collectionRun.id,
-      routeKey: "LIVE_DATA_SCREEN"
+      routeKey: "LIVE_DATA_SCREEN",
+      captureMeta: captureMeta("LIVE_DATA_SCREEN", ["verify_roi", "spend", "orders", "impressions", "ctr"])
     };
     const snapshotKey = `snapshot-${Date.now()}`;
     const snapshot = await api<{ id: string; normalizedMetrics: Array<{ metricKey: string }> }>(`/collection-tasks/${task.id}/snapshots`, token, {
@@ -145,6 +151,29 @@ describe("V0.1 API smoke flow", () => {
     const persistedSnapshotText = JSON.stringify(persistedSnapshot);
     expect(persistedSnapshotText).not.toContain("must-not-persist");
     expect(persistedSnapshotText).not.toContain("13800138000");
+    expect(persistedSnapshot.rawNetworkJson).toEqual([]);
+    const driftEvents = await api<Array<{ aliasNormalized: string; candidateKeysJson: string[] }>>(`/projects/${project.id}/metric-drift-events?status=OPEN`, token);
+    const ctrDrift = driftEvents.find((event) => event.candidateKeysJson.includes("ctr"));
+    expect(ctrDrift).toBeTruthy();
+    await api(`/projects/${project.id}/metric-aliases/${encodeURIComponent(ctrDrift!.aliasNormalized)}`, token, {
+      method: "PUT",
+      body: { metricKey: "ctr", pageType: "LIVE_DATA_SCREEN" }
+    });
+    expect((await api<Array<{ aliasNormalized: string }>>(`/projects/${project.id}/metric-drift-events?status=OPEN`, token)).some((event) => event.aliasNormalized === ctrDrift!.aliasNormalized)).toBe(false);
+
+    const pulse = await api<{ pulseCount: number; signals: unknown[] }>(`/collection-tasks/${task.id}/metric-pulses`, token, {
+      method: "POST",
+      body: {
+        collectionRunId: collectionRun.id,
+        routeKey: "LIVE_DATA_SCREEN",
+        pageType: "LIVE_DATA_SCREEN",
+        localCapturedAt: new Date().toISOString(),
+        tabState: "VISIBLE",
+        metrics: [metric("verify_roi", "verify ROI", 0.8), metric("spend", "spend", 1200), metric("orders", "orders", 0)],
+        captureMeta: captureMeta("LIVE_DATA_SCREEN", ["verify_roi", "spend", "orders"])
+      }
+    });
+    expect(pulse.pulseCount).toBe(1);
 
     const completedRun = await api<{ id: string; status: string; quality: { completeness: number; blocksStrongActions: boolean } }>(
       `/collection-tasks/${task.id}/collection-runs/latest`,
@@ -169,14 +198,23 @@ describe("V0.1 API smoke flow", () => {
     expect(preview.finalOutput.dataQuality.collectionQuality).toBeTruthy();
     expect(await prisma.decisionRun.count({ where: { collectionTaskId: task.id } })).toBe(decisionCountBeforePreview);
 
-    const decisionKeys = [`decision-${Date.now()}-a`, `decision-${Date.now()}-b`];
-    const concurrentRuns = await Promise.all(decisionKeys.map((decisionKey) =>
-      api<{ id: string; actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }> }>(
+    const decisionKeys = Array.from({ length: 50 }, (_, index) => `decision-${Date.now()}-${index}`);
+    const concurrentResults = await Promise.all(decisionKeys.map(async (decisionKey) => {
+      const startedAt = performance.now();
+      const timed = await apiWithDecisionTiming<{ id: string; actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }> }>(
         `/collection-tasks/${task.id}/decision-runs`,
         token,
         { method: "POST", headers: { "idempotency-key": decisionKey }, body: {} }
-      )
-    ));
+      );
+      return { run: timed.data, durationMs: performance.now() - startedAt, transactionMs: timed.transactionMs };
+    }));
+    const concurrentRuns = concurrentResults.map((result) => result.run);
+    const sortedDurations = concurrentResults.map((result) => result.durationMs).sort((a, b) => a - b);
+    const p95Duration = sortedDurations[Math.ceil(sortedDurations.length * 0.95) - 1] || 0;
+    const transactionDurations = concurrentResults.map((result) => result.transactionMs).sort((a, b) => a - b);
+    const p95Transaction = transactionDurations[Math.ceil(transactionDurations.length * 0.95) - 1] || 0;
+    expect(p95Duration).toBeLessThan(2_000);
+    expect(p95Transaction).toBeLessThan(150);
     expect(concurrentRuns.filter((run) => run.actionProposals.length > 0)).toHaveLength(1);
     const decisionRunIndex = concurrentRuns.findIndex((run) => run.actionProposals.length > 0);
     const decisionRun = concurrentRuns[decisionRunIndex];
@@ -524,6 +562,42 @@ type ProjectOutcomeSummaryResponse = {
 
 function metric(key: string, name: string, value: number | string | null, unit?: string) {
   return { key, name, value, unit: unit || null, source: "manual" };
+}
+
+function captureMeta(adapterId: string, fields: string[]) {
+  return {
+    adapterId,
+    adapterVersion: "1.0.0",
+    pageFingerprint: `fixture-${adapterId}`,
+    completeness: "COMPLETE",
+    coverageRatio: 1,
+    expectedFields: fields,
+    extractedFields: fields,
+    visibleRegions: ["fixture"],
+    renderModes: ["DOM"],
+    tabState: "VISIBLE",
+    originalBytes: 100,
+    acceptedBytes: 100,
+    truncatedFields: [],
+    truncationReasons: []
+  };
+}
+
+async function apiWithDecisionTiming<T>(
+  path: string,
+  token: string,
+  options: { method?: string; body?: unknown; headers?: Record<string, string> }
+) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: options.method || "GET",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...(options.headers || {}) },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+  });
+  const envelope = (await response.json()) as ApiEnvelope<T>;
+  if (!envelope.success) throw new Error(`${envelope.error.code}: ${envelope.error.message}`);
+  const timing = response.headers.get("server-timing") || "";
+  const transactionMs = Number(timing.match(/decision-write;dur=([\d.]+)/)?.[1] || Number.POSITIVE_INFINITY);
+  return { data: envelope.data, transactionMs };
 }
 
 async function api<T>(

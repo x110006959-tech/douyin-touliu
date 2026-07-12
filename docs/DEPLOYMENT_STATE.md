@@ -6,7 +6,7 @@
 - Chrome 审核承接页已可访问。
 - 当前尚未完成服务器 staging 部署。
 - 当前尚未切换正式域名流量。
-- V0.2.0 本地代码、数据库 schema 和 Extension 发布包已准备完成，尚未应用到服务器。
+- V0.2.1 本地代码和正式 migration 已准备完成，最终 Extension 发布包待全仓验证后生成，尚未应用到服务器。
 
 ## 域名规划
 
@@ -56,6 +56,15 @@
 3. 执行 `docker compose config --quiet` 和 `docker compose up -d --build --wait`。
 4. 通过服务器本机回环地址验证 Web 和 API，再配置 Nginx/Caddy HTTPS 反向代理。
 5. 域名备案、解析和证书完成前，不切换 `www.pxxis.cn` 正式流量。
+
+## 2026-07-12 V0.2.1 部署要求
+
+- 部署前备份数据库；既有 V0.2.0 数据库先将 baseline 标记为 applied，再执行 `prisma migrate deploy`，具体命令见 `docs/MIGRATION_NOTES.md`。
+- API 新增进程内 MetricPulse 环形缓冲，当前仅支持单 API 实例；多实例前必须迁移到 Redis 或其他共享时序缓冲。
+- Extension 新增 `sidePanel` 权限和 `api.pxxis.cn` 白名单，需要重新审核；生产包不含 injected/network capture。
+- 反向代理必须关闭 SSE 响应缓冲并延长 `/signals/stream` 读超时。
+- `GET /version`、Web 健康中心和 Side Panel 显示的版本与短 SHA 必须一致。
+- staging 用户需手动将关键平台站点加入 Chrome Memory Saver 例外列表，系统不会自动更改浏览器设置。
 
 ## Web 会话部署要求
 

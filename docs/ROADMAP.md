@@ -29,12 +29,14 @@
 - 校验服务器 API 鉴权、脱敏、白名单和错误处理。
 - 验证真实快照到数据复核表、决策建议、人工复盘的完整链路。
 
-## V0.2.1：页面模板和指标口径增强
+## V0.2.1：实时性、采集安全与发布一致性（本地实现完成）
 
-- 增强页面模板识别。
-- 增强 `MetricKey`、指标别名、单位换算和置信度策略。
-- 提升 unknown 字段进入人工复核层后的处理体验。
-- 增强不同本地生活投放场景下的诊断规则。
+- 生产 Extension 移除网络响应拦截，使用页面适配器和 CaptureMeta。
+- MetricPulse、SSE、RealtimeSignal 和 Chrome Side Panel 双速链路。
+- 按动作证据资格、字段漂移事件和人工别名热校准。
+- 任务级并发门禁、Gate/Quota、动态建议有效期和 AI provider/model 熔断。
+- 统一版本源、BuildMetadata、正式 migration、ZIP SHA256 与 CI 发布门禁。
+- 下一阶段在 staging 验证真实页面覆盖率、P95 延迟、浏览器标签生命周期和 Extension 审核。
 
 ## V0.3：团队协作和多项目管理增强
 

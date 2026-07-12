@@ -2,8 +2,8 @@
 
 ## 当前版本
 
-- 当前版本：V0.2.0
-- 状态：V0.2.0 本地开发与验收已完成，待 staging 实机验证
+- 当前版本：V0.2.1
+- 状态：V0.2.1 本地代码与 migration 已完成，待最终发布制品和 staging 实机验证
 - 当前系统仍然没有任何自动投放执行能力。
 - 正式网站域名已确认为 `www.pxxis.cn`，API 域名规划为 `api.pxxis.cn`。
 
@@ -35,7 +35,7 @@
 
 ## 当前闭环
 
-1. Chrome Extension 在用户授权且已打开页面中采集可见数据和允许 JSON 响应。
+1. Chrome Extension 在用户授权且已打开页面中通过页面适配器采集可见 DOM、真实表格和白名单指标。
 2. API 接收 `DataSnapshot`。
 3. API 生成 `NormalizedMetric`。
 4. 用户在 Web 中通过数据复核表确认、修改或忽略指标。
@@ -114,3 +114,16 @@
 - 连续失败路线会同时反映在巡检状态、质量 DTO、Web 强建议门槛和决策阻断原因中。
 - 建议生命周期的项目级并发检查已串行化；自动过期写入和审计使用同一事务。
 - 当前验证状态：71 项测试、typecheck、build、Prisma validate、Prisma generate 全部通过。
+
+## V0.2.1 实时性、采集安全与发布一致性（2026-07-12）
+
+- 生产 Extension 网络响应拦截已移除，新增 Side Panel、页面适配器和覆盖率元数据。
+- `MetricPulse` 每 5 秒最多上报一次，只保存在单实例有界内存；SSE 向 Side Panel 推送事实型实时信号。
+- 正式建议继续由服务端 `decision-engine` 生成，全部需要人工审批且只能人工执行。
+- `globalSafetyBlock` 与 `actionEligibility` 分离；未知字段按依赖动作降级，人工别名可热校准，漂移事件可审计。
+- 动作建议有效期按动作分为 60-90 秒、5 分钟和 30 分钟。
+- `ActionProposalGate`、`ActionProposalQuota` 和任务级非阻塞批次门禁取代项目级粗锁。
+- AI 解释熔断统一为 provider/model 级状态机，确定性模板可兜底。
+- 版本唯一来源、构建元数据、`/version`、SHA256 制品清单和 CI 发布门禁已接入。
+- Prisma migration 的全新安装与 V0.2.0 升级路径均已通过临时 PostgreSQL 验证。
+- 当前本地验证为 75 项测试全部通过；typecheck、build、版本检查、Prisma validate/generate 与生产依赖审计通过。
