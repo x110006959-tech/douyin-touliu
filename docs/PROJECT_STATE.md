@@ -127,3 +127,4 @@
 - 版本唯一来源、构建元数据、`/version`、SHA256 制品清单和 CI 发布门禁已接入。
 - Prisma migration 的全新安装与 V0.2.0 升级路径均已通过临时 PostgreSQL 验证。
 - 当前本地验证为 75 项测试全部通过；typecheck、build、版本检查、Prisma validate/generate 与生产依赖审计通过。
+- 最终 Extension ZIP 已按源码提交 `d08d7d12c7bf` 生成并通过制品安全测试，SHA256 为 `7f882564185bc4ddb2bba671d6dc21c0a7320451148bfaf6476558294a9d38cb`。

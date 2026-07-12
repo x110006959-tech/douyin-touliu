@@ -19,7 +19,7 @@ V0.2.1 最终发布制品与 staging 实机验收
 
 ## 当前目标
 
-完成全仓 typecheck/test/build、Prisma 校验、Extension 最终 ZIP 安全校验，形成 V0.2.1 发布提交与标签；随后在腾讯云 Ubuntu staging 和真实巨量本地推页面执行人工验收。
+V0.2.1 本地实现与最终 ZIP 已完成；当前仅剩发布提交/标签以及腾讯云 Ubuntu staging 和真实巨量本地推页面人工验收。
 
 ## 约束
 
@@ -37,3 +37,9 @@ V0.2.1 最终发布制品与 staging 实机验收
 4. 用户手动将关键站点加入 Chrome Memory Saver 例外列表。
 5. 按 `docs/V0.2.1_ACCEPTANCE.md` 验证隐藏、重载、丢弃、Canvas、虚拟列表和字段漂移场景。
 6. 真实页面校准通过后再评估 `www.pxxis.cn` / `api.pxxis.cn` 正式切换。
+
+## 最终制品
+
+- 源码提交：`d08d7d12c7bf`
+- ZIP：`apps/extension/release/collector-v0.2.1-d08d7d12c7bf.zip`
+- SHA256：`7f882564185bc4ddb2bba671d6dc21c0a7320451148bfaf6476558294a9d38cb`

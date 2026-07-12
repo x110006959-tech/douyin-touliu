@@ -69,6 +69,7 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 - AI 解释使用 provider/model 级 `CLOSED / OPEN / HALF_OPEN` 状态机、一次抖动短重试和分级退避；熔断不影响确定性决策。
 - 已新增正式 Prisma baseline 和 V0.2.1 增量 migration；全新库和 V0.2.0 既有库升级路径均在临时 PostgreSQL 实跑通过。
 - 最终本地门禁：75 项测试、typecheck、production build、版本一致性、Prisma validate/generate 和生产依赖审计全部通过。
+- 最终 Extension 制品：`collector-v0.2.1-d08d7d12c7bf.zip`，SHA256 `7f882564185bc4ddb2bba671d6dc21c0a7320451148bfaf6476558294a9d38cb`；最终 ZIP 安全测试通过。
 
 ## 关键安全边界
 
