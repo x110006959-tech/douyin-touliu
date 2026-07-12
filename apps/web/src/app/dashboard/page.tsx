@@ -19,15 +19,27 @@ type Project = {
   _count?: { tasks: number };
 };
 
+type SystemHealth = {
+  status: "HEALTHY" | "DEGRADED";
+  database: string;
+  collection: { activeRuns: number; degradedRuns: number };
+  ai: { status: "READY" | "COOLDOWN"; cooldownEndsAt: string | null; recentFailures: number };
+  checkedAt: string;
+};
+
 export default function DashboardPage() {
   const { token, setToken } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!token) return;
-    apiFetch<Project[]>("/projects", token)
-      .then(setProjects)
+    Promise.all([apiFetch<Project[]>("/projects", token), apiFetch<SystemHealth>("/system-health", token)])
+      .then(([nextProjects, nextHealth]) => {
+        setProjects(nextProjects);
+        setSystemHealth(nextHealth);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "读取项目失败"));
   }, [token]);
 
@@ -87,6 +99,23 @@ export default function DashboardPage() {
         <Card>
           <CardTitle>缺失处理</CardTitle>
           <p className="text-sm text-muted">主体不清、核销 ROI 缺失、活动未核验时只输出保守动作。</p>
+        </Card>
+      </section>
+
+      <section className="mb-6">
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <CardTitle>业务健康中心</CardTitle>
+            <strong className={systemHealth?.status === "DEGRADED" ? "text-danger" : "text-primary"}>{systemHealth?.status || "检查中"}</strong>
+          </div>
+          {systemHealth ? (
+            <div className="grid gap-3 text-sm sm:grid-cols-4">
+              <div><span className="text-muted">数据库</span><p className="font-semibold">{systemHealth.database}</p></div>
+              <div><span className="text-muted">运行中巡检</span><p className="font-semibold">{systemHealth.collection.activeRuns}</p></div>
+              <div><span className="text-muted">降级巡检</span><p className="font-semibold">{systemHealth.collection.degradedRuns}</p></div>
+              <div><span className="text-muted">AI 解释</span><p className="font-semibold">{systemHealth.ai.status}</p></div>
+            </div>
+          ) : <p className="text-sm text-muted">正在读取数据库、采集路线和 AI 解释状态。</p>}
         </Card>
       </section>
 

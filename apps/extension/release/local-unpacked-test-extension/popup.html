@@ -88,6 +88,16 @@
         <div class="row"><span class="muted">&#21487;&#37319;&#38598;</span><span id="collectable">-</span></div>
         <div class="row"><span class="muted">Token</span><span id="hasToken">-</span></div>
         <div class="row"><span class="muted">&#20219;&#21153; ID</span><span id="taskId">-</span></div>
+        <div class="row"><span class="muted">巡检状态</span><span id="patrolStatus">未开启</span></div>
+        <div class="row"><span class="muted">巡检批次</span><span id="collectionRunId">-</span></div>
+      </div>
+      <div class="panel">
+        <div class="muted">固定目标页面（请先由用户自行打开）</div>
+        <label><input id="routeDashboard" type="checkbox" checked /> 投放总览</label>
+        <label><input id="routeLive" type="checkbox" checked /> 直播大屏</label>
+        <label><input id="routeTask" type="checkbox" checked /> 任务/计划表</label>
+        <label><input id="routeMaterial" type="checkbox" /> 素材库</label>
+        <label><input id="routeTrend" type="checkbox" /> 小时趋势</label>
       </div>
       <div class="panel notice">
         本插件仅在用户授权并打开目标后台页面时采集当前页面可见数据和允许的 JSON 响应。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。
@@ -100,6 +110,8 @@
     <footer>
       <button id="configBtn">&#37197;&#32622; API</button>
       <button id="startBtn" class="primary">&#24320;&#22987;&#37319;&#38598;</button>
+      <button id="startPatrolBtn" class="primary">开启固定页面巡检</button>
+      <button id="stopPatrolBtn">停止巡检</button>
       <button id="refreshBtn">&#26597;&#30475;&#26412;&#22320;&#24555;&#29031;</button>
       <button id="uploadBtn">&#19978;&#20256;&#24555;&#29031;</button>
       <button id="clearBtn">&#28165;&#31354;&#26412;&#22320;&#24555;&#29031;</button>

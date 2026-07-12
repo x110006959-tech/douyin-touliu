@@ -23,6 +23,8 @@ describe("extension source safety guard", () => {
       /chrome\.history/,
       /chrome\.bookmarks/,
       /chrome\.downloads/
+      ,/chrome\.tabs\.(create|update|remove)/
+      ,/window\.location\s*=/
     ];
 
     for (const file of guardedFiles) {
@@ -31,6 +33,17 @@ describe("extension source safety guard", () => {
         expect(source, `${file} should not match ${pattern}`).not.toMatch(pattern);
       }
     }
+  });
+
+  it("keeps fixed-page patrol user-controlled and permission-neutral", () => {
+    const manifest = JSON.parse(readFileSync(resolve(root, "public/manifest.json"), "utf8"));
+    expect(manifest.permissions).toEqual(["activeTab", "storage"]);
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
+    expect(worker).toContain("START_PATROL");
+    expect(worker).toContain("STOP_PATROL");
+    expect(content).toContain("patrol.enabled");
+    expect(worker).not.toMatch(/chrome\.tabs\.(create|update)/);
   });
 
   it("keeps network capture opt-in and preserves the native XHR constructor", () => {

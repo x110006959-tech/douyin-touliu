@@ -48,6 +48,8 @@ type ActionProposalDetail = {
   rejectedAt: string | null;
   observedAt: string | null;
   manualExecutedAt: string | null;
+  expiresAt: string | null;
+  supersededAt: string | null;
   project: { id: string; name: string };
   collectionTask: { id: string; pageTitle: string | null; sourceUrl: string | null };
   decisionRun: { id: string; diagnosis: string; riskLevel: RiskLevel; confidence: number; strategyVersion: string; createdAt: string };
@@ -212,10 +214,13 @@ export default function ActionProposalDetailPage() {
           <span className="rounded-md border border-border px-2 py-1">{actionProposalStatusLabels[proposal.status]}</span>
           <span className="rounded-md border border-border px-2 py-1">风险 {proposal.riskLevel}</span>
           <span className="rounded-md border border-border px-2 py-1">置信度 {proposal.confidence}</span>
+          {proposal.expiresAt ? <span className="rounded-md border border-border px-2 py-1">有效至 {new Date(proposal.expiresAt).toLocaleString("zh-CN")}</span> : null}
         </div>
       </header>
 
       <div className="mb-4 rounded-lg border border-border bg-white p-3 text-sm text-muted">{aiDisclaimer}</div>
+      {proposal.status === "EXPIRED" ? <div className="mb-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">该建议已过期，请返回采集任务重新采集并生成决策。</div> : null}
+      {proposal.status === "SUPERSEDED" ? <div className="mb-4 rounded-md border border-border px-3 py-2 text-sm text-muted">该建议已被更新的决策替代，不应继续执行。</div> : null}
       {error ? <div className="mb-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_360px]">

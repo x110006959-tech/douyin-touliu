@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { snapshotSafetyLimits } from "./safety.js";
+import { collectionRouteKeys } from "./collection-routes.js";
 
 export * from "./safety.js";
+export * from "./collection-routes.js";
 
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
@@ -66,7 +68,7 @@ export const actionTypes = [
   "CALIBRATE_SUBJECT",
   "REQUEST_MANUAL_REVIEW"
 ] as const;
-export const actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "OBSERVING", "MANUAL_EXECUTED"] as const;
+export const actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "OBSERVING", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"] as const;
 export const approvalDecisions = ["APPROVE", "REJECT", "APPROVED", "REJECTED", "OBSERVE"] as const;
 export const executionModes = ["MANUAL"] as const;
 export const executionStatuses = ["PENDING", "MANUAL_EXECUTED", "FAILED"] as const;
@@ -238,7 +240,9 @@ export const actionProposalStatusLabels: Record<ActionProposalStatus, string> = 
   APPROVED: "已审批",
   REJECTED: "已拒绝",
   OBSERVING: "观察中",
-  MANUAL_EXECUTED: "人工已执行"
+  MANUAL_EXECUTED: "人工已执行",
+  EXPIRED: "已过期",
+  SUPERSEDED: "已被新建议替代"
 };
 
 export const approvalDecisionLabels: Record<ApprovalDecision, string> = {
@@ -542,6 +546,8 @@ export type CollectionSnapshotPayload = {
   visibleMetricsJson: VisibleMetric[];
   screenshotUrl?: string | null;
   localCollectedAt: string;
+  collectionRunId?: string | null;
+  routeKey?: import("./collection-routes.js").CollectionRouteKey;
 };
 
 export type SubjectContext = {
@@ -593,6 +599,7 @@ export type DecisionDataQuality = {
   reviewReady?: boolean;
   completeness: number;
   blocksStrongActions: boolean;
+  collectionQuality?: import("./collection-routes.js").CollectionQuality;
 };
 
 export type DecisionEngineInput = {
@@ -612,6 +619,7 @@ export type DecisionEngineInput = {
   dataReviewStatus?: DataReviewStatus;
   reviewCoverage?: ReviewCoverage;
   metricLayer?: MetricLayer;
+  collectionQuality?: import("./collection-routes.js").CollectionQuality;
 };
 
 export type ActionProposalDTO = {
@@ -635,6 +643,9 @@ export type ActionProposalDTO = {
   rejectedAt?: string | null;
   observedAt?: string | null;
   manualExecutedAt?: string | null;
+  expiresAt?: string | null;
+  dedupeKey?: string | null;
+  supersededAt?: string | null;
 };
 
 export type ActionOutcomeDTO = {
@@ -778,7 +789,9 @@ export const collectionSnapshotSchema = z.object({
   rawTableData: z.array(z.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
   visibleMetricsJson: z.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
   screenshotUrl: z.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
-  localCollectedAt: z.string().datetime()
+  localCollectedAt: z.string().datetime(),
+  collectionRunId: z.string().min(1).max(128).nullable().optional(),
+  routeKey: z.enum(collectionRouteKeys).optional()
 });
 
 export const manualCheckItemSchema = z.object({
@@ -793,7 +806,20 @@ export const decisionDataQualitySchema = z.object({
   subjectReady: z.boolean().optional(),
   reviewReady: z.boolean().optional(),
   completeness: z.number().min(0).max(1),
-  blocksStrongActions: z.boolean()
+  blocksStrongActions: z.boolean(),
+  collectionQuality: z.object({
+    requiredRoutes: z.array(z.enum(collectionRouteKeys)),
+    routes: z.array(z.object({
+      routeKey: z.enum(collectionRouteKeys),
+      state: z.enum(["FRESH", "AGING", "STALE", "MISSING"]),
+      lastCollectedAt: z.string().datetime().nullable(),
+      ageMs: z.number().nonnegative().nullable()
+    })),
+    completeness: z.number().min(0).max(1),
+    missingRoutes: z.array(z.enum(collectionRouteKeys)),
+    staleRoutes: z.array(z.enum(collectionRouteKeys)),
+    blocksStrongActions: z.boolean()
+  }).optional()
 });
 
 export const reviewCoverageSchema = z.object({

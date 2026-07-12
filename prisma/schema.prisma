@@ -118,6 +118,15 @@ enum ActionProposalStatus {
   REJECTED
   OBSERVING
   MANUAL_EXECUTED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum CollectionRunStatus {
+  ACTIVE
+  COMPLETED
+  STOPPED
+  DEGRADED
 }
 
 enum ApprovalDecision {
@@ -199,22 +208,22 @@ model Workspace {
 }
 
 model Project {
-  id                  String          @id @default(cuid())
+  id                  String           @id @default(cuid())
   workspaceId         String
   name                String
-  businessType        BusinessType    @default(DOUYIN_LOCAL_LIFE)
-  subjectType         SubjectType     @default(SUBJECT_PENDING)
-  operatorType        OperatorType    @default(OPERATOR_PENDING)
-  cooperationType     CooperationType @default(COOPERATION_PENDING)
-  controlLevel        ControlLevel    @default(PENDING)
-  subjectConfidence   Float           @default(0)
+  businessType        BusinessType     @default(DOUYIN_LOCAL_LIFE)
+  subjectType         SubjectType      @default(SUBJECT_PENDING)
+  operatorType        OperatorType     @default(OPERATOR_PENDING)
+  cooperationType     CooperationType  @default(COOPERATION_PENDING)
+  controlLevel        ControlLevel     @default(PENDING)
+  subjectConfidence   Float            @default(0)
   serviceProviderName String?
   serviceMode         String?
   serviceFee          Float?
-  status              ProjectStatus   @default(ACTIVE)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-  workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  status              ProjectStatus    @default(ACTIVE)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  workspace           Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks               CollectionTask[]
   auditLogs           AuditLog[]
   decisionRuns        DecisionRun[]
@@ -227,30 +236,66 @@ model Project {
 }
 
 model CollectionTask {
-  id         String               @id @default(cuid())
-  projectId  String
-  userId     String
-  status     CollectionTaskStatus @default(PENDING)
-  sourceUrl  String?
-  pageTitle  String?
-  startedAt  DateTime?
-  finishedAt DateTime?
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
-  project    Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  snapshots  DataSnapshot[]
-  analyses   AiAnalysisTask[]
-  auditLogs  AuditLog[]
+  id              String               @id @default(cuid())
+  projectId       String
+  userId          String
+  status          CollectionTaskStatus @default(PENDING)
+  sourceUrl       String?
+  pageTitle       String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots       DataSnapshot[]
+  analyses        AiAnalysisTask[]
+  auditLogs       AuditLog[]
   decisionRuns    DecisionRun[]
   actionProposals ActionProposal[]
   executionLogs   ExecutionLog[]
   reviewedMetrics ReviewedMetric[]
   actionOutcomes  ActionOutcome[]
+  collectionRuns  CollectionRun[]
 
   @@index([projectId])
   @@index([userId])
   @@index([status])
+}
+
+model CollectionRun {
+  id                 String                     @id @default(cuid())
+  taskId             String
+  status             CollectionRunStatus        @default(ACTIVE)
+  requiredRoutesJson Json
+  startedAt          DateTime                   @default(now())
+  lastSnapshotAt     DateTime?
+  completedAt        DateTime?
+  stoppedAt          DateTime?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  task               CollectionTask             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  snapshots          DataSnapshot[]
+  routeHealth        CollectionRouteHeartbeat[]
+
+  @@index([taskId, createdAt])
+  @@index([status])
+}
+
+model CollectionRouteHeartbeat {
+  id                  String        @id @default(cuid())
+  collectionRunId     String
+  routeKey            String
+  consecutiveFailures Int           @default(0)
+  lastAttemptAt       DateTime      @default(now())
+  lastSuccessAt       DateTime?
+  lastError           String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  collectionRun       CollectionRun @relation(fields: [collectionRunId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionRunId, routeKey])
+  @@index([collectionRunId, consecutiveFailures])
 }
 
 model DataSnapshot {
@@ -258,34 +303,38 @@ model DataSnapshot {
   taskId             String
   idempotencyKey     String?
   pageType           String?
-  rawDomText          String?
-  rawNetworkJson      Json?
-  rawTableData        Json?
-  visibleMetricsJson  Json?
-  screenshotUrl       String?
-  localCollectedAt    DateTime
-  uploadedAt          DateTime           @default(now())
-  createdAt           DateTime           @default(now())
-  task                CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  normalizedMetrics   NormalizedMetric[]
-  reviewedMetrics     ReviewedMetric[]
+  rawDomText         String?
+  rawNetworkJson     Json?
+  rawTableData       Json?
+  visibleMetricsJson Json?
+  screenshotUrl      String?
+  localCollectedAt   DateTime
+  collectionRunId    String?
+  routeKey           String?
+  uploadedAt         DateTime           @default(now())
+  createdAt          DateTime           @default(now())
+  task               CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  normalizedMetrics  NormalizedMetric[]
+  reviewedMetrics    ReviewedMetric[]
+  collectionRun      CollectionRun?     @relation(fields: [collectionRunId], references: [id], onDelete: SetNull)
 
-  @@index([taskId])
   @@unique([taskId, idempotencyKey])
+  @@index([taskId])
+  @@index([collectionRunId, routeKey])
 }
 
 model NormalizedMetric {
-  id           String       @id @default(cuid())
-  snapshotId   String
-  metricKey    String
-  metricName   String
-  metricValue  String
-  metricUnit   String?
-  metricSource String
-  confidence    Float        @default(0.5)
-  rawEvidence   Json?
-  createdAt    DateTime     @default(now())
-  snapshot      DataSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  id             String          @id @default(cuid())
+  snapshotId     String
+  metricKey      String
+  metricName     String
+  metricValue    String
+  metricUnit     String?
+  metricSource   String
+  confidence     Float           @default(0.5)
+  rawEvidence    Json?
+  createdAt      DateTime        @default(now())
+  snapshot       DataSnapshot    @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   reviewedMetric ReviewedMetric?
 
   @@index([snapshotId])
@@ -327,18 +376,18 @@ model ReviewedMetric {
 }
 
 model AiAnalysisTask {
-  id               String           @id @default(cuid())
+  id               String         @id @default(cuid())
   collectionTaskId String
   provider         String
   model            String
   promptVersion    String
-  status           AnalysisStatus   @default(PENDING)
+  status           AnalysisStatus @default(PENDING)
   requestPayload   Json?
   responsePayload  Json?
   errorMessage     String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  collectionTask   CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  collectionTask   CollectionTask @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
   decisionRuns     DecisionRun[]
 
   @@index([collectionTaskId])
@@ -346,15 +395,16 @@ model AiAnalysisTask {
 }
 
 model LegacyRecommendation {
-  id                   String         @id @default(cuid())
-  aiAnalysisTaskId      String
+  id                   String    @id @default(cuid())
+  aiAnalysisTaskId     String
   summary              String
   riskLevel            RiskLevel
   problemsJson         Json?
   suggestionsJson      Json?
   manualCheckItemsJson Json?
   confidence           Float
-  createdAt            DateTime       @default(now())
+  createdAt            DateTime  @default(now())
+
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
   @@map("Recommendation")
@@ -362,34 +412,34 @@ model LegacyRecommendation {
 }
 
 model DecisionRun {
-  id                 String           @id @default(cuid())
-  projectId          String
-  collectionTaskId   String
-  idempotencyKey     String?
-  aiAnalysisTaskId   String?
-  engineVersion      String
-  ruleVersion        String
-  strategyVersion    String           @default("local-life-rules-v0.1.0")
-  inputJson          Json?
-  riskLevel          RiskLevel
-  confidence         Float
-  diagnosis          String
-  ruleResultJson     Json
-  aiResultJson       Json?
-  finalResultJson    Json
+  id                   String           @id @default(cuid())
+  projectId            String
+  collectionTaskId     String
+  idempotencyKey       String?
+  aiAnalysisTaskId     String?
+  engineVersion        String
+  ruleVersion          String
+  strategyVersion      String           @default("local-life-rules-v0.1.0")
+  inputJson            Json?
+  riskLevel            RiskLevel
+  confidence           Float
+  diagnosis            String
+  ruleResultJson       Json
+  aiResultJson         Json?
+  finalResultJson      Json
   manualCheckItemsJson Json?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  collectionTask     CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
-  aiAnalysisTask     AiAnalysisTask?  @relation(fields: [aiAnalysisTaskId], references: [id], onDelete: SetNull)
-  actionProposals    ActionProposal[]
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask       CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  aiAnalysisTask       AiAnalysisTask?  @relation(fields: [aiAnalysisTaskId], references: [id], onDelete: SetNull)
+  actionProposals      ActionProposal[]
 
+  @@unique([collectionTaskId, idempotencyKey])
   @@index([projectId])
   @@index([collectionTaskId])
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
-  @@unique([collectionTaskId, idempotencyKey])
 }
 
 model ActionProposal {
@@ -413,6 +463,9 @@ model ActionProposal {
   rejectedAt       DateTime?
   observedAt       DateTime?
   manualExecutedAt DateTime?
+  expiresAt        DateTime?
+  dedupeKey        String?
+  supersededAt     DateTime?
   decisionRun      DecisionRun          @relation(fields: [decisionRunId], references: [id], onDelete: Cascade)
   project          Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   collectionTask   CollectionTask       @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
@@ -425,6 +478,8 @@ model ActionProposal {
   @@index([collectionTaskId])
   @@index([status])
   @@index([actionType])
+  @@index([projectId, dedupeKey, createdAt])
+  @@index([expiresAt])
 }
 
 model ApprovalRecord {
@@ -443,19 +498,19 @@ model ApprovalRecord {
 }
 
 model ExecutionLog {
-  id               String           @id @default(cuid())
+  id               String          @id @default(cuid())
   actionProposalId String
   projectId        String?
   collectionTaskId String?
   userId           String
-  mode             ExecutionMode    @default(MANUAL)
-  status           ExecutionStatus  @default(MANUAL_EXECUTED)
+  mode             ExecutionMode   @default(MANUAL)
+  status           ExecutionStatus @default(MANUAL_EXECUTED)
   note             String?
-  createdAt        DateTime         @default(now())
-  actionProposal   ActionProposal   @relation(fields: [actionProposalId], references: [id], onDelete: Cascade)
-  project          Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  collectionTask   CollectionTask?  @relation(fields: [collectionTaskId], references: [id], onDelete: SetNull)
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime        @default(now())
+  actionProposal   ActionProposal  @relation(fields: [actionProposalId], references: [id], onDelete: Cascade)
+  project          Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  collectionTask   CollectionTask? @relation(fields: [collectionTaskId], references: [id], onDelete: SetNull)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([actionProposalId])
   @@index([projectId])
@@ -485,13 +540,13 @@ model ActionOutcome {
   collectionTask    CollectionTask           @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
   user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([actionProposalId, idempotencyKey])
   @@index([actionProposalId])
   @@index([projectId])
   @@index([collectionTaskId])
   @@index([userId])
   @@index([result])
   @@index([createdAt])
-  @@unique([actionProposalId, idempotencyKey])
 }
 
 model LegacyStrategyRule {
@@ -507,6 +562,7 @@ model LegacyStrategyRule {
   effectJson    Json
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+
   @@index([projectId])
   @@index([subjectType])
   @@index([actionType])

@@ -5,7 +5,12 @@ import {
   decisionRuleVersion,
   runDecisionRules
 } from "@douyin-local-life/decision-engine";
-import type { ActionProposalDTO, DecisionEngineInput, DecisionEngineOutput } from "@douyin-local-life/shared";
+import {
+  type ActionProposalDTO,
+  type DecisionEngineInput,
+  type DecisionEngineOutput
+} from "@douyin-local-life/shared";
+import { assessCollectionRunQuality } from "./collection-runs.js";
 import {
   normalizedMetricsToVisibleMetrics,
   reviewedMetricsToVisibleMetrics,
@@ -33,6 +38,10 @@ export function buildDecisionInput(task: {
   };
   snapshots: Array<{
     id: string;
+    collectionRunId?: string | null;
+    routeKey?: string | null;
+    pageType?: string | null;
+    localCollectedAt?: Date;
     rawDomText: string | null;
     rawNetworkJson: Prisma.JsonValue | null;
     rawTableData: Prisma.JsonValue | null;
@@ -69,14 +78,37 @@ export function buildDecisionInput(task: {
     createdAt: Date;
     updatedAt: Date;
   }>;
+  collectionRuns?: Array<{
+    id: string;
+    requiredRoutesJson: Prisma.JsonValue;
+    snapshots: Array<{
+      routeKey: string | null;
+      pageType: string | null;
+      localCollectedAt: Date;
+    }>;
+    routeHealth?: Array<{ routeKey: string; consecutiveFailures: number }>;
+  }>;
 }): DecisionEngineInput {
   const latestSnapshot = task.snapshots[0];
   if (!latestSnapshot) {
     throw new Error("SNAPSHOT_REQUIRED");
   }
-  const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId === latestSnapshot.id);
+  const latestCollectionRun = task.collectionRuns?.[0];
+  const collectionRun = latestCollectionRun || (latestSnapshot.collectionRunId
+    ? task.collectionRuns?.find((run) => run.id === latestSnapshot.collectionRunId)
+    : undefined);
+  const selectedSnapshots = collectionRun
+    ? task.snapshots.filter((snapshot) => snapshot.collectionRunId === collectionRun.id)
+    : latestSnapshot.collectionRunId
+      ? task.snapshots.filter((snapshot) => snapshot.collectionRunId === latestSnapshot.collectionRunId)
+      : [latestSnapshot];
+  const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
+  const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
   const usableReviewedMetrics = selectedReviewedMetrics(latestReviewedMetrics);
   const useReviewedMetrics = usableReviewedMetrics.length > 0;
+  const collectionQuality = collectionRun
+    ? assessCollectionRunQuality(collectionRun.requiredRoutesJson, collectionRun.snapshots, collectionRun.routeHealth)
+    : undefined;
 
   return {
     projectId: task.project.id,
@@ -94,15 +126,18 @@ export function buildDecisionInput(task: {
     },
     pageTitle: task.pageTitle || "",
     sourceUrl: task.sourceUrl || "",
-    metrics: useReviewedMetrics ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics) : normalizedMetricsToVisibleMetrics(latestSnapshot.normalizedMetrics),
-    tables: Array.isArray(latestSnapshot.rawTableData) ? [...latestSnapshot.rawTableData] : [],
-    visibleText: latestSnapshot.rawDomText || "",
-    networkJsonSummary: Array.isArray(latestSnapshot.rawNetworkJson)
-      ? (latestSnapshot.rawNetworkJson.slice(0, 50) as DecisionEngineInput["networkJsonSummary"])
-      : [],
+    metrics: useReviewedMetrics
+      ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics)
+      : normalizedMetricsToVisibleMetrics(selectedSnapshots.flatMap((snapshot) => snapshot.normalizedMetrics)),
+    tables: selectedSnapshots.flatMap((snapshot) => Array.isArray(snapshot.rawTableData) ? [...snapshot.rawTableData] : []),
+    visibleText: selectedSnapshots.map((snapshot) => snapshot.rawDomText || "").filter(Boolean).join("\n\n"),
+    networkJsonSummary: selectedSnapshots.flatMap((snapshot) => Array.isArray(snapshot.rawNetworkJson)
+      ? (snapshot.rawNetworkJson.slice(0, 20) as DecisionEngineInput["networkJsonSummary"])
+      : []).slice(0, 50),
     dataReviewStatus: useReviewedMetrics ? "REVIEWED" : "UNREVIEWED",
     reviewCoverage: latestReviewedMetrics.length ? reviewCoverage(latestReviewedMetrics) : undefined,
-    metricLayer: useReviewedMetrics ? "REVIEWED_METRIC" : "NORMALIZED_METRIC"
+    metricLayer: useReviewedMetrics ? "REVIEWED_METRIC" : "NORMALIZED_METRIC",
+    collectionQuality
   };
 }
 
@@ -116,8 +151,11 @@ export function toActionProposalCreate(
   proposal: ActionProposalDTO,
   decisionRunId: string,
   projectId: string,
-  collectionTaskId: string
+  collectionTaskId: string,
+  now = new Date(),
+  expiresAt = new Date(now.getTime() + 15 * 60 * 1000)
 ): Prisma.ActionProposalCreateManyInput {
+  const dedupeKey = `${projectId}:${collectionTaskId}:${proposal.actionType}`;
   return {
     decisionRunId,
     projectId,
@@ -131,7 +169,9 @@ export function toActionProposalCreate(
     confidence: proposal.confidence,
     requiresApproval: true,
     blockedReason: proposal.blockedReason || null,
-    status: "PENDING_APPROVAL"
+    status: "PENDING_APPROVAL",
+    expiresAt,
+    dedupeKey
   };
 }
 

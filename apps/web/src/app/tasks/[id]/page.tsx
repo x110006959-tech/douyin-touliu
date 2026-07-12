@@ -95,11 +95,39 @@ type DecisionRun = {
   };
 };
 
+type CollectionRun = {
+  id: string;
+  status: "ACTIVE" | "COMPLETED" | "STOPPED" | "DEGRADED";
+  startedAt: string;
+  lastSnapshotAt: string | null;
+  quality: {
+    completeness: number;
+    blocksStrongActions: boolean;
+    missingRoutes: string[];
+    staleRoutes: string[];
+    routes: Array<{ routeKey: string; state: "FRESH" | "AGING" | "STALE" | "MISSING"; lastCollectedAt: string | null; ageMs: number | null }>;
+  };
+  routeHealth: Array<{ routeKey: string; consecutiveFailures: number; lastError: string | null }>;
+};
+
+type DecisionPreview = {
+  preview: true;
+  createsRecords: false;
+  finalOutput: {
+    diagnosis: string;
+    confidence: number;
+    dataQuality: { blocksStrongActions: boolean; blockingReasons?: string[] };
+    actionProposals: Array<{ actionType: ActionType; title: string; reason: string }>;
+  };
+};
+
 export default function TaskDetailPage() {
   const params = useParams<{ id: string }>();
   const { token } = useAuth();
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [decisionRun, setDecisionRun] = useState<DecisionRun | null>(null);
+  const [collectionRun, setCollectionRun] = useState<CollectionRun | null>(null);
+  const [decisionPreview, setDecisionPreview] = useState<DecisionPreview | null>(null);
   const [reviewMetrics, setReviewMetrics] = useState<ReviewedMetricDTO[]>([]);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -116,12 +144,14 @@ export default function TaskDetailPage() {
     Promise.all([
       apiFetch<TaskDetail>(`/collection-tasks/${params.id}`, token),
       apiFetch<DecisionRun | null>(`/collection-tasks/${params.id}/decision-runs/latest`, token),
-      apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token)
+      apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token),
+      apiFetch<CollectionRun | null>(`/collection-tasks/${params.id}/collection-runs/latest`, token)
     ])
-      .then(([nextTask, nextDecisionRun, nextReviewMetrics]) => {
+      .then(([nextTask, nextDecisionRun, nextReviewMetrics, nextCollectionRun]) => {
         setTask(nextTask);
         setDecisionRun(nextDecisionRun);
         applyReviewMetrics(nextReviewMetrics);
+        setCollectionRun(nextCollectionRun);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "读取任务失败"));
   }
@@ -156,6 +186,20 @@ export default function TaskDetailPage() {
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "决策运行失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function previewDecision() {
+    if (!token) return;
+    setBusy("decision-preview");
+    setError("");
+    try {
+      const preview = await apiFetch<DecisionPreview>(`/collection-tasks/${params.id}/decision-preview`, token, { method: "POST", body: "{}" });
+      setDecisionPreview(preview);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "决策预演失败");
     } finally {
       setBusy("");
     }
@@ -262,6 +306,9 @@ export default function TaskDetailPage() {
           <Button type="button" onClick={runDecision} disabled={!latestSnapshot || busy === "decision"}>
             运行决策
           </Button>
+          <Button className="border border-border bg-white text-foreground" type="button" onClick={previewDecision} disabled={!latestSnapshot || busy === "decision-preview"}>
+            决策预演
+          </Button>
         </div>
       </header>
 
@@ -269,6 +316,40 @@ export default function TaskDetailPage() {
         <strong className="mr-2">数据状态：</strong>
         <span className={reviewState.tone}>{reviewState.label}</span>
       </div>
+
+      <section className="mb-4 grid gap-3 md:grid-cols-2">
+        <Card>
+          <CardTitle>固定页面巡检</CardTitle>
+          {collectionRun ? (
+            <div className="grid gap-2 text-sm">
+              <div className="flex justify-between"><span>状态</span><strong>{collectionRun.status}</strong></div>
+              <div className="flex justify-between"><span>完整度</span><strong>{Math.round(collectionRun.quality.completeness * 100)}%</strong></div>
+              <div className="flex justify-between"><span>强建议门槛</span><strong>{collectionRun.quality.blocksStrongActions ? "已阻断" : "数据可用"}</strong></div>
+              {collectionRun.quality.routes.map((route) => (
+                <div className="flex justify-between rounded-md border border-border px-3 py-2" key={route.routeKey}>
+                  <span>{route.routeKey}</span><span>{route.state}</span>
+                </div>
+              ))}
+              {collectionRun.routeHealth.some((route) => route.consecutiveFailures > 0) ? (
+                <p className="text-danger">存在采集失败路线，请检查已打开页面和插件日志。</p>
+              ) : null}
+            </div>
+          ) : <p className="text-sm text-muted">尚未通过插件开启固定页面巡检。</p>}
+        </Card>
+        <Card>
+          <CardTitle>决策预演</CardTitle>
+          {decisionPreview ? (
+            <div className="grid gap-2 text-sm">
+              <p className="font-medium">{decisionPreview.finalOutput.diagnosis}</p>
+              <p>本次预演不会创建正式决策或动作建议。</p>
+              <p>候选建议：{decisionPreview.finalOutput.actionProposals.map((proposal) => proposal.title).join("、") || "无"}</p>
+              {decisionPreview.finalOutput.dataQuality.blockingReasons?.length ? (
+                <p className="text-danger">阻断原因：{decisionPreview.finalOutput.dataQuality.blockingReasons.join("；")}</p>
+              ) : null}
+            </div>
+          ) : <p className="text-sm text-muted">点击“决策预演”可在不写入正式记录的情况下检查当前数据。</p>}
+        </Card>
+      </section>
 
       <div className="mb-4 rounded-lg border border-border bg-white p-3 text-sm text-muted">{aiDisclaimer}</div>
       {error ? <div className="mb-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}

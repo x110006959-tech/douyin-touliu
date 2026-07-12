@@ -12,7 +12,19 @@ export function getOwnedTask(userId: string, taskId: string) {
     where: { id: taskId, project: { workspace: { ownerId: userId } } },
     include: {
       project: true,
-      snapshots: { orderBy: { createdAt: "desc" }, take: 5, include: { normalizedMetrics: true } },
+      snapshots: { orderBy: { createdAt: "desc" }, take: 20, include: { normalizedMetrics: true } },
+      collectionRuns: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          snapshots: {
+            orderBy: { localCollectedAt: "desc" },
+            take: 100,
+            select: { routeKey: true, pageType: true, localCollectedAt: true }
+          },
+          routeHealth: { select: { routeKey: true, consecutiveFailures: true } }
+        }
+      },
       reviewedMetrics: { orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }] },
       analyses: { orderBy: { createdAt: "desc" }, take: 20 },
       auditLogs: { orderBy: { createdAt: "desc" }, take: 100 }

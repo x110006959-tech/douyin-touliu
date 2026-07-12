@@ -516,7 +516,9 @@ function assessDataQuality(input: DecisionEngineInput, metrics: MetricReader, se
     ...(missingFields.length >= 3 ? ["关键指标缺失过多"] : []),
     ...(!subject.ready ? ["主体识别未完成"] : []),
     ...(!reviewReady ? ["数据未人工复核"] : []),
-    ...(lowConfidenceFields.length ? ["关键指标置信度不足"] : [])
+    ...(lowConfidenceFields.length ? ["关键指标置信度不足"] : []),
+    ...(input.collectionQuality?.missingRoutes.length ? [`采集路线缺失：${input.collectionQuality.missingRoutes.join("、")}`] : []),
+    ...(input.collectionQuality?.staleRoutes.length ? [`采集路线已过期：${input.collectionQuality.staleRoutes.join("、")}`] : [])
   ];
   const completeness = round((required.length - missingFields.length) / required.length, 2);
   return {
@@ -526,7 +528,8 @@ function assessDataQuality(input: DecisionEngineInput, metrics: MetricReader, se
     subjectReady: subject.ready,
     reviewReady,
     completeness,
-    blocksStrongActions: blockingReasons.length > 0
+    blocksStrongActions: blockingReasons.length > 0,
+    collectionQuality: input.collectionQuality
   };
 }
 

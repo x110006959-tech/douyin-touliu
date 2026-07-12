@@ -6,6 +6,8 @@ import {
   actionProposalStatuses,
   bulkReviewMetricInputSchema,
   collectionSnapshotSchema,
+  collectionFreshnessPolicy,
+  inferCollectionRoute,
   type CollectionSnapshotPayload,
   createActionOutcomeInputSchema,
   createCollectionTaskSchema,
@@ -35,6 +37,14 @@ import { cursorArgs, readPagination } from "./pagination.js";
 import { prisma } from "./prisma.js";
 import { sendError, sendSuccess } from "./response.js";
 import { createAuthRouter } from "./routes/auth.js";
+import { expireProposalIfNeeded, prepareActionProposals, proposalLifecyclePolicy } from "./proposal-lifecycle.js";
+import {
+  createCollectionRunSchema,
+  getOwnedCollectionRun,
+  refreshCollectionRunStatus,
+  reportCollectionRouteFailureSchema,
+  toCollectionRunDTO
+} from "./collection-runs.js";
 import { actionProposalAudit, currentUser, readOptionalText, toJson } from "./server-utils.js";
 import {
   ensureReviewMetricsForTask,
@@ -66,6 +76,49 @@ export function createServer() {
   app.use("/auth", createAuthRouter());
 
   app.use(authMiddleware);
+
+  app.get("/system-health", async (req, res) => {
+    const user = currentUser(req);
+    const [runs, recentAnalyses] = await Promise.all([
+      prisma.collectionRun.findMany({
+        where: { task: { project: { workspace: { ownerId: user.id } } } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include: {
+          snapshots: { orderBy: { localCollectedAt: "desc" }, take: 100 },
+          routeHealth: true
+        }
+      }),
+      prisma.aiAnalysisTask.findMany({
+        where: { collectionTask: { project: { workspace: { ownerId: user.id } } } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { status: true, createdAt: true, errorMessage: true }
+      })
+    ]);
+    const latestByTask = [...new Map(runs.map((run) => [run.taskId, run])).values()];
+    const collectionRuns = latestByTask.map(toCollectionRunDTO);
+    const degradedRuns = collectionRuns.filter((run) => run.status === "DEGRADED" || run.quality.blocksStrongActions).length;
+    const lastThreeAnalyses = recentAnalyses.slice(0, 3);
+    const aiCircuitOpen = lastThreeAnalyses.length === 3
+      && lastThreeAnalyses.every((analysis) => analysis.status === "FAILED")
+      && Date.now() - lastThreeAnalyses[0]!.createdAt.getTime() < 15 * 60 * 1000;
+    return sendSuccess(res, {
+      status: degradedRuns > 0 || aiCircuitOpen ? "DEGRADED" : "HEALTHY",
+      database: "READY",
+      collection: {
+        activeRuns: collectionRuns.filter((run) => run.status === "ACTIVE" || run.status === "COMPLETED").length,
+        degradedRuns,
+        runs: collectionRuns
+      },
+      ai: {
+        status: aiCircuitOpen ? "COOLDOWN" : "READY",
+        cooldownEndsAt: aiCircuitOpen ? new Date(lastThreeAnalyses[0]!.createdAt.getTime() + 15 * 60 * 1000).toISOString() : null,
+        recentFailures: recentAnalyses.filter((analysis) => analysis.status === "FAILED").length
+      },
+      checkedAt: new Date().toISOString()
+    });
+  });
 
   app.get("/workspaces", async (req, res) => {
     const user = currentUser(req);
@@ -156,6 +209,7 @@ export function createServer() {
   app.get("/projects/:id/action-proposals", async (req, res) => {
     const project = await getOwnedProject(currentUser(req).id, req.params.id);
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
+    await expireProjectProposalsWithAudit(req, project);
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
     if (status && !actionProposalStatuses.includes(status as (typeof actionProposalStatuses)[number])) {
       return sendError(res, 400, "VALIDATION_ERROR", "动作建议状态不合法");
@@ -184,6 +238,9 @@ export function createServer() {
         status: true,
         createdAt: true,
         updatedAt: true
+        ,expiresAt: true
+        ,dedupeKey: true
+        ,supersededAt: true
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: pagination.take,
@@ -270,8 +327,19 @@ export function createServer() {
     }
     const parsed = collectionSnapshotSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "快照参数错误");
+    const collectedAt = new Date(parsed.data.localCollectedAt);
+    if (collectedAt.getTime() > Date.now() + 5 * 60 * 1000) {
+      return sendError(res, 400, "COLLECTION_TIME_INVALID", "采集时间超出服务器允许的时钟偏差");
+    }
 
     const snapshotPayload = sanitizeCollectionSnapshotPayload(parsed.data) as CollectionSnapshotPayload;
+    const routeKey = snapshotPayload.routeKey || inferCollectionRoute(snapshotPayload);
+    if (snapshotPayload.collectionRunId) {
+      const collectionRun = await prisma.collectionRun.findFirst({
+        where: { id: snapshotPayload.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }
+      });
+      if (!collectionRun) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "采集巡检不存在或已停止");
+    }
     const normalized = normalizeMetrics(snapshotPayload);
     try {
       const snapshot = await prisma.$transaction(async (tx) => {
@@ -285,7 +353,9 @@ export function createServer() {
             rawTableData: toJson(snapshotPayload.rawTableData),
             visibleMetricsJson: toJson(normalized),
             screenshotUrl: snapshotPayload.screenshotUrl || null,
-            localCollectedAt: new Date(snapshotPayload.localCollectedAt),
+            localCollectedAt: collectedAt,
+            collectionRunId: snapshotPayload.collectionRunId || null,
+            routeKey,
             normalizedMetrics: {
               create: normalized.map((metric: VisibleMetric) => ({
                 metricKey: metric.key,
@@ -300,6 +370,29 @@ export function createServer() {
           },
           include: { normalizedMetrics: true }
         });
+        if (snapshotPayload.collectionRunId) {
+          const collectionRun = await tx.collectionRun.findFirst({
+            where: { id: snapshotPayload.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }
+          });
+          if (!collectionRun) throw new Error("COLLECTION_RUN_NOT_ACTIVE");
+          await tx.collectionRouteHeartbeat.upsert({
+            where: { collectionRunId_routeKey: { collectionRunId: collectionRun.id, routeKey } },
+            create: {
+              collectionRunId: collectionRun.id,
+              routeKey,
+              consecutiveFailures: 0,
+              lastAttemptAt: new Date(),
+              lastSuccessAt: new Date()
+            },
+            update: {
+              consecutiveFailures: 0,
+              lastAttemptAt: new Date(),
+              lastSuccessAt: new Date(),
+              lastError: null
+            }
+          });
+          await refreshCollectionRunStatus(tx, collectionRun.id);
+        }
         const initialized = await ensureReviewMetricsForTask({ id: task.id, snapshots: [created] }, tx);
         await tx.collectionTask.update({
           where: { id: task.id },
@@ -321,6 +414,8 @@ export function createServer() {
               metricCount: normalized.length,
               sourceUrl: snapshotPayload.sourceUrl,
               pageType: snapshotPayload.pageType,
+              routeKey,
+              collectionRunId: snapshotPayload.collectionRunId || null,
               idempotencyKey: idempotency.key
             }
           },
@@ -360,6 +455,98 @@ export function createServer() {
       }
       throw error;
     }
+  });
+
+  app.post("/collection-tasks/:id/collection-runs", async (req, res) => {
+    const user = currentUser(req);
+    const task = await getOwnedTask(user.id, req.params.id);
+    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const parsed = createCollectionRunSchema.safeParse(req.body || {});
+    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "采集路线配置错误");
+    const run = await prisma.$transaction(async (tx) => {
+      await tx.collectionRun.updateMany({
+        where: { taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } },
+        data: { status: "STOPPED", stoppedAt: new Date() }
+      });
+      const created = await tx.collectionRun.create({
+        data: { taskId: task.id, requiredRoutesJson: toJson(parsed.data.requiredRoutes) },
+        include: { snapshots: true, routeHealth: true }
+      });
+      await writeAuditLog(req, "collection_run.started", {
+        workspaceId: task.project.workspaceId,
+        projectId: task.projectId,
+        taskId: task.id,
+        detailJson: { collectionRunId: created.id, requiredRoutes: parsed.data.requiredRoutes }
+      }, tx);
+      return created;
+    });
+    return sendSuccess(res, toCollectionRunDTO(run), 201);
+  });
+
+  app.get("/collection-tasks/:id/collection-runs/latest", async (req, res) => {
+    const task = await getOwnedTask(currentUser(req).id, req.params.id);
+    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const run = await prisma.collectionRun.findFirst({
+      where: { taskId: task.id },
+      orderBy: { createdAt: "desc" },
+      include: { snapshots: { orderBy: { localCollectedAt: "desc" }, take: 100 }, routeHealth: true }
+    });
+    return sendSuccess(res, run ? toCollectionRunDTO(run) : null);
+  });
+
+  app.post("/collection-runs/:id/stop", async (req, res) => {
+    const run = await getOwnedCollectionRun(currentUser(req).id, req.params.id);
+    if (!run) return sendError(res, 404, "COLLECTION_RUN_NOT_FOUND", "采集巡检不存在");
+    const stopped = await prisma.$transaction(async (tx) => {
+      const updated = await tx.collectionRun.update({
+        where: { id: run.id },
+        data: { status: "STOPPED", stoppedAt: new Date() },
+        include: { snapshots: { orderBy: { localCollectedAt: "desc" }, take: 100 }, routeHealth: true }
+      });
+      await writeAuditLog(req, "collection_run.stopped", {
+        workspaceId: run.task.project.workspaceId,
+        projectId: run.task.projectId,
+        taskId: run.taskId,
+        detailJson: { collectionRunId: run.id }
+      }, tx);
+      return updated;
+    });
+    return sendSuccess(res, toCollectionRunDTO(stopped));
+  });
+
+  app.post("/collection-runs/:id/failures", async (req, res) => {
+    const run = await getOwnedCollectionRun(currentUser(req).id, req.params.id);
+    if (!run) return sendError(res, 404, "COLLECTION_RUN_NOT_FOUND", "采集巡检不存在");
+    if (run.status === "STOPPED") return sendError(res, 409, "COLLECTION_RUN_STOPPED", "采集巡检已停止");
+    const parsed = reportCollectionRouteFailureSchema.safeParse(req.body);
+    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "采集失败信息错误");
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.collectionRouteHeartbeat.upsert({
+        where: { collectionRunId_routeKey: { collectionRunId: run.id, routeKey: parsed.data.routeKey } },
+        create: {
+          collectionRunId: run.id,
+          routeKey: parsed.data.routeKey,
+          consecutiveFailures: 1,
+          lastAttemptAt: new Date(),
+          lastError: parsed.data.error
+        },
+        update: {
+          consecutiveFailures: { increment: 1 },
+          lastAttemptAt: new Date(),
+          lastError: parsed.data.error
+        }
+      });
+      const refreshed = await refreshCollectionRunStatus(tx, run.id);
+      await writeAuditLog(req, "collection_route.failed", {
+        workspaceId: run.task.project.workspaceId,
+        projectId: run.task.projectId,
+        taskId: run.taskId,
+        detailJson: { collectionRunId: run.id, routeKey: parsed.data.routeKey, error: parsed.data.error }
+      }, tx);
+      return refreshed;
+    });
+    const full = await getOwnedCollectionRun(currentUser(req).id, updated!.id);
+    return sendSuccess(res, full ? toCollectionRunDTO(full) : null);
   });
 
   app.get("/collection-tasks/:id/snapshots", async (req, res) => {
@@ -549,6 +736,22 @@ export function createServer() {
     return sendSuccess(res, metrics.map(toReviewedMetricDTO));
   });
 
+  app.post("/collection-tasks/:id/decision-preview", async (req, res) => {
+    const task = await getOwnedTask(currentUser(req).id, req.params.id);
+    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    if (!task.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const input = buildDecisionInput(task);
+    const { ruleOutput, finalOutput } = runDecisionEngine(input);
+    return sendSuccess(res, {
+      preview: true,
+      createsRecords: false,
+      input,
+      ruleOutput,
+      finalOutput,
+      lifecyclePolicy: proposalLifecyclePolicy
+    });
+  });
+
   app.post("/collection-tasks/:id/decision-runs", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
@@ -592,28 +795,51 @@ export function createServer() {
           reviewedMetrics: initialized.metrics.length ? initialized.metrics : task.reviewedMetrics
         });
         const { ruleOutput, finalOutput } = runDecisionEngine(input);
+        const prepared = await prepareActionProposals(tx, {
+          projectId: task.projectId,
+          collectionTaskId: task.id,
+          proposals: finalOutput.actionProposals
+        });
+        if (prepared.expiredProposalIds.length) {
+          await writeAuditLog(req, "action_proposals.expired", {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            detailJson: {
+              actionProposalIds: prepared.expiredProposalIds,
+              expiredCount: prepared.expiredProposalIds.length,
+              source: "decision_run"
+            }
+          }, tx);
+        }
+        const persistedOutput = { ...finalOutput, actionProposals: prepared.accepted };
         const created = await tx.decisionRun.create({
           data: {
             projectId: task.projectId,
             collectionTaskId: task.id,
             idempotencyKey: idempotency.key,
-            engineVersion: finalOutput.engineVersion || "decision-engine-v0.1.0",
-            ruleVersion: finalOutput.ruleVersion || strategyVersion,
-            strategyVersion: finalOutput.strategyVersion || strategyVersion,
+            engineVersion: persistedOutput.engineVersion || "decision-engine-v0.1.0",
+            ruleVersion: persistedOutput.ruleVersion || strategyVersion,
+            strategyVersion: persistedOutput.strategyVersion || strategyVersion,
             inputJson: toJson(input),
             ruleResultJson: toJson(ruleOutput),
-            finalResultJson: toJson(finalOutput),
-            manualCheckItemsJson: toJson(finalOutput.manualCheckItems),
-            riskLevel: finalOutput.riskLevel,
-            confidence: finalOutput.confidence,
-            diagnosis: finalOutput.diagnosis
+            finalResultJson: toJson(persistedOutput),
+            manualCheckItemsJson: toJson(persistedOutput.manualCheckItems),
+            riskLevel: persistedOutput.riskLevel,
+            confidence: persistedOutput.confidence,
+            diagnosis: persistedOutput.diagnosis
           }
         });
 
-        if (finalOutput.actionProposals.length > 0) {
+        if (persistedOutput.actionProposals.length > 0) {
+          const proposalCreatedAt = new Date();
+          const oldestRouteAgeMs = input.collectionQuality?.routes.reduce((max, route) => Math.max(max, route.ageMs || 0), 0) || 0;
+          const sourceRemainingMs = input.collectionQuality
+            ? Math.max(0, collectionFreshnessPolicy.staleAfterMs - oldestRouteAgeMs)
+            : proposalLifecyclePolicy.expiresAfterMs;
+          const proposalExpiresAt = new Date(proposalCreatedAt.getTime() + Math.min(proposalLifecyclePolicy.expiresAfterMs, sourceRemainingMs));
           await tx.actionProposal.createMany({
-            data: finalOutput.actionProposals.map((proposal) =>
-              toActionProposalCreate(proposal, created.id, task.projectId, task.id)
+            data: persistedOutput.actionProposals.map((proposal) =>
+              toActionProposalCreate(proposal, created.id, task.projectId, task.id, proposalCreatedAt, proposalExpiresAt)
             )
           });
         }
@@ -645,7 +871,11 @@ export function createServer() {
             workspaceId: task.project.workspaceId,
             projectId: task.projectId,
             taskId: task.id,
-            detailJson: { decisionRunId: withProposals.id, actionProposalCount: withProposals.actionProposals.length }
+              detailJson: {
+                decisionRunId: withProposals.id,
+                actionProposalCount: withProposals.actionProposals.length,
+                suppressedProposals: prepared.suppressed
+              }
           },
           tx
         );
@@ -705,6 +935,14 @@ export function createServer() {
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const latestSnapshot = task.snapshots[0];
     if (!latestSnapshot) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const latestFailures = task.analyses.slice(0, 3);
+    if (
+      latestFailures.length === 3
+      && latestFailures.every((analysis) => analysis.status === "FAILED")
+      && Date.now() - latestFailures[0]!.createdAt.getTime() < 15 * 60 * 1000
+    ) {
+      return sendError(res, 503, "AI_CIRCUIT_OPEN", "AI 解释连续失败，已进入 15 分钟冷却；确定性决策仍可继续运行");
+    }
 
     const metrics = normalizedMetricsToVisibleMetrics(latestSnapshot.normalizedMetrics);
     const input: AnalyzeInput = {
@@ -792,8 +1030,12 @@ export function createServer() {
   });
 
   app.get("/action-proposals/:id", async (req, res) => {
-    const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
+    let proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
+    if (proposal.expiresAt && proposal.expiresAt <= new Date()) {
+      await expireActionProposalWithAudit(req, proposal);
+      proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
+    }
     return sendSuccess(res, proposal);
   });
 
@@ -878,6 +1120,10 @@ export function createServer() {
   app.post("/action-proposals/:id/approve", async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
+    if (proposal.expiresAt && proposal.expiresAt <= new Date()) {
+      await expireActionProposalWithAudit(req, proposal);
+      return sendError(res, 409, "ACTION_EXPIRED", "动作建议已过期，请重新采集并生成决策");
+    }
     if (proposal.status !== "PENDING_APPROVAL") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", "只有待审批动作建议可以审批通过");
     }
@@ -900,6 +1146,10 @@ export function createServer() {
   app.post("/action-proposals/:id/reject", async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
+    if (proposal.expiresAt && proposal.expiresAt <= new Date()) {
+      await expireActionProposalWithAudit(req, proposal);
+      return sendError(res, 409, "ACTION_EXPIRED", "动作建议已过期，请重新采集并生成决策");
+    }
     if (proposal.status !== "PENDING_APPROVAL") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", "只有待审批动作建议可以拒绝");
     }
@@ -922,6 +1172,10 @@ export function createServer() {
   app.post("/action-proposals/:id/observe", async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
+    if (proposal.expiresAt && proposal.expiresAt <= new Date()) {
+      await expireActionProposalWithAudit(req, proposal);
+      return sendError(res, 409, "ACTION_EXPIRED", "动作建议已过期，请重新采集并生成决策");
+    }
     if (proposal.status !== "PENDING_APPROVAL") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", "只有待审批动作建议可以设置观察");
     }
@@ -944,6 +1198,10 @@ export function createServer() {
   app.post("/action-proposals/:id/mark-manual-executed", async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
+    if (proposal.expiresAt && proposal.expiresAt <= new Date()) {
+      await expireActionProposalWithAudit(req, proposal);
+      return sendError(res, 409, "ACTION_EXPIRED", "动作建议已过期，请重新采集并生成决策");
+    }
     if (proposal.status !== "APPROVED") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", "只有已审批动作建议可以标记人工已执行");
     }
@@ -992,4 +1250,68 @@ export function createServer() {
     return sendError(res, 500, "INTERNAL_ERROR", message, { requestId });
   });
   return app;
+}
+
+async function expireActionProposalWithAudit(
+  req: Request,
+  proposal: {
+    id: string;
+    projectId: string;
+    collectionTaskId: string;
+    project: { workspaceId: string };
+  }
+) {
+  return prisma.$transaction(async (tx) => {
+    const expired = await expireProposalIfNeeded(tx, proposal.id);
+    if (expired) {
+      await writeAuditLog(
+        req,
+        "action_proposal.expired",
+        actionProposalAudit(req, proposal, "ACTION_PROPOSAL_EXPIRED", {
+          actionProposalId: proposal.id,
+          source: "proposal_access"
+        }),
+        tx
+      );
+    }
+    return expired;
+  });
+}
+
+async function expireProjectProposalsWithAudit(
+  req: Request,
+  project: { id: string; workspaceId: string }
+) {
+  const now = new Date();
+  return prisma.$transaction(async (tx) => {
+    const candidates = await tx.actionProposal.findMany({
+      where: {
+        projectId: project.id,
+        status: { in: ["PENDING_APPROVAL", "APPROVED", "OBSERVING"] },
+        expiresAt: { lte: now }
+      },
+      select: { id: true }
+    });
+    if (!candidates.length) return 0;
+    const result = await tx.actionProposal.updateMany({
+      where: {
+        id: { in: candidates.map((proposal) => proposal.id) },
+        status: { in: ["PENDING_APPROVAL", "APPROVED", "OBSERVING"] },
+        expiresAt: { lte: now }
+      },
+      data: { status: "EXPIRED" }
+    });
+    if (result.count) {
+      await writeAuditLog(req, "action_proposals.expired", {
+        workspaceId: project.workspaceId,
+        projectId: project.id,
+        detailJson: {
+          actionProposalIds: candidates.map((proposal) => proposal.id),
+          expiredCount: result.count,
+          source: "project_proposal_list"
+        }
+      }, tx);
+    }
+    return result.count;
+  });
 }

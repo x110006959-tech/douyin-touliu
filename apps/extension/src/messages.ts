@@ -6,12 +6,16 @@ export const MESSAGE = {
   GET_STATE: "AI_DIAGNOSIS_GET_STATE",
   SAVE_CONFIG: "AI_DIAGNOSIS_SAVE_CONFIG",
   UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
-  CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT"
+  CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
+  START_PATROL: "AI_DIAGNOSIS_START_PATROL",
+  STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL"
 } as const;
 
 export const STORAGE = {
   CONFIG: "douyinLocalLifeDiagnosisConfig",
   TOKEN: "douyinLocalLifeDiagnosisToken",
   LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
-  LOGS: "douyinLocalLifeDiagnosisLogs"
+  LOGS: "douyinLocalLifeDiagnosisLogs",
+  PATROL: "douyinLocalLifeDiagnosisPatrol",
+  ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState"
 } as const;

@@ -6,7 +6,7 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 
 ## 当前版本
 
-- 当前版本：V0.1.2
+- 当前版本：V0.2.0
 - 当前状态：已完成
 
 ## 当前已完成能力
@@ -32,12 +32,12 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 - 每次完成任务后必须同步更新 `docs/CODEX_HANDOFF.md`、`docs/PROJECT_STATE.md` 和 `docs/CURRENT_TASK.md`。
 - 如有架构决策，更新 `docs/DECISION_LOG.md`。
 - 如有部署变化，更新 `docs/DEPLOYMENT_STATE.md`。
-- 当前开发接力重点仍是服务器 staging 部署准备。
+- 当前开发接力重点是把 V0.2.0 部署到服务器 staging，并用真实固定目标页面校准巡检路线。
 
 ## 当前未完成事项
 
 - 尚未完成服务器 staging 部署。
-- 尚未把 V0.1.2 在腾讯云 Ubuntu Docker 环境中跑通。
+- 尚未把 V0.2.0 在腾讯云 Ubuntu Docker 环境中跑通。
 - 尚未进行真实页面字段校准。
 - 尚未让插件上传真实快照到服务器 staging。
 - 正式域名已确认为 `www.pxxis.cn`，但尚未绑定到当前 staging 环境。
@@ -98,3 +98,23 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 - 项目、动作建议、快照、解释记录、Outcome 和审计日志接口支持 `limit + cursor`；Outcome 汇总改为数据库聚合。
 - API 已抽出认证路由、HTTP 安全、ownership、分页和 server utils 模块，`server.ts` 回归路由编排职责。
 - 当前全仓 64 项测试通过。
+
+## 2026-07-12 V0.2.0 固定页面巡检与建议治理
+
+- Extension 已支持用户主动开启/停止固定目标页面巡检；只读取用户已经打开的白名单页面，不导航、不点击、不提交表单。
+- 新增 `CollectionRun` 和路线心跳，按采集批次聚合快照，并检查必需路线完整性、5 分钟新鲜度和 10 分钟过期阈值。
+- 路线缺失、数据过期或连续采集失败会降级巡检并阻断预算调整、暂停等强动作建议。
+- 动作建议新增 15 分钟有效期、同类建议去重/替代、30 分钟冷却和每项目每小时最多 3 条强建议频控。
+- 新增只读决策预演接口，预演不创建 `DecisionRun`、`ActionProposal` 或审计写入。
+- 新增认证后的系统健康接口与 Web 业务健康中心；AI 解释连续失败 3 次后熔断 15 分钟，确定性决策主链路不受影响。
+- Extension 发布物升级为 `0.2.0`，最终 ZIP 为 `apps/extension/release/douyin-local-life-diagnosis-collector-v0.2.0.zip`，权限保持不变。
+- 当前全仓 69 项测试通过；typecheck、build、Prisma validate 和浏览器页面验收通过。
+- Windows Docker Desktop 无需重启；API 集成测试已在隔离 Docker 网络内完成，临时容器、网络、镜像和测试卷已清理。
+
+## 2026-07-12 V0.2.0 审查修复
+
+- 决策输入改为优先锚定最新 `CollectionRun`；新巡检尚无快照时不再回退旧批次数据，缺失路线会阻断强动作。
+- 路线连续失败统一进入巡检质量计算，API、Web 健康展示与决策引擎使用相同的 `blocksStrongActions` 口径。
+- 建议去重和频控通过 PostgreSQL 项目级事务锁串行化，并发决策不会重复落同类建议或突破频控。
+- 自动过期状态变更与 `AuditLog` 已放入同一事务，列表读取、详情读取和决策生成触发的过期均可追溯。
+- 新增安全回归测试和并发决策测试；当前全仓 71 项测试、typecheck、build、Prisma validate、Prisma generate 全部通过。

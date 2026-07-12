@@ -1,3 +1,5 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 const MESSAGE = {
     PAGE_NETWORK_CAPTURED: "AI_DIAGNOSIS_PAGE_NETWORK_CAPTURED",
     PAGE_CAPTURE_CONTROL: "AI_DIAGNOSIS_PAGE_CAPTURE_CONTROL",
@@ -6,13 +8,17 @@ const MESSAGE = {
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     SAVE_CONFIG: "AI_DIAGNOSIS_SAVE_CONFIG",
     UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
-    CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT"
+    CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
+    START_PATROL: "AI_DIAGNOSIS_START_PATROL",
+    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL"
 };
 const STORAGE = {
     CONFIG: "douyinLocalLifeDiagnosisConfig",
     TOKEN: "douyinLocalLifeDiagnosisToken",
     LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
-    LOGS: "douyinLocalLifeDiagnosisLogs"
+    LOGS: "douyinLocalLifeDiagnosisLogs",
+    PATROL: "douyinLocalLifeDiagnosisPatrol",
+    ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState"
 };
 const snapshotSafetyLimits = {
     rawDomTextChars: 200000,
@@ -232,9 +238,13 @@ const els = {
     collectable: document.getElementById("collectable"),
     hasToken: document.getElementById("hasToken"),
     taskId: document.getElementById("taskId"),
+    patrolStatus: document.getElementById("patrolStatus"),
+    collectionRunId: document.getElementById("collectionRunId"),
     snapshot: document.getElementById("snapshot"),
     configBtn: document.getElementById("configBtn"),
     startBtn: document.getElementById("startBtn"),
+    startPatrolBtn: document.getElementById("startPatrolBtn"),
+    stopPatrolBtn: document.getElementById("stopPatrolBtn"),
     refreshBtn: document.getElementById("refreshBtn"),
     uploadBtn: document.getElementById("uploadBtn"),
     clearBtn: document.getElementById("clearBtn")
@@ -242,6 +252,8 @@ const els = {
 void render();
 els.configBtn.addEventListener("click", configure);
 els.startBtn.addEventListener("click", startCollection);
+els.startPatrolBtn.addEventListener("click", startPatrol);
+els.stopPatrolBtn.addEventListener("click", stopPatrol);
 els.refreshBtn.addEventListener("click", render);
 els.uploadBtn.addEventListener("click", uploadSnapshot);
 els.clearBtn.addEventListener("click", clearSnapshot);
@@ -258,8 +270,37 @@ async function render() {
     els.collectable.textContent = isCollectable(url) ? "YES" : "NO";
     els.hasToken.textContent = state?.hasToken ? "Configured in session storage" : "Not configured";
     els.taskId.textContent = state?.config?.collectionTaskId || "-";
-    els.snapshot.textContent = JSON.stringify(state?.latestSnapshot || {}, null, 2);
+    els.patrolStatus.textContent = state?.patrol?.enabled ? "运行中（仅采集已打开页面）" : "未开启";
+    els.collectionRunId.textContent = state?.patrol?.collectionRunId || "-";
+    els.snapshot.textContent = JSON.stringify({ latestSnapshot: state?.latestSnapshot || null, routeUploadState: state?.routeUploadState || {} }, null, 2);
     els.status.textContent = "Ready";
+}
+async function startPatrol() {
+    const requiredRoutes = selectedRoutes();
+    if (!requiredRoutes.length) {
+        els.status.textContent = "请至少选择一个目标页面";
+        return;
+    }
+    const response = await chrome.runtime.sendMessage({ type: MESSAGE.START_PATROL, payload: { requiredRoutes } });
+    els.status.textContent = response?.ok ? "固定页面巡检已开启" : response?.error || "巡检启动失败";
+    await render();
+}
+async function stopPatrol() {
+    const response = await chrome.runtime.sendMessage({ type: MESSAGE.STOP_PATROL });
+    els.status.textContent = response?.ok ? "巡检已停止" : response?.error || "巡检停止失败";
+    await render();
+}
+function selectedRoutes() {
+    const choices = [
+        ["routeDashboard", "LOCAL_PROMOTION_DASHBOARD"],
+        ["routeLive", "LIVE_DATA_SCREEN"],
+        ["routeTask", "TASK_TABLE"],
+        ["routeMaterial", "MATERIAL_LIBRARY"],
+        ["routeTrend", "HOURLY_TREND"]
+    ];
+    return choices
+        .filter(([id]) => document.getElementById(id)?.checked)
+        .map(([, route]) => route);
 }
 async function configure() {
     const state = await chrome.runtime.sendMessage({ type: MESSAGE.GET_STATE });

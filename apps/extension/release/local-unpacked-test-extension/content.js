@@ -8,13 +8,17 @@ const MESSAGE = {
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     SAVE_CONFIG: "AI_DIAGNOSIS_SAVE_CONFIG",
     UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
-    CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT"
+    CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
+    START_PATROL: "AI_DIAGNOSIS_START_PATROL",
+    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL"
 };
 const STORAGE = {
     CONFIG: "douyinLocalLifeDiagnosisConfig",
     TOKEN: "douyinLocalLifeDiagnosisToken",
     LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
-    LOGS: "douyinLocalLifeDiagnosisLogs"
+    LOGS: "douyinLocalLifeDiagnosisLogs",
+    PATROL: "douyinLocalLifeDiagnosisPatrol",
+    ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState"
 };
 const snapshotSafetyLimits = {
     rawDomTextChars: 200000,
@@ -226,8 +230,16 @@ function addNetworkRecord(records, record, limit = networkRecordLimit) {
 }
 // Keep these imports visible to the extension's source-concatenating build script.
 void sanitizeVisibleText;
+const shared_1 = require("@douyin-local-life/shared");
 const networkRecords = [];
+let patrolTimer = null;
+const MESSAGE_PATROL_STORAGE_KEY = "douyinLocalLifeDiagnosisPatrol";
 injectMainWorldScript();
+void syncPatrol();
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes[MESSAGE_PATROL_STORAGE_KEY])
+        void syncPatrol();
+});
 window.addEventListener("message", (event) => {
     if (event.source !== window || event.origin !== window.location.origin)
         return;
@@ -261,8 +273,9 @@ function enableNetworkCapture() {
 }
 function collectSnapshot() {
     const rawDomText = visibleText();
+    const pageType = detectPageType(rawDomText);
     return sanitizeSnapshotPayload({
-        pageType: detectPageType(rawDomText),
+        pageType,
         sourceUrl: window.location.href,
         pageTitle: document.title,
         rawDomText,
@@ -270,8 +283,30 @@ function collectSnapshot() {
         rawTableData: collectTables(),
         visibleMetricsJson: extractMetrics(rawDomText),
         screenshotUrl: null,
-        localCollectedAt: new Date().toISOString()
+        localCollectedAt: new Date().toISOString(),
+        routeKey: (0, shared_1.inferCollectionRoute)({ pageType, sourceUrl: window.location.href, pageTitle: document.title })
     });
+}
+async function syncPatrol() {
+    const stored = await chrome.storage.local.get([MESSAGE_PATROL_STORAGE_KEY]);
+    const patrol = (stored[MESSAGE_PATROL_STORAGE_KEY] || {});
+    if (patrolTimer != null) {
+        window.clearInterval(patrolTimer);
+        patrolTimer = null;
+    }
+    if (!patrol.enabled || !patrol.collectionRunId)
+        return;
+    enableNetworkCapture();
+    const captureIfSelected = () => {
+        const snapshot = collectSnapshot();
+        const routeKey = snapshot.routeKey || "UNKNOWN";
+        if (patrol.requiredRoutes?.length && !patrol.requiredRoutes.includes(routeKey))
+            return;
+        snapshot.collectionRunId = patrol.collectionRunId;
+        chrome.runtime.sendMessage({ type: MESSAGE.SNAPSHOT_CAPTURED, payload: snapshot }, () => void chrome.runtime.lastError);
+    };
+    captureIfSelected();
+    patrolTimer = window.setInterval(captureIfSelected, Math.max(30000, patrol.intervalMs || shared_1.collectionFreshnessPolicy.patrolIntervalMs));
 }
 function detectPageType(text) {
     const combined = `${document.title}\n${window.location.href}\n${text}`;

@@ -35,11 +35,12 @@ type ActionProposal = {
   status: ActionProposalStatus;
   requiresApproval: boolean;
   createdAt: string;
+  expiresAt: string | null;
   projectName?: string;
   projectSubjectType?: SubjectType;
 };
 
-const statuses: Array<ActionProposalStatus | "ALL"> = ["ALL", "PENDING_APPROVAL", "APPROVED", "OBSERVING", "REJECTED", "MANUAL_EXECUTED"];
+const statuses: Array<ActionProposalStatus | "ALL"> = ["ALL", "PENDING_APPROVAL", "APPROVED", "OBSERVING", "REJECTED", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"];
 
 export default function DecisionCenterPage() {
   const { token } = useAuth();
@@ -131,6 +132,7 @@ export default function DecisionCenterPage() {
                     <span>{proposal.projectName || proposal.projectId}</span>
                     <span>{proposal.projectSubjectType ? subjectTypeLabels[proposal.projectSubjectType] : "主体待校准"}</span>
                     <span>{new Date(proposal.createdAt).toLocaleString("zh-CN")}</span>
+                    {proposal.expiresAt ? <span>有效至 {new Date(proposal.expiresAt).toLocaleString("zh-CN")}</span> : null}
                   </div>
                   <h2 className="mt-1 text-lg font-semibold">{proposal.title}</h2>
                   <p className="mt-1 text-sm text-muted">{proposal.reason}</p>

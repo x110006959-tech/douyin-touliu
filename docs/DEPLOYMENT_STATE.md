@@ -6,6 +6,7 @@
 - Chrome 审核承接页已可访问。
 - 当前尚未完成服务器 staging 部署。
 - 当前尚未切换正式域名流量。
+- V0.2.0 本地代码、数据库 schema 和 Extension 发布包已准备完成，尚未应用到服务器。
 
 ## 域名规划
 
@@ -62,3 +63,11 @@
 - `WEB_ORIGIN` 必须精确包含 `https://www.pxxis.cn`，API CORS 开启 credentials 但不接受任意来源。
 - 反向代理必须保留 `Set-Cookie`，并正确设置 `TRUST_PROXY_HOPS`。
 - Extension 不依赖浏览器 Cookie，继续通过手动配置的 SaaS Bearer token 上传快照。
+
+## 2026-07-12 V0.2.0 部署增量
+
+- staging 启动前必须应用新增 `CollectionRun`、`CollectionRouteHeartbeat`、快照路线字段和建议生命周期字段对应的数据库 schema。
+- 部署后需验证认证后的 `/system-health`、采集批次开始/停止、路线失败上报、只读决策预演和过期建议 409 拒绝。
+- Extension staging 测试包为 `douyin-local-life-diagnosis-collector-v0.2.0.zip`；manifest 权限仍只有 `activeTab` 和 `storage`。
+- 真实页面验收必须由用户手动打开页面并启动巡检，不允许通过自动导航或自动操作代替。
+- 本轮仅完成本地实现和验证，没有重启 Docker Desktop，也没有修改服务器、DNS 或正式流量。

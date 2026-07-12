@@ -8,13 +8,17 @@ const MESSAGE = {
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     SAVE_CONFIG: "AI_DIAGNOSIS_SAVE_CONFIG",
     UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
-    CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT"
+    CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
+    START_PATROL: "AI_DIAGNOSIS_START_PATROL",
+    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL"
 };
 const STORAGE = {
     CONFIG: "douyinLocalLifeDiagnosisConfig",
     TOKEN: "douyinLocalLifeDiagnosisToken",
     LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
-    LOGS: "douyinLocalLifeDiagnosisLogs"
+    LOGS: "douyinLocalLifeDiagnosisLogs",
+    PATROL: "douyinLocalLifeDiagnosisPatrol",
+    ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState"
 };
 const snapshotSafetyLimits = {
     rawDomTextChars: 200000,
@@ -226,6 +230,8 @@ function addNetworkRecord(records, record, limit = networkRecordLimit) {
 }
 // Keep these imports visible to the extension's source-concatenating build script.
 void sanitizeVisibleText;
+const shared_1 = require("@douyin-local-life/shared");
+let uploadQueue = Promise.resolve();
 chrome.runtime.onInstalled.addListener(() => {
     void appendLog("extension.installed");
 });
@@ -246,6 +252,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         void uploadLatestSnapshot().then(sendResponse);
         return true;
     }
+    if (message?.type === MESSAGE.START_PATROL) {
+        void startPatrol(message.payload || {}).then(sendResponse);
+        return true;
+    }
+    if (message?.type === MESSAGE.STOP_PATROL) {
+        void stopPatrol().then(sendResponse);
+        return true;
+    }
     if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
         void chrome.storage.local.remove(STORAGE.LATEST_SNAPSHOT).then(() => sendResponse({ ok: true }));
         return true;
@@ -264,6 +278,12 @@ async function saveSnapshot(snapshot, tabId) {
         }
     });
     await appendLog("snapshot.saved", { sourceUrl: safeSnapshot.sourceUrl, metricCount: safeSnapshot.visibleMetricsJson.length, pageType: safeSnapshot.pageType });
+    const local = await chrome.storage.local.get([STORAGE.PATROL]);
+    const patrol = (local[STORAGE.PATROL] || {});
+    if (patrol.enabled && patrol.collectionRunId && safeSnapshot.collectionRunId === patrol.collectionRunId) {
+        const upload = await enqueueSnapshotUpload(safeSnapshot);
+        return { ok: true, upload };
+    }
     return { ok: true };
 }
 async function saveConfig(payload) {
@@ -282,13 +302,15 @@ async function saveConfig(payload) {
     return { ok: true };
 }
 async function getState() {
-    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS]);
+    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS, STORAGE.PATROL, STORAGE.ROUTE_UPLOAD_STATE]);
     const session = await chrome.storage.session.get([STORAGE.TOKEN]);
     return {
         ok: true,
         config: local[STORAGE.CONFIG] || {},
         latestSnapshot: local[STORAGE.LATEST_SNAPSHOT] || null,
         logs: local[STORAGE.LOGS] || [],
+        patrol: local[STORAGE.PATROL] || { enabled: false },
+        routeUploadState: local[STORAGE.ROUTE_UPLOAD_STATE] || {},
         hasToken: Boolean(session[STORAGE.TOKEN])
     };
 }
@@ -307,18 +329,143 @@ async function uploadLatestSnapshot() {
         return { ok: false, error: "Missing SaaS API token. Configure it in the popup." };
     if (!snapshot)
         return { ok: false, error: "No local snapshot available." };
-    const response = await fetch(`${apiBaseUrl}/collection-tasks/${config.collectionTaskId}/snapshots`, {
-        method: "POST",
-        headers: {
-            "content-type": "application/json",
-            "Idempotency-Key": `snapshot:${config.collectionTaskId}:${snapshot.localCollectedAt}`.slice(0, 128),
-            Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(sanitizeSnapshotPayload(snapshot))
-    });
+    return enqueueSnapshotUpload(snapshot);
+}
+function enqueueSnapshotUpload(snapshot) {
+    const next = uploadQueue.then(() => uploadSnapshot(snapshot));
+    uploadQueue = next.then(() => undefined, () => undefined);
+    return next;
+}
+async function uploadSnapshot(snapshot) {
+    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.ROUTE_UPLOAD_STATE]);
+    const session = await chrome.storage.session.get([STORAGE.TOKEN]);
+    const config = (local[STORAGE.CONFIG] || {});
+    const token = session[STORAGE.TOKEN];
+    if (!config.apiBaseUrl || !config.collectionTaskId)
+        return { ok: false, error: "Configure API base URL and collection task ID first." };
+    const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
+    if (!apiBaseUrl)
+        return { ok: false, error: "Configured API address is not allowed." };
+    if (!token)
+        return { ok: false, error: "Missing SaaS API token. Configure it in the popup." };
+    const routeKey = snapshot.routeKey || snapshot.pageType || "UNKNOWN";
+    const routeState = (local[STORAGE.ROUTE_UPLOAD_STATE] || {});
+    const fingerprint = snapshotFingerprint(snapshot);
+    const previous = routeState[routeKey];
+    if (previous?.fingerprint === fingerprint && Date.now() - previous.lastUploadAt < shared_1.collectionFreshnessPolicy.heartbeatUploadMs) {
+        return { ok: true, skipped: true, reason: "UNCHANGED" };
+    }
+    let response;
+    try {
+        response = await fetch(`${apiBaseUrl}/collection-tasks/${config.collectionTaskId}/snapshots`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "Idempotency-Key": `snapshot:${config.collectionTaskId}:${snapshot.localCollectedAt}`.slice(0, 128),
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify(sanitizeSnapshotPayload(snapshot))
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Network upload failed";
+        routeState[routeKey] = {
+            fingerprint,
+            lastUploadAt: previous?.lastUploadAt || 0,
+            consecutiveFailures: (previous?.consecutiveFailures || 0) + 1
+        };
+        await chrome.storage.local.set({ [STORAGE.ROUTE_UPLOAD_STATE]: routeState });
+        await appendLog("snapshot.upload_failed", { routeKey, error: message });
+        if (snapshot.collectionRunId)
+            await reportRouteFailure(apiBaseUrl, token, snapshot.collectionRunId, routeKey, message);
+        return { ok: false, error: message };
+    }
     const payload = await response.json();
     await appendLog("snapshot.uploaded", { ok: response.ok, status: response.status });
+    routeState[routeKey] = {
+        fingerprint,
+        lastUploadAt: response.ok ? Date.now() : previous?.lastUploadAt || 0,
+        consecutiveFailures: response.ok ? 0 : (previous?.consecutiveFailures || 0) + 1
+    };
+    await chrome.storage.local.set({ [STORAGE.ROUTE_UPLOAD_STATE]: routeState });
+    if (!response.ok && snapshot.collectionRunId) {
+        await reportRouteFailure(apiBaseUrl, token, snapshot.collectionRunId, routeKey, payload?.error?.message || `HTTP ${response.status}`);
+    }
     return response.ok ? { ok: true, data: payload } : { ok: false, error: payload?.error?.message || "Upload failed." };
+}
+async function startPatrol(payload) {
+    const context = await apiContext();
+    if (!context.ok)
+        return context;
+    const requiredRoutes = payload.requiredRoutes?.length ? payload.requiredRoutes : [...shared_1.defaultRequiredCollectionRoutes];
+    const response = await fetch(`${context.apiBaseUrl}/collection-tasks/${context.collectionTaskId}/collection-runs`, {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${context.token}` },
+        body: JSON.stringify({ requiredRoutes })
+    });
+    const body = await response.json();
+    if (!response.ok)
+        return { ok: false, error: body?.error?.message || "Unable to start patrol." };
+    const run = body?.data;
+    const patrol = {
+        enabled: true,
+        collectionRunId: run.id,
+        requiredRoutes,
+        intervalMs: Math.max(30000, payload.intervalMs || shared_1.collectionFreshnessPolicy.patrolIntervalMs),
+        startedAt: new Date().toISOString()
+    };
+    await chrome.storage.local.set({ [STORAGE.PATROL]: patrol, [STORAGE.ROUTE_UPLOAD_STATE]: {} });
+    await appendLog("patrol.started", { collectionRunId: run.id, requiredRoutes });
+    return { ok: true, patrol, run };
+}
+async function stopPatrol() {
+    const local = await chrome.storage.local.get([STORAGE.PATROL]);
+    const patrol = (local[STORAGE.PATROL] || {});
+    const context = await apiContext();
+    if (patrol.collectionRunId && context.ok) {
+        await fetch(`${context.apiBaseUrl}/collection-runs/${patrol.collectionRunId}/stop`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${context.token}` }
+        });
+    }
+    const stopped = {
+        enabled: false,
+        collectionRunId: null,
+        requiredRoutes: patrol.requiredRoutes || [...shared_1.defaultRequiredCollectionRoutes],
+        intervalMs: patrol.intervalMs || shared_1.collectionFreshnessPolicy.patrolIntervalMs,
+        startedAt: null
+    };
+    await chrome.storage.local.set({ [STORAGE.PATROL]: stopped });
+    await appendLog("patrol.stopped", { collectionRunId: patrol.collectionRunId || null });
+    return { ok: true, patrol: stopped };
+}
+async function apiContext() {
+    const local = await chrome.storage.local.get([STORAGE.CONFIG]);
+    const session = await chrome.storage.session.get([STORAGE.TOKEN]);
+    const config = (local[STORAGE.CONFIG] || {});
+    const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl || "");
+    const token = session[STORAGE.TOKEN];
+    if (!apiBaseUrl || !config.collectionTaskId)
+        return { ok: false, error: "Configure API base URL and collection task ID first." };
+    if (!token)
+        return { ok: false, error: "Missing SaaS API token. Configure it in the popup." };
+    return { ok: true, apiBaseUrl, collectionTaskId: config.collectionTaskId, token };
+}
+async function reportRouteFailure(apiBaseUrl, token, collectionRunId, routeKey, error) {
+    await fetch(`${apiBaseUrl}/collection-runs/${collectionRunId}/failures`, {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ routeKey, error: String(error).slice(0, 500) })
+    }).catch(() => undefined);
+}
+function snapshotFingerprint(snapshot) {
+    const value = JSON.stringify({ routeKey: snapshot.routeKey, metrics: snapshot.visibleMetricsJson, tables: snapshot.rawTableData });
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
 }
 async function appendLog(action, detail) {
     const current = await chrome.storage.local.get([STORAGE.LOGS]);

@@ -1,10 +1,24 @@
-import type { CapturedNetworkRecord, CollectionSnapshotPayload, PageType, VisibleMetric } from "@douyin-local-life/shared";
+import {
+  collectionFreshnessPolicy,
+  inferCollectionRoute,
+  type CapturedNetworkRecord,
+  type CollectionRouteKey,
+  type CollectionSnapshotPayload,
+  type PageType,
+  type VisibleMetric
+} from "@douyin-local-life/shared";
 import { MESSAGE } from "./messages";
 import { addNetworkRecord, sanitizeSnapshotPayload } from "./safety";
 
 const networkRecords: CapturedNetworkRecord[] = [];
+let patrolTimer: number | null = null;
+const MESSAGE_PATROL_STORAGE_KEY = "douyinLocalLifeDiagnosisPatrol";
 
 injectMainWorldScript();
+void syncPatrol();
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[MESSAGE_PATROL_STORAGE_KEY]) void syncPatrol();
+});
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.origin !== window.location.origin) return;
   const message = event.data;
@@ -42,8 +56,9 @@ function enableNetworkCapture() {
 
 function collectSnapshot(): CollectionSnapshotPayload {
   const rawDomText = visibleText();
+  const pageType = detectPageType(rawDomText);
   return sanitizeSnapshotPayload({
-    pageType: detectPageType(rawDomText),
+    pageType,
     sourceUrl: window.location.href,
     pageTitle: document.title,
     rawDomText,
@@ -51,8 +66,36 @@ function collectSnapshot(): CollectionSnapshotPayload {
     rawTableData: collectTables(),
     visibleMetricsJson: extractMetrics(rawDomText),
     screenshotUrl: null,
-    localCollectedAt: new Date().toISOString()
+    localCollectedAt: new Date().toISOString(),
+    routeKey: inferCollectionRoute({ pageType, sourceUrl: window.location.href, pageTitle: document.title })
   }) as CollectionSnapshotPayload;
+}
+
+type PatrolState = {
+  enabled?: boolean;
+  collectionRunId?: string;
+  requiredRoutes?: CollectionRouteKey[];
+  intervalMs?: number;
+};
+
+async function syncPatrol() {
+  const stored = await chrome.storage.local.get([MESSAGE_PATROL_STORAGE_KEY]);
+  const patrol = (stored[MESSAGE_PATROL_STORAGE_KEY] || {}) as PatrolState;
+  if (patrolTimer != null) {
+    window.clearInterval(patrolTimer);
+    patrolTimer = null;
+  }
+  if (!patrol.enabled || !patrol.collectionRunId) return;
+  enableNetworkCapture();
+  const captureIfSelected = () => {
+    const snapshot = collectSnapshot();
+    const routeKey = snapshot.routeKey || "UNKNOWN";
+    if (patrol.requiredRoutes?.length && !patrol.requiredRoutes.includes(routeKey)) return;
+    snapshot.collectionRunId = patrol.collectionRunId;
+    chrome.runtime.sendMessage({ type: MESSAGE.SNAPSHOT_CAPTURED, payload: snapshot }, () => void chrome.runtime.lastError);
+  };
+  captureIfSelected();
+  patrolTimer = window.setInterval(captureIfSelected, Math.max(30_000, patrol.intervalMs || collectionFreshnessPolicy.patrolIntervalMs));
 }
 
 function detectPageType(text: string): PageType {

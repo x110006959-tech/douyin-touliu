@@ -87,6 +87,12 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(task.projectId).toBe(project.id);
 
+    const collectionRun = await api<{ id: string; status: string; quality: { completeness: number } }>(`/collection-tasks/${task.id}/collection-runs`, token, {
+      method: "POST",
+      body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
+    });
+    expect(collectionRun.status).toBe("ACTIVE");
+
     const snapshotBody = {
       pageType: "LIVE_DATA_SCREEN",
       sourceUrl: "https://life.douyin.com/live-dashboard?access_token=must-not-persist",
@@ -117,7 +123,9 @@ describe("V0.1 API smoke flow", () => {
         metric("target_roi", "target ROI", 1.4)
       ],
       screenshotUrl: null,
-      localCollectedAt: new Date().toISOString()
+      localCollectedAt: new Date().toISOString(),
+      collectionRunId: collectionRun.id,
+      routeKey: "LIVE_DATA_SCREEN"
     };
     const snapshotKey = `snapshot-${Date.now()}`;
     const snapshot = await api<{ id: string; normalizedMetrics: Array<{ metricKey: string }> }>(`/collection-tasks/${task.id}/snapshots`, token, {
@@ -138,17 +146,44 @@ describe("V0.1 API smoke flow", () => {
     expect(persistedSnapshotText).not.toContain("must-not-persist");
     expect(persistedSnapshotText).not.toContain("13800138000");
 
+    const completedRun = await api<{ id: string; status: string; quality: { completeness: number; blocksStrongActions: boolean } }>(
+      `/collection-tasks/${task.id}/collection-runs/latest`,
+      token
+    );
+    expect(completedRun).toMatchObject({ id: collectionRun.id, status: "COMPLETED", quality: { completeness: 1, blocksStrongActions: false } });
+    const systemHealth = await api<{ status: string; database: string; collection: { activeRuns: number }; ai: { status: string } }>("/system-health", token);
+    expect(systemHealth.database).toBe("READY");
+    expect(systemHealth.collection.activeRuns).toBeGreaterThanOrEqual(1);
+
     const metrics = await api<Array<{ metricKey: string }>>(`/collection-tasks/${task.id}/metrics`, token);
     expect(metrics.length).toBeGreaterThan(0);
+    await api(`/collection-tasks/${task.id}/review-metrics/confirm-all`, token, { method: "POST", body: {} });
 
-    const decisionKey = `decision-${Date.now()}`;
-    const decisionRun = await api<{ id: string; actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }> }>(
-      `/collection-tasks/${task.id}/decision-runs`,
+    const decisionCountBeforePreview = await prisma.decisionRun.count({ where: { collectionTaskId: task.id } });
+    const preview = await api<{ preview: boolean; createsRecords: boolean; finalOutput: { dataQuality: { collectionQuality: unknown } } }>(
+      `/collection-tasks/${task.id}/decision-preview`,
       token,
-      { method: "POST", headers: { "idempotency-key": decisionKey }, body: {} }
+      { method: "POST", body: {} }
     );
+    expect(preview).toMatchObject({ preview: true, createsRecords: false });
+    expect(preview.finalOutput.dataQuality.collectionQuality).toBeTruthy();
+    expect(await prisma.decisionRun.count({ where: { collectionTaskId: task.id } })).toBe(decisionCountBeforePreview);
+
+    const decisionKeys = [`decision-${Date.now()}-a`, `decision-${Date.now()}-b`];
+    const concurrentRuns = await Promise.all(decisionKeys.map((decisionKey) =>
+      api<{ id: string; actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }> }>(
+        `/collection-tasks/${task.id}/decision-runs`,
+        token,
+        { method: "POST", headers: { "idempotency-key": decisionKey }, body: {} }
+      )
+    ));
+    expect(concurrentRuns.filter((run) => run.actionProposals.length > 0)).toHaveLength(1);
+    const decisionRunIndex = concurrentRuns.findIndex((run) => run.actionProposals.length > 0);
+    const decisionRun = concurrentRuns[decisionRunIndex];
+    const decisionKey = decisionKeys[decisionRunIndex];
+    if (!decisionRun || !decisionKey) throw new Error("Expected one serialized decision run to persist proposals");
     expect(decisionRun.id).toBeTruthy();
-    expect(decisionRun.actionProposals.length).toBeGreaterThanOrEqual(3);
+    expect(decisionRun.actionProposals.length).toBeGreaterThanOrEqual(2);
     expect(decisionRun.actionProposals.every((proposal) => proposal.requiresApproval)).toBe(true);
     const replayedDecision = await api<{ id: string }>(`/collection-tasks/${task.id}/decision-runs`, token, {
       method: "POST",
@@ -158,10 +193,10 @@ describe("V0.1 API smoke flow", () => {
     expect(replayedDecision.id).toBe(decisionRun.id);
 
     const latest = await api<{ id: string; actionProposals: Array<{ id: string }> }>(`/collection-tasks/${task.id}/decision-runs/latest`, token);
-    expect(latest.id).toBe(decisionRun.id);
+    expect(concurrentRuns.some((run) => run.id === latest.id)).toBe(true);
 
     const projectProposals = await api<Array<{ id: string; status: string }>>(`/projects/${project.id}/action-proposals`, token);
-    expect(projectProposals.length).toBeGreaterThanOrEqual(3);
+    expect(projectProposals.length).toBeGreaterThanOrEqual(2);
     const firstProposalPage = await api<Array<{ id: string }>>(`/projects/${project.id}/action-proposals?limit=1`, token);
     const secondProposalPage = await api<Array<{ id: string }>>(
       `/projects/${project.id}/action-proposals?limit=1&cursor=${firstProposalPage[0]?.id}`,
@@ -180,8 +215,24 @@ describe("V0.1 API smoke flow", () => {
     expect(explanationOnly.responsePayload).not.toHaveProperty("suggestions");
     expect(await prisma.aiAnalysisTask.count({ where: { collectionTaskId: task.id } })).toBe(explanationsBefore + 1);
 
-    const [approveTarget, observeTarget, rejectTarget] = projectProposals;
-    if (!approveTarget || !observeTarget || !rejectTarget) throw new Error("Expected at least three action proposals");
+    const [approveTarget, observeTarget] = projectProposals;
+    if (!approveTarget || !observeTarget) throw new Error("Expected at least two deduplicated action proposals");
+    const rejectTarget = projectProposals[2] || await prisma.actionProposal.create({
+      data: {
+        decisionRunId: decisionRun.id,
+        projectId: project.id,
+        collectionTaskId: task.id,
+        actionType: "CHECK_AUDIENCE",
+        title: "Integration rejection fixture",
+        reason: "Exercises the independent rejection transition after proposal deduplication.",
+        riskLevel: "LOW",
+        confidence: 0.8,
+        requiresApproval: true,
+        status: "PENDING_APPROVAL",
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        dedupeKey: `${project.id}:${task.id}:CHECK_AUDIENCE`
+      }
+    });
 
     const initialDetail = await api<{ id: string; decisionRun: unknown; approvalRecords: unknown[]; executionLogs: unknown[] }>(
       `/action-proposals/${approveTarget.id}`,
@@ -203,6 +254,9 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(observed.status).toBe("OBSERVING");
     expect(observed.approvalRecords.length).toBeGreaterThan(0);
+    await prisma.actionProposal.update({ where: { id: observeTarget.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await apiError(`/action-proposals/${observeTarget.id}/approve`, token, { method: "POST", body: {} }, "ACTION_EXPIRED");
+    expect((await prisma.actionProposal.findUniqueOrThrow({ where: { id: observeTarget.id } })).status).toBe("EXPIRED");
 
     const rejected = await api<{ status: string; approvalRecords: unknown[] }>(`/action-proposals/${rejectTarget.id}/reject`, token, {
       method: "POST",
@@ -268,6 +322,19 @@ describe("V0.1 API smoke flow", () => {
     expect(detail.executionLogs.length).toBeGreaterThan(0);
     expect(detail.outcomes.length).toBeGreaterThan(0);
 
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await api(`/collection-runs/${collectionRun.id}/failures`, token, {
+        method: "POST",
+        body: { routeKey: "LIVE_DATA_SCREEN", error: `collector timeout ${attempt + 1}` }
+      });
+    }
+    const degradedRun = await api<{ status: string; routeHealth: Array<{ consecutiveFailures: number }> }>(
+      `/collection-tasks/${task.id}/collection-runs/latest`,
+      token
+    );
+    expect(degradedRun.status).toBe("DEGRADED");
+    expect(degradedRun.routeHealth[0]?.consecutiveFailures).toBe(3);
+
     const auditLogs = await api<Array<{ action: string }>>(`/projects/${project.id}/audit-logs`, token);
     expect(auditLogs.some((log) => log.action === "CREATE_DECISION_RUN")).toBe(true);
     expect(auditLogs.some((log) => log.action === "CREATE_ACTION_PROPOSALS")).toBe(true);
@@ -276,6 +343,8 @@ describe("V0.1 API smoke flow", () => {
     expect(auditLogs.some((log) => log.action === "REJECT_ACTION_PROPOSAL")).toBe(true);
     expect(auditLogs.some((log) => log.action === "MARK_ACTION_MANUAL_EXECUTED")).toBe(true);
     expect(auditLogs.some((log) => log.action === "CREATE_ACTION_OUTCOME")).toBe(true);
+    expect(auditLogs.some((log) => log.action === "collection_route.failed")).toBe(true);
+    expect(auditLogs.some((log) => log.action === "action_proposal.expired")).toBe(true);
   });
 
   it("keeps the V0.1.1 reviewed metric loop before decision runs", async () => {

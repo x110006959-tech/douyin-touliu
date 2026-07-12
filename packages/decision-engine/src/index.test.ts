@@ -303,4 +303,23 @@ describe("decision-engine", () => {
     expect(result.actionProposals.some((proposal) => proposal.actionType === "PAUSE_TASK")).toBe(false);
     expect(result.actionProposals.some((proposal) => proposal.actionType === "OBSERVE")).toBe(true);
   });
+
+  it("blocks strong actions when a required collection route is stale", () => {
+    const result = runDecisionRules(input({
+      collectionQuality: {
+        requiredRoutes: ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN"],
+        routes: [
+          { routeKey: "LOCAL_PROMOTION_DASHBOARD", state: "FRESH", lastCollectedAt: "2026-07-12T04:00:00.000Z", ageMs: 0 },
+          { routeKey: "LIVE_DATA_SCREEN", state: "STALE", lastCollectedAt: "2026-07-12T03:45:00.000Z", ageMs: 900000 }
+        ],
+        completeness: 0.5,
+        missingRoutes: [],
+        staleRoutes: ["LIVE_DATA_SCREEN"],
+        blocksStrongActions: true
+      }
+    }));
+
+    expect(result.dataQuality.blocksStrongActions).toBe(true);
+    expect(result.dataQuality.blockingReasons).toContain("采集路线已过期：LIVE_DATA_SCREEN");
+  });
 });
