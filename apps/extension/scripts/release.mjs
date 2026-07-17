@@ -13,10 +13,14 @@ if (dirty && process.env.ALLOW_DIRTY_RELEASE !== "1") {
   throw new Error("Release requires a clean Git worktree. Commit and verify source changes first.");
 }
 
+process.argv.push("--target=production");
 await import("./build.mjs");
 
 const manifest = JSON.parse(await readFile(resolve(dist, "manifest.json"), "utf8"));
 const metadata = JSON.parse(await readFile(resolve(dist, "build-metadata.json"), "utf8"));
+if (metadata.buildTarget !== "production" || metadata.localTestOnly) {
+  throw new Error("Release archive must be built from the production extension target.");
+}
 const archiveName = `collector-v${manifest.version}-${metadata.gitSha}.zip`;
 for (const name of await readdir(releaseDir)) {
   if (/^(?:douyin-local-life-diagnosis-collector|collector)-v.*\.zip(?:\.sha256)?$/i.test(name)) {

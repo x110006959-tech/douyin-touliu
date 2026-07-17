@@ -1,5 +1,92 @@
 # Deployment State
 
+## 2026-07-17 邮箱验证与运行时限制增量
+
+- 生产 API 需要配置 `SECURITY_SECRET`（至少 32 字符）、`SMTP_HOST`、`SMTP_PORT`、`SMTP_SECURE=true`、`SMTP_USER`、`SMTP_PASS` 和 `SMTP_FROM`。运行时暂时兼容旧 `JWT_SECRET`，但新的部署文件应只使用 `SECURITY_SECRET`。
+- `20260717100000_v029_email_verification` 新增待验证注册与邮箱验证令牌，并为既有用户增加 `emailVerifiedAt` 默认值。迁移是加法式；部署前仍必须先备份，随后由一次性 `migrate` 服务执行 `prisma migrate deploy`。
+- Compose 的 `migrate`、`api`、`web` 已启用 `cap_drop: ALL`、PID/CPU/内存限制；API 终止时会先拒绝新业务请求、关闭 SSE，再最多等待 15 秒排空 HTTP 连接。
+- 已以隔离临时 PostgreSQL 从空库顺序执行 10 个 migration 并得到 `Database schema is up to date`；全仓 lint/typecheck/test/build、Prisma validate/generate、生产依赖审计和 Compose 静态配置均通过。
+- 尚未执行真实 SMTP 投递、COS 上传/恢复、服务器部署、DNS 或任何平台操作。
+
+### 部署增量
+
+1. 在部署主机 `.env` 设置 HTTPS `WEB_ORIGIN`、`NEXT_PUBLIC_API_URL`、`SECURITY_SECRET` 和上述 SMTP TLS 配置；不要在生产环境设置 `SESSION_COOKIE_SECURE=false`。
+2. 先完成离机备份，再执行 `docker compose config --quiet` 与 `docker compose up -d --build --wait`；确认 `migrate` 为 `exited (0)`，API/Web 为 healthy。
+3. 在 staging 注册账号，验证邮件投递、30 分钟过期、重发限流、首次验证自动登录以及旧链接拒绝后，才开放新用户注册。
+
+## 2026-07-17 部署安全基线与备份演练准备
+
+- API 和 Web 镜像改为多阶段构建，运行阶段使用非 root `app` 用户；API/Web 文件系统只读，仅提供 `/tmp` 临时目录，Compose 启用 `no-new-privileges`，API/Web 使用 init 与明确的优雅停机时间。
+- Prisma migration 从 API 启动命令移入一次性 `migrate` 服务；`api` 仅在 migration 成功后启动，避免多个 API 实例同时抢占迁移。迁移仍使用 `prisma migrate deploy`，不使用 `db push`。
+- API 生产环境必须显式设置精确 `WEB_ORIGIN`，仅接受配置的 Web/插件来源；API 使用 Helmet，Web 使用 Next `proxy.ts` 下发 nonce CSP、HSTS、Referrer-Policy、权限策略和跨域隔离头。
+- 新增 `tools/backup-postgres.sh` 与 `tools/verify-postgres-backup.sh`：前者执行自定义格式 `pg_dump`、SHA-256 校验并上传 COS，后者下载校验并恢复到临时 PostgreSQL 容器验证表与 Prisma migration。脚本不会连接、修改或恢复生产数据库。
+- 未执行任何真实 COS 上传、恢复、服务器部署、DNS 变更或平台操作；全仓 lint/typecheck/test/build、Prisma validate/generate、本地 Compose 配置展开、API 50 项安全回归、Web 17 项测试及两个 runtime 镜像构建均通过。
+
+### 部署顺序
+
+1. 在部署主机 `/opt/pxxis` 创建权限为 `0600` 的 `.env`，设置 HTTPS `WEB_ORIGIN`、`NEXT_PUBLIC_API_URL`、至少 32 字节 `SECURITY_SECRET` 和数据库连接；生产环境不得设置 `SESSION_COOKIE_SECURE=false`。
+2. 部署前运行 `COS_PREFIX=cos://<bucket>/pxxis-backups corepack pnpm backup:postgres`；确认 COS 同时有 `.dump` 与 `.sha256`，并在隔离环境运行 `COS_OBJECT_URL=cos://<bucket>/...dump corepack pnpm backup:verify`。
+3. 运行 `docker compose config --quiet`，再执行 `docker compose up -d --build --wait`；检查 `migrate` 状态为 `exited (0)`，确认 `api` 和 `web` 为 healthy。
+4. 经 HTTPS 反向代理验证 `/ready`、`/version`、登录会话、跨源 API 请求及 SSE；反向代理必须保留 `Set-Cookie`、关闭 SSE 缓冲并设置 `TRUST_PROXY_HOPS`。
+5. 恢复操作仅允许在新建的隔离 PostgreSQL 实例上演练。任何生产恢复都需要维护窗口、经审批的恢复计划和人工复核，不能直接覆盖运行中的数据卷。
+
+## 2026-07-15 代直播增长模式本地部署
+
+- Compose 项目 `pxxis-prelaunch-20260713` 已用最新源码重建 API/Web，继续复用原 PostgreSQL 数据卷，未新增 migration。
+- 新部署把代直播诊断收窄为流量、直播承接、商品成交、平台活动权益与履约合规；不再展示服务商利润口径。
+- Web 仍为 `http://127.0.0.1:3300`，API 仍为 `http://127.0.0.1:4300`；Extension 权限、采集范围和人工执行安全边界没有变化。
+
+## 2026-07-15 完整诊断输出本地部署
+
+- Compose 项目 `pxxis-prelaunch-20260713` 已使用最新源码重建 API/Web，继续复用原 PostgreSQL 数据卷，未新增 migration。
+- Web 仍为 `http://127.0.0.1:3300`，API 仍为 `http://127.0.0.1:4300`；首页返回 200，API `/ready` 返回 database ready，三项核心容器 healthy。
+- 本次部署只增加结构化经营诊断、AI 辅助解读和前端展示，不修改 Extension 权限、采集范围或平台操作边界。
+- 已使用 `DOCKER_BUILDKIT=0` 完成 Windows 本地镜像构建；正式服务器、DNS 和线上流量未变更。
+
+## 2026-07-15 本地 HTTP 会话修复
+
+- 本地 Compose API 继续使用生产模式镜像，但显式注入 `SESSION_COOKIE_SECURE=false`，使 `http://127.0.0.1:3300` 登录会话可被浏览器保存。
+- `docker-compose.yml` 的默认值仍为 `true`；正式 HTTPS 部署不得设置为 `false`。
+- Compose 项目 `pxxis-prelaunch-20260713` 已重建并确认 API/Web healthy；`GET http://127.0.0.1:4300/ready` 返回 database ready，账号创建页返回 HTTP 200。
+- 本次仅调整 Web/API 与本地部署配置，不修改 Extension 制品、权限或采集边界。
+
+## 2026-07-15 V0.2.4 本地预上线增量
+
+- Extension unpacked 已按协议版本 2 重新构建，Web Bridge、Popup 和 Service Worker 的源码指纹统一为 `a6d87cdb8cbb`；本地开发版必须在 `chrome://extensions/` 手动重新加载后才会替换旧后台。
+- 本地 Compose 项目 `pxxis-prelaunch-20260713` 已再次重建最新 API/Web 镜像，未清理 PostgreSQL 数据卷；Web、API、PostgreSQL 均 healthy。
+- 运行时复核：`GET http://127.0.0.1:4300/ready` 返回 200/database ready，任务页返回 HTTP 200。
+- 当前本地 Chrome 验收包为 `collector-local-test-v0.2.2-a6d87cdb8cbb.zip`，SHA256 `5A5C90AD1FB7741A6FA70C8F99543C1F53480EFDDCE1CEE87822BC6B515EF377`；此前的 `5c91d26add9d` 与 `133dc8305d40` 包不再用于验收。
+- 本地 API/Web 镜像已再次重建并健康启动，包含任务删除入口、事务删除 API 和任务路线 URL 编辑；PostgreSQL 数据卷未清理，未新增 migration。
+- Web 镜像已在本地 Compose 项目 `pxxis-prelaunch-20260713` 中重新构建并健康启动，项目页默认展示紧凑配置摘要。
+- 复用 Compose 项目 `pxxis-prelaunch-20260713` 与原 PostgreSQL 数据卷，未删除原账号和项目数据。
+- API 启动通过 `prisma migrate deploy` 成功应用 `20260715170000_v024_task_scoped_extension_pairing`。
+- `/version` 返回产品版本 `0.2.2`、schema `20260715_v024_task_scoped_extension_pairing`；`/ready` 返回数据库 ready。
+- Web 仍为 `127.0.0.1:3300`，API 仍为 `127.0.0.1:4300`，PostgreSQL 仍只在 Compose 内网。
+- Docker Desktop BuildKit 仍出现 `x-docker-expose-session-sharedkey` 非打印字符错误；本轮继续使用 `DOCKER_BUILDKIT=0` 分别构建 API/Web 镜像，再以 `--no-build --force-recreate` 替换应用容器。
+- Extension unpacked 目录已由当前源码重新构建；由于 Chrome 内部页不可由浏览器验收工具自动操作，需用户在 `chrome://extensions/` 手动重载后完成真实页面采集验收。
+
+## 2026-07-15 V0.2.3 本地预上线增量
+
+- 复用 Compose 项目 `pxxis-prelaunch-20260713` 和既有 PostgreSQL 数据卷，未创建第二套混淆环境。
+- API 启动通过 `prisma migrate deploy` 成功应用 `20260715120000_v023_extension_pairing`。
+- Web 仍绑定 `127.0.0.1:3300`，API 仍绑定 `127.0.0.1:4300`，PostgreSQL 不发布宿主机端口。
+- `/version` 当前仍返回产品版本 `0.2.2`，schema 版本为 `20260715_v023_extension_pairing`；V0.2.3 发布前不伪造版本号。
+- Windows Docker Desktop BuildKit 会话出现非打印字符错误，本地镜像改用 `DOCKER_BUILDKIT=0` 构建；运行中数据卷未清理。
+- 最新 API/Web 镜像已重新创建且三服务 healthy；容器内 `prisma migrate status` 显示 4 个 migration 全部已应用。
+- 浏览器已验证账号隔离、配对码入口、手工 CSV、任务创建自动跳转、删除确认和 390/410px 页面；真实平台与服务器 staging 尚未执行。
+
+## 2026-07-14 V0.2.2 本地预上线
+
+- 本地 Compose 项目 `pxxis-prelaunch-20260713` 已重建为 V0.2.2。
+- Web 绑定 `127.0.0.1:3300`，API 绑定 `127.0.0.1:4300`，PostgreSQL 不发布宿主机端口。
+- 升级前已在 PostgreSQL 容器内生成 `/tmp/pre-v022-account-profiles.dump` 备份。
+- API 启动通过 `prisma migrate deploy` 成功应用 `20260714170000_v022_account_profiles`。
+- PostgreSQL、API、Web 健康检查均通过，`/version` 显示产品版本 `0.2.2`。
+- 本地预上线未绑定旧 V0.2.1 Extension SHA；V0.2.2 工作树正式提交后再生成并注入新 ZIP SHA256。
+- 已精确删除用户确认的 3 条重复网址测试任务，保留其他任务，并写入 `CLEAN_DUPLICATE_COLLECTION_TASKS` 审计记录。
+- 当前未修改腾讯云服务器、DNS 或 `www.pxxis.cn` 正式流量。
+- 2026-07-14 已重新构建本地 API/Web 镜像并验证账号删除按钮与二次确认；未对现有业务账号执行真实删除。
+
 ## 当前部署状态
 
 - 本地 Web/API 已跑通。
@@ -42,7 +129,7 @@
 - 已新增 API/Web Dockerfile、数据库就绪探针和安全 Compose 配置。
 - PostgreSQL 无宿主机端口映射；API/Web 默认仅绑定 `127.0.0.1`。
 - Redis 当前未参与主链路，未在 staging Compose 中启动或暴露。
-- `POSTGRES_PASSWORD`、`COMPOSE_DATABASE_URL`、`JWT_SECRET`、`WEB_ORIGIN`、`NEXT_PUBLIC_API_URL` 均需显式配置。
+- `POSTGRES_PASSWORD`、`COMPOSE_DATABASE_URL`、`SECURITY_SECRET`、`WEB_ORIGIN`、`NEXT_PUBLIC_API_URL` 均需显式配置。
 - 本地镜像构建通过，三个 Compose 服务均达到 healthy；容器内实测注册返回 201、Cookie 登录返回 200、Web 首页返回 HTTP 200。
 - 生产 Cookie 已验证同时包含 `HttpOnly`、`Secure` 和 `SameSite=Lax`。
 - 当前 Windows Docker Desktop 未将声明的 `127.0.0.1:4100/3100` 端口实际发布到宿主机；容器配置仍保留回环绑定。该问题未影响容器内应用验证，但必须在 Ubuntu staging 再验证宿主端口和反向代理链路。
@@ -64,14 +151,23 @@
 - Extension 新增 `sidePanel` 权限和 `api.pxxis.cn` 白名单，需要重新审核；生产包不含 injected/network capture。
 - 反向代理必须关闭 SSE 响应缓冲并延长 `/signals/stream` 读超时。
 - `GET /version`、Web 健康中心和 Side Panel 显示的版本与短 SHA 必须一致。
+- 构建镜像前必须设置 `GIT_SHA` 和 `BUILD_TIME`，运行时设置 `EXTENSION_ARTIFACT_SHA256`；生产容器的 `/version` 不得返回 `unknown` 或空制品哈希。
 - staging 用户需手动将关键平台站点加入 Chrome Memory Saver 例外列表，系统不会自动更改浏览器设置。
+
+## 2026-07-13 本地预上线结果
+
+- 独立 Compose 项目使用 Web `127.0.0.1:3300`、API `127.0.0.1:4300`，PostgreSQL 仅容器内网；三服务 healthy。
+- 全新数据库实际执行 baseline 和 V0.2.1 增量 migration；生产 API 镜像启动命令已改为 `prisma migrate deploy`。
+- `/version` 返回 `0.2.1`、12 位 Git SHA、构建时间、schema 版本和 Extension SHA256。
+- 完整 API 人工决策闭环与浏览器注册/Dashboard 冒烟通过。
+- 本轮未连接真实投放平台、未修改 DNS/服务器，也没有任何自动平台操作。
 
 ## Web 会话部署要求
 
 - 生产环境 Cookie 带 `Secure`，必须通过 HTTPS 访问 `api.pxxis.cn`。
 - `WEB_ORIGIN` 必须精确包含 `https://www.pxxis.cn`，API CORS 开启 credentials 但不接受任意来源。
 - 反向代理必须保留 `Set-Cookie`，并正确设置 `TRUST_PROXY_HOPS`。
-- Extension 不依赖浏览器 Cookie，继续通过手动配置的 SaaS Bearer token 上传快照。
+- Extension 不依赖浏览器 Cookie；V0.2.3 起通过 Web 生成的一次性配对码取得账号级可撤销凭证，不再要求用户手工配置通用 SaaS Token。
 
 ## 2026-07-12 V0.2.0 部署增量
 
@@ -80,3 +176,10 @@
 - Extension staging 测试包为 `douyin-local-life-diagnosis-collector-v0.2.0.zip`；manifest 权限仍只有 `activeTab` 和 `storage`。
 - 真实页面验收必须由用户手动打开页面并启动巡检，不允许通过自动导航或自动操作代替。
 - 本轮仅完成本地实现和验证，没有重启 Docker Desktop，也没有修改服务器、DNS 或正式流量。
+# 2026-07-15 本地预上线重建
+
+- 预上线项目 `pxxis-prelaunch-20260713` 已使用传统 Docker 构建器重建 API/Web；PostgreSQL 容器和现有数据卷保持不变。
+- 本地地址：Web `http://127.0.0.1:3300`，API `http://127.0.0.1:4300`。
+- API、Web、PostgreSQL 三个容器均 healthy；`/ready` 返回 database ready，`/version` 返回产品版本 `0.2.2`，Web HTTP 200。
+- Extension 本地测试包为 `collector-local-test-v0.2.2-a6d87cdb8cbb.zip`，制品 SHA256 已注入本地 API 容器。
+- Windows 中文工作区下 BuildKit 仍会出现不可打印会话头错误，本次按既有方案使用 `DOCKER_BUILDKIT=0`；不影响服务器英文路径部署。

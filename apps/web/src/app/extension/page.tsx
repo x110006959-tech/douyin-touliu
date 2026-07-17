@@ -2,7 +2,7 @@ import Link from "next/link";
 import { extensionSafetyNotice } from "@douyin-local-life/shared";
 import { Card, CardTitle } from "@/components/ui/card";
 
-const collectItems = ["当前页面可见数据", "页面表格数据", "指标文本", "同源或白名单域名允许的 JSON 响应"];
+const collectItems = ["当前页面可见 DOM", "真实表格数据", "白名单指标文本", "用户主动提供的截图/OCR、CSV 或人工校准数据"];
 const filteredItems = ["password", "cookie", "token", "authorization", "secret", "access_token", "refresh_token", "session", "credential"];
 
 export default function ExtensionPage() {
@@ -33,7 +33,7 @@ export default function ExtensionPage() {
         <Card>
           <CardTitle>插件用途</CardTitle>
           <p className="text-sm leading-6 text-muted">
-            用于采集本地生活投流后台中的可见指标、页面表格和允许的 JSON 响应，并上传到 Web 工作台，辅助生成诊断结论、动作建议和审计记录。
+            用于采集本地生活投流后台中的可见 DOM、真实表格和白名单指标，并上传到 Web 工作台，辅助生成诊断结论、动作建议和审计记录。生产版不读取平台网络响应正文。
           </p>
         </Card>
         <Card>
@@ -45,13 +45,13 @@ export default function ExtensionPage() {
         <Card>
           <CardTitle>如何连接 Web 工作台</CardTitle>
           <p className="text-sm leading-6 text-muted">
-            先登录 pxxis 工作台，创建诊断项目和采集任务，再在插件中配置 API 地址、采集任务 ID 和本系统访问令牌。令牌只用于访问本系统 API。
+            先登录 pxxis 工作台并进入具体采集任务，优先点击“一键连接采集插件”。若网页桥接暂不可用，再生成六位手动配对码并在插件弹窗输入；配对成功后会绑定当前账号与任务。
           </p>
         </Card>
         <Card>
           <CardTitle>如何开始采集</CardTitle>
           <p className="text-sm leading-6 text-muted">
-            打开目标投流后台页面，确认页面属于允许采集的域名范围，点击插件中的开始采集。采集完成后可在本地查看快照，再上传到对应采集任务。
+            打开目标投流后台页面，确认页面属于允许采集的域名范围，然后点击“采集并上传当前路线”。直播大屏的概览、商品和流量分栏需要由用户手动切换并分别采集，插件不会自动点击平台标签。
           </p>
         </Card>
         <Card>

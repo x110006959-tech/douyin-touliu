@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { snapshotSafetyLimits } from "./safety.js";
 import { collectionRouteKeys } from "./collection-routes.js";
+import { decisionTableInputSchema, type DecisionTableInput } from "./decision-tables.js";
+export { failure, success, type ApiResponse } from "./api-response.js";
 
 export * from "./safety.js";
 export * from "./collection-routes.js";
+export * from "./decision-tables.js";
 
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
@@ -36,6 +39,12 @@ export const cooperationTypes = [
   "BRAND_MATRIX"
 ] as const;
 export const controlLevels = ["PENDING", "HIGH", "MEDIUM", "LOW"] as const;
+export const accountPlatforms = ["DOUYIN_LOCAL_LIFE"] as const;
+export const accountProfileStatuses = ["ACTIVE", "ARCHIVED"] as const;
+export const accountIdentityStatuses = ["PENDING_ID", "VERIFIED"] as const;
+export const accountMatchStatuses = ["MATCHED", "MISMATCHED", "UNVERIFIED"] as const;
+export const collectionRouteSourceStatuses = ["PENDING", "CAPTURED", "FAILED"] as const;
+export const routeVerificationStatuses = ["VERIFIED", "MANUAL_PENDING"] as const;
 export const collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"] as const;
 export const riskLevels = ["LOW", "MEDIUM", "HIGH"] as const;
 export const analysisStatuses = ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"] as const;
@@ -81,6 +90,7 @@ export const metricKeys = [
   "verify_roi",
   "gross_profit_roi",
   "pay_roi",
+  "full_domain_pay_roi",
   "target_roi",
   "spend",
   "daily_budget",
@@ -96,6 +106,9 @@ export const metricKeys = [
   "cpa",
   "target_cpa",
   "live_viewers",
+  "hourly_live_views",
+  "hourly_natural_live_views",
+  "hourly_commercial_live_views",
   "gpm",
   "gmv",
   "gross_profit",
@@ -121,14 +134,37 @@ export const observationWindows = ["30m", "2h", "1d", "custom"] as const;
 export const actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"] as const;
 export const captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"] as const;
 export const captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"] as const;
+export const extensionConnectionStates = [
+  "UNPAIRED",
+  "PAIRED_NOT_CONNECTED",
+  "BOUND_OTHER_TASK",
+  "READY",
+  "PAGE_UNSUPPORTED",
+  "ACCOUNT_UNVERIFIED",
+  "ACCOUNT_MISMATCH",
+  "PAGE_INACTIVE",
+  "ROUTE_UNVERIFIED",
+  "VERSION_OUTDATED",
+  "OFFLINE",
+  "ERROR"
+] as const;
+export const extensionBridgeProtocolVersion = 2 as const;
+export const captureSummaryRouteStates = ["PENDING", "READY", "UPLOADED", "PARTIAL", "UNVERIFIED", "MANUAL_PENDING", "STALE", "FAILED"] as const;
 export const realtimeSignalKinds = ["ROI_CHANGE", "SPEND_ACCELERATION", "ORDER_STALL", "TRAFFIC_CHANGE", "DATA_STALE", "PAGE_INACTIVE"] as const;
 export const realtimeSignalSeverities = ["INFO", "WARNING", "CRITICAL"] as const;
+export const extensionCredentialScopes = ["COLLECT", "READ_DIAGNOSIS"] as const;
 
 export type BusinessType = (typeof businessTypes)[number];
 export type SubjectType = (typeof subjectTypes)[number];
 export type OperatorType = (typeof operatorTypes)[number];
 export type CooperationType = (typeof cooperationTypes)[number];
 export type ControlLevel = (typeof controlLevels)[number];
+export type AccountPlatform = (typeof accountPlatforms)[number];
+export type AccountProfileStatus = (typeof accountProfileStatuses)[number];
+export type AccountIdentityStatus = (typeof accountIdentityStatuses)[number];
+export type AccountMatchStatus = (typeof accountMatchStatuses)[number];
+export type CollectionRouteSourceStatus = (typeof collectionRouteSourceStatuses)[number];
+export type RouteVerificationStatus = (typeof routeVerificationStatuses)[number];
 export type CollectionTaskStatus = (typeof collectionTaskStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type AnalysisStatus = (typeof analysisStatuses)[number];
@@ -148,8 +184,11 @@ export type ObservationWindow = (typeof observationWindows)[number];
 export type ActionOutcomeResult = (typeof actionOutcomeResults)[number];
 export type CaptureCompleteness = (typeof captureCompletenessValues)[number];
 export type CaptureTabState = (typeof captureTabStates)[number];
+export type ExtensionConnectionState = (typeof extensionConnectionStates)[number];
+export type CaptureSummaryRouteState = (typeof captureSummaryRouteStates)[number];
 export type RealtimeSignalKind = (typeof realtimeSignalKinds)[number];
 export type RealtimeSignalSeverity = (typeof realtimeSignalSeverities)[number];
+export type ExtensionCredentialScope = (typeof extensionCredentialScopes)[number];
 
 export const subjectTypeLabels: Record<SubjectType, string> = {
   SUBJECT_PENDING: "主体待校准",
@@ -188,6 +227,27 @@ export const controlLevelLabels: Record<ControlLevel, string> = {
   HIGH: "高",
   MEDIUM: "中",
   LOW: "低"
+};
+
+export const accountIdentityStatusLabels: Record<AccountIdentityStatus, string> = {
+  PENDING_ID: "待补账号 ID",
+  VERIFIED: "账号 ID 已确认"
+};
+
+export const accountMatchStatusLabels: Record<AccountMatchStatus, string> = {
+  MATCHED: "账号一致",
+  MISMATCHED: "账号不一致",
+  UNVERIFIED: "账号待确认"
+};
+
+export const collectionTaskStatusLabels: Record<CollectionTaskStatus, string> = {
+  PENDING: "待采集",
+  COLLECTING: "采集中",
+  REVIEWING: "待复核",
+  UPLOADED: "已上传",
+  PROCESSING: "处理中",
+  ANALYZED: "已诊断",
+  FAILED: "采集失败"
 };
 
 export const diagnosisActionLibrary = [
@@ -276,6 +336,7 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   verify_roi: "核销 ROI",
   gross_profit_roi: "毛利 ROI",
   pay_roi: "支付 ROI",
+  full_domain_pay_roi: "全域支付 ROI",
   target_roi: "目标 ROI",
   spend: "消耗",
   daily_budget: "日预算",
@@ -291,6 +352,9 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   cpa: "订单成本",
   target_cpa: "目标 CPA",
   live_viewers: "直播间观看人数",
+  hourly_live_views: "小时看播次数",
+  hourly_natural_live_views: "小时自然看播次数",
+  hourly_commercial_live_views: "小时商业看播次数",
   gpm: "GPM",
   gmv: "GMV",
   gross_profit: "核销毛利",
@@ -317,6 +381,7 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   verify_roi: "ROI",
   gross_profit_roi: "ROI",
   pay_roi: "ROI",
+  full_domain_pay_roi: "FULL_DOMAIN",
   target_roi: "ROI",
   spend: "COST",
   daily_budget: "COST",
@@ -332,6 +397,9 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   cpa: "COST",
   target_cpa: "COST",
   live_viewers: "LIVE_ROOM",
+  hourly_live_views: "TRAFFIC",
+  hourly_natural_live_views: "TRAFFIC",
+  hourly_commercial_live_views: "TRAFFIC",
   gpm: "LIVE_ROOM",
   gmv: "CONVERSION",
   gross_profit: "CONVERSION",
@@ -357,7 +425,8 @@ export const metricAliases: Record<MetricKey, readonly string[]> = {
   unknown: [],
   verify_roi: ["verify_roi", "核销 ROI", "核销ROI", "核销roi"],
   gross_profit_roi: ["gross_profit_roi", "毛利 ROI", "毛利ROI", "核销毛利 ROI", "核销毛利ROI"],
-  pay_roi: ["pay_roi", "支付 ROI", "支付ROI", "付款 ROI", "付款ROI"],
+  pay_roi: ["pay_roi", "支付 ROI", "支付ROI", "付款 ROI", "付款ROI", "整体支付 ROI", "整体支付ROI"],
+  full_domain_pay_roi: ["full_domain_pay_roi", "全域支付 ROI", "全域支付ROI", "全域 ROI", "全域ROI"],
   target_roi: ["target_roi", "目标 ROI", "目标ROI"],
   spend: ["spend", "消耗", "广告消耗", "今日消耗", "投放消耗"],
   daily_budget: ["daily_budget", "日预算", "预算"],
@@ -373,6 +442,9 @@ export const metricAliases: Record<MetricKey, readonly string[]> = {
   cpa: ["cpa", "cost_per_order", "order_cost", "转化成本", "成交成本", "订单成本", "CPA"],
   target_cpa: ["target_cpa", "target_cost", "目标 CPA", "目标CPA", "目标成本"],
   live_viewers: ["live_viewers", "viewers", "直播间观看人数", "观看人数", "看播人数", "累计在线人数"],
+  hourly_live_views: ["hourly_live_views", "小时看播次数"],
+  hourly_natural_live_views: ["hourly_natural_live_views", "小时自然看播次数"],
+  hourly_commercial_live_views: ["hourly_commercial_live_views", "小时商业看播次数"],
   gpm: ["gpm", "GPM", "千次观看成交金额"],
   gmv: ["gmv", "GMV", "成交金额", "支付金额"],
   gross_profit: ["gross_profit", "核销毛利", "毛利"],
@@ -459,17 +531,32 @@ export const decisionEngineActionTypes = [
   "REQUEST_MANUAL_REVIEW"
 ] as const satisfies readonly ActionType[];
 
-export type ApiResponse<T = unknown> =
-  | { success: true; data: T; error: null }
-  | {
-      success: false;
-      data: null;
-      error: {
-        code: string;
-        message: string;
-        requestId?: string;
-      };
-    };
+export type AccountProfileDTO = {
+  id: string;
+  workspaceId: string;
+  platform: AccountPlatform;
+  platformAccountId?: string | null;
+  accountName: string;
+  merchantName?: string | null;
+  storeName?: string | null;
+  memo?: string | null;
+  identityStatus: AccountIdentityStatus;
+  status: AccountProfileStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CollectionRouteSourceDTO = {
+  id: string;
+  taskId: string;
+  routeKey: import("./collection-routes.js").CollectionRouteKey;
+  label: string;
+  sourceUrl?: string | null;
+  required: boolean;
+  status: CollectionRouteSourceStatus;
+  lastCapturedAt?: string | null;
+  lastError?: string | null;
+};
 
 export type MetricRawEvidence = {
   sourceType: string;
@@ -559,6 +646,13 @@ export type CaptureMeta = {
   acceptedBytes: number;
   truncatedFields: string[];
   truncationReasons: string[];
+  routeDetection?: {
+    routeKey: import("./collection-routes.js").CollectionRouteKey;
+    source: import("./collection-routes.js").CollectionRouteDetectionSource;
+    confidence: number;
+    manuallyConfirmed: boolean;
+    evidence: string[];
+  };
 };
 
 export type CollectionSnapshotPayload = {
@@ -574,7 +668,139 @@ export type CollectionSnapshotPayload = {
   collectionRunId?: string | null;
   routeKey?: import("./collection-routes.js").CollectionRouteKey;
   captureMeta?: CaptureMeta;
+  detectedAccountId?: string | null;
+  detectedAccountName?: string | null;
+  accountMatchEvidence?: AccountMatchEvidence | null;
 };
+
+export type AccountMatchEvidence = {
+  idSource: string | null;
+  nameSource: string | null;
+};
+
+export type ExtensionHeartbeatPayload = {
+  collectionTaskId: string;
+  extensionVersion: string;
+  bridgeProtocolVersion?: number;
+  buildFingerprint?: string | null;
+  currentUrl: string;
+  pageType: PageType;
+  routeKey?: import("./collection-routes.js").CollectionRouteKey;
+  collectable: boolean;
+  tabState: CaptureTabState;
+  detectedAccountId?: string | null;
+  detectedAccountName?: string | null;
+  accountMatchStatus: AccountMatchStatus;
+  lastError?: string | null;
+  observedAt: string;
+};
+
+export type ExtensionStatusDTO = {
+  state: ExtensionConnectionState;
+  installedDetectedByWeb: boolean;
+  paired: boolean;
+  boundTaskId: string | null;
+  boundTaskTitle: string | null;
+  extensionVersion: string | null;
+  bridgeProtocolVersion: number | null;
+  buildFingerprint: string | null;
+  currentUrl: string | null;
+  pageType: PageType | null;
+  routeKey: import("./collection-routes.js").CollectionRouteKey | null;
+  collectable: boolean;
+  tabState: CaptureTabState | null;
+  accountMatchStatus: AccountMatchStatus | null;
+  detectedAccountId: string | null;
+  detectedAccountName: string | null;
+  lastHeartbeatAt: string | null;
+  lastError: string | null;
+  message: string;
+};
+
+export type CaptureSummaryMetricDTO = {
+  metricKey: string;
+  metricName: string;
+  metricValue: string;
+  metricUnit: string | null;
+  category: MetricCategory;
+  confidence: number;
+  metricSource: MetricSource;
+  routeKey: import("./collection-routes.js").CollectionRouteKey | null;
+  pageType: string | null;
+  capturedAt: string;
+  reviewStatus: MetricReviewStatus;
+};
+
+export type CaptureSummaryDTO = {
+  snapshotCount: number;
+  latestCapturedAt: string | null;
+  accountMatchStatus: AccountMatchStatus | null;
+  coverageRatio: number | null;
+  requiredRoutesCaptured: boolean;
+  requiredRoutesAccountMatched: boolean;
+  requiredRoutesComplete: boolean;
+  pendingAccountConfirmationCount: number;
+  pendingRouteConfirmationCount: number;
+  routes: Array<{
+    routeKey: import("./collection-routes.js").CollectionRouteKey;
+    label: string;
+    required: boolean;
+    sourceUrl: string | null;
+    snapshotId: string | null;
+    snapshotUpdatedAt: string | null;
+    state: CaptureSummaryRouteState;
+    routeVerificationStatus: RouteVerificationStatus | null;
+    accountMatchStatus: AccountMatchStatus | null;
+    detectedAccountId: string | null;
+    detectedAccountName: string | null;
+    completeness: CaptureCompleteness | null;
+    lastCapturedAt: string | null;
+    metricCount: number;
+    coverageRatio: number | null;
+    lastError: string | null;
+  }>;
+  metrics: CaptureSummaryMetricDTO[];
+  tables: Array<{
+    routeKey: import("./collection-routes.js").CollectionRouteKey | null;
+    pageType: string | null;
+    capturedAt: string;
+    rows: string[][];
+  }>;
+};
+
+export type FormalDecisionReadinessInput = {
+  missingRequiredRouteLabels: string[];
+  unverifiedRequiredRouteLabels: string[];
+  subjectReady: boolean;
+  reviewTotalCount: number;
+  reviewPendingCount: number;
+};
+
+export type FormalDecisionReadiness = {
+  ready: boolean;
+  blockingReasons: string[];
+};
+
+export function evaluateFormalDecisionReadiness(
+  input: FormalDecisionReadinessInput
+): FormalDecisionReadiness {
+  const blockingReasons: string[] = [];
+  if (input.missingRequiredRouteLabels.length) {
+    blockingReasons.push(`基础采集路线未完成（尚未采集）：${input.missingRequiredRouteLabels.join("、")}`);
+  }
+  if (input.unverifiedRequiredRouteLabels.length) {
+    blockingReasons.push(`以下页面尚未确认属于当前账号：${input.unverifiedRequiredRouteLabels.join("、")}`);
+  }
+  if (!input.subjectReady) {
+    blockingReasons.push("直播主体或操盘主体尚未校准");
+  }
+  if (input.reviewTotalCount <= 0) {
+    blockingReasons.push("关键指标尚未开始人工复核");
+  } else if (input.reviewPendingCount > 0) {
+    blockingReasons.push(`还有 ${input.reviewPendingCount} 项指标待复核`);
+  }
+  return { ready: blockingReasons.length === 0, blockingReasons };
+}
 
 export type MetricPulse = {
   collectionRunId?: string | null;
@@ -584,6 +810,8 @@ export type MetricPulse = {
   tabState: CaptureTabState;
   metrics: VisibleMetric[];
   captureMeta: CaptureMeta;
+  detectedAccountId?: string | null;
+  detectedAccountName?: string | null;
 };
 
 export type RealtimeSignal = {
@@ -654,6 +882,59 @@ export type ManualCheckItem = {
   reason: string;
 };
 
+export const diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"] as const;
+export const recommendationPriorities = ["P0", "P1", "P2"] as const;
+export const decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"] as const;
+export type DiagnosticDimension = (typeof diagnosticDimensions)[number];
+export type RecommendationPriority = (typeof recommendationPriorities)[number];
+export type DecisionAnalysisMode = (typeof decisionAnalysisModes)[number];
+
+export type DiagnosticFinding = {
+  dimension: DiagnosticDimension;
+  title: string;
+  conclusion: string;
+  evidence: string[];
+  riskLevel: RiskLevel;
+};
+
+export type OptimizationRecommendation = {
+  priority: RecommendationPriority;
+  dimension: DiagnosticDimension;
+  title: string;
+  reason: string;
+  evidence?: string[];
+  steps: string[];
+  verifyMetrics: string[];
+  ruleBoundary: string;
+};
+
+export type EvidenceBackedOptimizationRecommendation = OptimizationRecommendation & {
+  evidence: string[];
+};
+
+export type BusinessMetricExplanation = {
+  title: string;
+  value: number | null;
+  meaning: string;
+  use: string;
+  caveat: string;
+};
+
+export type DecisionBusinessAnalysis = {
+  mode?: DecisionAnalysisMode;
+  headline: string;
+  performanceSnapshot: string[];
+  findings: DiagnosticFinding[];
+  recommendations: OptimizationRecommendation[];
+  metricExplanations: BusinessMetricExplanation[];
+  ruleReferences: Array<{
+    title: string;
+    url: string;
+    scope: string;
+    checkedAt: string;
+  }>;
+};
+
 export type DecisionDataQuality = {
   missingFields: string[];
   lowConfidenceFields?: string[];
@@ -677,7 +958,7 @@ export type DecisionEngineInput = {
   pageTitle: string;
   sourceUrl: string;
   metrics: VisibleMetric[];
-  tables: unknown[];
+  tables: DecisionTableInput[];
   visibleText: string;
   networkJsonSummary: CapturedNetworkRecord[];
   targetRoi?: number | null;
@@ -722,8 +1003,8 @@ export type ActionOutcomeDTO = {
   collectionTaskId: string;
   observationWindow: ObservationWindow;
   customWindow?: string | null;
-  beforeMetrics?: unknown;
-  afterMetrics?: unknown;
+  beforeMetrics?: OutcomeMetric[];
+  afterMetrics?: OutcomeMetric[];
   result: ActionOutcomeResult;
   note?: string | null;
   conclusion?: string | null;
@@ -734,11 +1015,17 @@ export type ActionOutcomeDTO = {
 export type CreateActionOutcomeInput = {
   observationWindow: ObservationWindow;
   customWindow?: string | null;
-  beforeMetrics?: unknown;
-  afterMetrics?: unknown;
+  beforeMetrics?: OutcomeMetric[];
+  afterMetrics?: OutcomeMetric[];
   result: ActionOutcomeResult;
   note?: string | null;
   conclusion?: string | null;
+};
+
+export type OutcomeMetric = {
+  metricKey: Exclude<MetricKey, "unknown">;
+  value: number;
+  unit?: string | null;
 };
 
 export type ProjectOutcomeSummary = {
@@ -765,6 +1052,7 @@ export type DecisionEngineOutput = {
   actionProposals: ActionProposalDTO[];
   manualCheckItems: ManualCheckItem[];
   dataQuality: DecisionDataQuality;
+  businessAnalysis?: DecisionBusinessAnalysis;
   calculatedMetrics?: {
     serviceProviderAfterCost?: number | null;
     serviceProviderGrossProfitRoi?: number | null;
@@ -812,8 +1100,16 @@ export const createActionOutcomeInputSchema = z
   .object({
     observationWindow: z.enum(observationWindows),
     customWindow: z.string().trim().max(100).nullable().optional(),
-    beforeMetrics: z.unknown().optional(),
-    afterMetrics: z.unknown().optional(),
+    beforeMetrics: z.array(z.object({
+      metricKey: z.enum(metricKeys).exclude(["unknown"]),
+      value: z.number().finite(),
+      unit: z.string().trim().max(30).nullable().optional()
+    }).strict()).max(100).optional(),
+    afterMetrics: z.array(z.object({
+      metricKey: z.enum(metricKeys).exclude(["unknown"]),
+      value: z.number().finite(),
+      unit: z.string().trim().max(30).nullable().optional()
+    }).strict()).max(100).optional(),
     result: z.enum(actionOutcomeResults),
     note: z.string().trim().max(2000).nullable().optional(),
     conclusion: z.string().trim().max(2000).nullable().optional()
@@ -850,7 +1146,14 @@ export const captureMetaSchema = z.object({
   originalBytes: z.number().int().min(0),
   acceptedBytes: z.number().int().min(0),
   truncatedFields: z.array(z.string().max(100)).max(100),
-  truncationReasons: z.array(z.string().max(200)).max(100)
+  truncationReasons: z.array(z.string().max(200)).max(100),
+  routeDetection: z.object({
+    routeKey: z.enum(collectionRouteKeys),
+    source: z.enum(["MANUAL", "URL", "ACTIVE_TAB", "VISIBLE_CONTENT", "PAGE_TYPE", "UNKNOWN"]),
+    confidence: z.number().min(0).max(1),
+    manuallyConfirmed: z.boolean(),
+    evidence: z.array(z.string().max(200)).max(20)
+  }).optional()
 });
 
 export const subjectContextSchema = z.object({
@@ -876,7 +1179,60 @@ export const collectionSnapshotSchema = z.object({
   localCollectedAt: z.string().datetime(),
   collectionRunId: z.string().min(1).max(128).nullable().optional(),
   routeKey: z.enum(collectionRouteKeys).optional(),
-  captureMeta: captureMetaSchema.optional()
+  captureMeta: captureMetaSchema.optional(),
+  detectedAccountId: z.string().trim().max(200).nullable().optional(),
+  detectedAccountName: z.string().trim().max(200).nullable().optional(),
+  accountMatchEvidence: z.object({
+    idSource: z.string().trim().max(100).nullable(),
+    nameSource: z.string().trim().max(100).nullable()
+  }).strict().nullable().optional()
+});
+
+export const createExtensionPairingCodeSchema = z.object({
+  accountProfileId: z.string().min(1, "请选择要绑定的平台账号"),
+  collectionTaskId: z.string().min(1, "请选择要绑定的采集任务").optional()
+});
+
+export const exchangeExtensionPairingCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "请输入 6 位配对码"),
+  apiBaseUrl: z.string().url().optional(),
+  label: z.string().trim().max(100).optional()
+});
+
+export const selectExtensionTaskSchema = z.object({
+  collectionTaskId: z.string().min(1, "请选择采集任务")
+});
+
+export const extensionHeartbeatSchema = z.object({
+  collectionTaskId: z.string().min(1, "插件尚未绑定采集任务"),
+  extensionVersion: z.string().trim().min(1).max(50),
+  bridgeProtocolVersion: z.number().int().min(1).max(100).optional(),
+  buildFingerprint: z.string().trim().max(100).nullable().optional(),
+  currentUrl: z.string().url().max(snapshotSafetyLimits.urlChars),
+  pageType: z.enum(pageTypes),
+  routeKey: z.enum(collectionRouteKeys).optional(),
+  collectable: z.boolean(),
+  tabState: z.enum(captureTabStates),
+  detectedAccountId: z.string().trim().max(200).nullable().optional(),
+  detectedAccountName: z.string().trim().max(200).nullable().optional(),
+  accountMatchStatus: z.enum(accountMatchStatuses),
+  lastError: z.string().trim().max(500).nullable().optional(),
+  observedAt: z.string().datetime()
+});
+
+export const manualMetricItemSchema = z.object({
+  key: z.string().trim().max(100).optional(),
+  name: z.string().trim().min(1, "指标名称不能为空").max(100),
+  value: z.union([z.number(), z.string().trim().max(200)]),
+  unit: z.string().trim().max(30).optional().nullable()
+});
+
+export const manualMetricsInputSchema = z.object({
+  accountConfirmed: z.literal(true, { message: "请确认数据属于当前账号" }),
+  pageType: z.enum(pageTypes).default("LOCAL_PROMOTION_DASHBOARD"),
+  routeKey: z.enum(collectionRouteKeys).default("LOCAL_PROMOTION_DASHBOARD"),
+  sourceLabel: z.string().trim().max(100).default("网页手工录入"),
+  metrics: z.array(manualMetricItemSchema).min(1, "请至少填写一个指标").max(200, "单次最多录入 200 个指标")
 });
 
 export const metricPulseSchema = z.object({
@@ -886,7 +1242,9 @@ export const metricPulseSchema = z.object({
   localCapturedAt: z.string().datetime(),
   tabState: z.enum(captureTabStates),
   metrics: z.array(visibleMetricSchema).max(32),
-  captureMeta: captureMetaSchema
+  captureMeta: captureMetaSchema,
+  detectedAccountId: z.string().trim().max(200).nullable().optional(),
+  detectedAccountName: z.string().trim().max(200).nullable().optional()
 });
 
 export const manualCheckItemSchema = z.object({
@@ -1014,6 +1372,17 @@ export const actionProposalDTOSchema = z.object({
   manualExecutedAt: z.string().nullable().optional()
 });
 
+export const generatedOptimizationRecommendationSchema = z.object({
+  priority: z.enum(recommendationPriorities),
+  dimension: z.enum(diagnosticDimensions),
+  title: z.string().min(1),
+  reason: z.string().min(1),
+  evidence: z.array(z.string().min(1)).min(1),
+  steps: z.array(z.string().min(1)).min(1),
+  verifyMetrics: z.array(z.string().min(1)).min(1),
+  ruleBoundary: z.string().min(1)
+});
+
 export const decisionEngineInputSchema = z.object({
   projectId: z.string().optional(),
   collectionTaskId: z.string().optional(),
@@ -1022,7 +1391,7 @@ export const decisionEngineInputSchema = z.object({
   pageTitle: z.string().default(""),
   sourceUrl: z.string().default(""),
   metrics: z.array(visibleMetricSchema),
-  tables: z.array(z.unknown()),
+  tables: z.array(decisionTableInputSchema),
   visibleText: z.string().default(""),
   networkJsonSummary: z.array(networkRecordSchema).max(50),
   targetRoi: z.number().nullable().optional(),
@@ -1030,7 +1399,20 @@ export const decisionEngineInputSchema = z.object({
   latestAnalysis: z.unknown().nullable().optional(),
   dataReviewStatus: z.enum(dataReviewStatuses).optional(),
   reviewCoverage: reviewCoverageSchema.optional(),
-  metricLayer: z.enum(metricLayers).optional()
+  metricLayer: z.enum(metricLayers).optional(),
+  collectionQuality: z.object({
+    requiredRoutes: z.array(z.enum(collectionRouteKeys)),
+    routes: z.array(z.object({
+      routeKey: z.enum(collectionRouteKeys),
+      state: z.enum(["FRESH", "AGING", "STALE", "MISSING"]),
+      lastCollectedAt: z.string().datetime().nullable(),
+      ageMs: z.number().nonnegative().nullable()
+    })),
+    completeness: z.number().min(0).max(1),
+    missingRoutes: z.array(z.enum(collectionRouteKeys)),
+    staleRoutes: z.array(z.enum(collectionRouteKeys)),
+    blocksStrongActions: z.boolean()
+  }).optional()
 });
 
 export const decisionEngineOutputSchema = z.object({
@@ -1043,6 +1425,51 @@ export const decisionEngineOutputSchema = z.object({
   actionProposals: z.array(actionProposalDTOSchema),
   manualCheckItems: z.array(manualCheckItemSchema),
   dataQuality: decisionDataQualitySchema,
+  businessAnalysis: z
+    .object({
+      mode: z.enum(decisionAnalysisModes).optional(),
+      headline: z.string().min(1),
+      performanceSnapshot: z.array(z.string()),
+      findings: z.array(
+        z.object({
+          dimension: z.enum(diagnosticDimensions),
+          title: z.string().min(1),
+          conclusion: z.string().min(1),
+          evidence: z.array(z.string()),
+          riskLevel: z.enum(riskLevels)
+        })
+      ),
+      recommendations: z.array(
+        z.object({
+          priority: z.enum(recommendationPriorities),
+          dimension: z.enum(diagnosticDimensions),
+          title: z.string().min(1),
+          reason: z.string().min(1),
+          evidence: z.array(z.string().min(1)).optional(),
+          steps: z.array(z.string().min(1)),
+          verifyMetrics: z.array(z.string().min(1)),
+          ruleBoundary: z.string().min(1)
+        })
+      ),
+      metricExplanations: z.array(
+        z.object({
+          title: z.string().min(1),
+          value: z.number().nullable(),
+          meaning: z.string().min(1),
+          use: z.string().min(1),
+          caveat: z.string().min(1)
+        })
+      ),
+      ruleReferences: z.array(
+        z.object({
+          title: z.string().min(1),
+          url: z.string().url(),
+          scope: z.string().min(1),
+          checkedAt: z.string().min(1)
+        })
+      )
+    })
+    .optional(),
   calculatedMetrics: z
     .object({
       serviceProviderAfterCost: z.number().nullable().optional(),
@@ -1053,9 +1480,22 @@ export const decisionEngineOutputSchema = z.object({
     .optional()
 });
 
+export const generatedDecisionEngineOutputSchema = decisionEngineOutputSchema.superRefine((output, ctx) => {
+  for (const [index, recommendation] of (output.businessAnalysis?.recommendations || []).entries()) {
+    if (!generatedOptimizationRecommendationSchema.safeParse(recommendation).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["businessAnalysis", "recommendations", index, "evidence"],
+        message: "新生成的经营建议必须包含至少一条真实证据"
+      });
+    }
+  }
+});
+
 export const createProjectSchema = z.object({
-  workspaceId: z.string().min(1),
-  name: z.string().min(1),
+  workspaceId: z.string().min(1).optional(),
+  accountProfileId: z.string().min(1).optional(),
+  name: z.string().trim().min(1, "请填写项目名称").max(100, "项目名称不能超过 100 个字"),
   businessType: z.enum(businessTypes).default("DOUYIN_LOCAL_LIFE"),
   subjectType: z.enum(subjectTypes).default("SUBJECT_PENDING"),
   operatorType: z.enum(operatorTypes).default("OPERATOR_PENDING"),
@@ -1065,12 +1505,87 @@ export const createProjectSchema = z.object({
   serviceProviderName: z.string().trim().optional().nullable(),
   serviceMode: z.string().trim().optional().nullable(),
   serviceFee: z.coerce.number().min(0).optional().nullable()
+}).superRefine((value, ctx) => {
+  const usesServiceProvider = value.subjectType === "SERVICE_PROVIDER"
+    || value.operatorType === "SERVICE_PROVIDER_LIVE"
+    || value.operatorType === "SERVICE_PROVIDER_OPERATION";
+  if (usesServiceProvider && !value.serviceProviderName?.trim()) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["serviceProviderName"],
+      message: "服务商代播或代运营项目必须填写服务商名称"
+    });
+  }
+});
+
+export const createAccountProfileSchema = z.object({
+  workspaceId: z.string().min(1).optional(),
+  platform: z.enum(accountPlatforms).default("DOUYIN_LOCAL_LIFE"),
+  platformAccountId: z.string().trim().max(200).optional().nullable(),
+  accountName: z.string().trim().min(1, "请填写平台账号名称").max(100, "账号名称不能超过 100 个字"),
+  merchantName: z.string().trim().max(100).optional().nullable(),
+  storeName: z.string().trim().max(100).optional().nullable(),
+  memo: z.string().trim().max(1000).optional().nullable()
+});
+
+export const updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine(
+  (value) => Object.keys(value).length > 0,
+  { message: "请至少修改一项账号资料" }
+);
+
+export const deleteAccountProfileSchema = z.object({
+  accountName: z.string().trim().min(1, "请确认要删除的账号名称")
+});
+
+export const cloneProjectSchema = z.object({
+  name: z.string().trim().min(1, "请填写新项目名称").max(100),
+  accountProfileId: z.string().min(1).optional(),
+  subjectType: z.enum(subjectTypes).optional(),
+  operatorType: z.enum(operatorTypes).optional(),
+  cooperationType: z.enum(cooperationTypes).optional(),
+  serviceProviderName: z.string().trim().max(100, "服务商名称不能超过 100 个字").optional().nullable(),
+  serviceFee: z.coerce.number().min(0, "服务成本不能小于 0").optional().nullable()
+});
+
+export const collectionRouteSourceInputSchema = z.object({
+  routeKey: z.enum(collectionRouteKeys),
+  sourceUrl: z.string().trim().url("请输入完整的页面地址，例如 https://example.com/page").max(snapshotSafetyLimits.urlChars).optional().nullable()
 });
 
 export const createCollectionTaskSchema = z.object({
   projectId: z.string().min(1),
-  sourceUrl: z.string().url().optional(),
-  pageTitle: z.string().optional()
+  sourceUrl: z.string().trim().url("请输入完整的页面地址，例如 https://example.com/page").max(snapshotSafetyLimits.urlChars).optional(),
+  pageTitle: z.string().trim().max(100).optional(),
+  routeSources: z.array(collectionRouteSourceInputSchema).max(10).optional()
+});
+
+export const confirmSnapshotAccountSchema = z.object({
+  confirmed: z.literal(true),
+  expectedUpdatedAt: z.string().datetime(),
+  note: z.string().trim().max(500).optional()
+});
+
+export const confirmSnapshotAccountsSchema = z.object({
+  confirmed: z.literal(true),
+  snapshots: z.array(z.object({
+    snapshotId: z.string().min(1),
+    expectedUpdatedAt: z.string().datetime()
+  })).min(1).max(20).superRefine((snapshots, context) => {
+    const seen = new Set<string>();
+    snapshots.forEach((snapshot, index) => {
+      if (seen.has(snapshot.snapshotId)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "快照不能重复确认", path: [index, "snapshotId"] });
+      }
+      seen.add(snapshot.snapshotId);
+    });
+  }),
+  note: z.string().trim().max(500).optional()
+});
+
+export const confirmSnapshotRouteSchema = z.object({
+  confirmed: z.literal(true),
+  routeKey: z.enum(collectionRouteKeys).refine((routeKey) => routeKey !== "UNKNOWN", "请选择当前任务中的采集路线"),
+  expectedUpdatedAt: z.string().datetime()
 });
 
 export const updateCollectionTaskStatusSchema = z.object({
@@ -1078,21 +1593,21 @@ export const updateCollectionTaskStatusSchema = z.object({
 });
 
 export const authLoginSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(6).max(128)
+  email: z.string().trim().toLowerCase().email("请输入有效邮箱").max(128, "邮箱不能超过 128 个字符"),
+  password: z.string().min(6, "密码至少 6 位").max(128, "密码不能超过 128 位")
 });
 
 export const authRegisterSchema = authLoginSchema.extend({
-  name: z.string().min(1).optional()
+  name: z.string().trim().min(1, "请输入姓名").max(100, "姓名不能超过 100 个字").optional()
 });
 
-export function success<T>(data: T): ApiResponse<T> {
-  return { success: true, data, error: null };
-}
+export const emailVerificationConfirmSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "验证链接无效或已过期")
+});
 
-export function failure(code: string, message: string, options: { requestId?: string } = {}): ApiResponse<never> {
-  return { success: false, data: null, error: { code, message, ...(options.requestId ? { requestId: options.requestId } : {}) } };
-}
+export const emailVerificationResendSchema = z.object({
+  email: z.string().trim().toLowerCase().email("请输入有效邮箱").max(128, "邮箱不能超过 128 个字符")
+});
 
 export function subjectLabel(type: SubjectType) {
   return subjectTypeLabels[type] || "主体待校准";
@@ -1127,8 +1642,3 @@ export function standardizeMetricKey(metric: Pick<VisibleMetric, "key" | "name">
 export function isKnownMetricKey(value: string | null | undefined): value is MetricKey {
   return !!value && value !== "unknown" && metricKeys.includes(value as MetricKey);
 }
-
-export const aiDisclaimer = "AI 诊断结果仅供投流决策参考，请结合业务目标、预算和平台规则人工确认。第一版系统不会自动执行任何投放操作。";
-
-export const extensionSafetyNotice =
-  "本插件仅在用户授权并打开目标后台页面时采集当前页面可见数据和允许的 JSON 响应。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。";

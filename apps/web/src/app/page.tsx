@@ -11,7 +11,7 @@ export default function HomePage() {
             本地生活投流数据采集与 AI 诊断辅助工具
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-muted">
-            Chrome 插件采集当前页面可见数据、页面表格和允许的 JSON 响应；Web SaaS 工作台负责项目管理、采集任务、数据复核、AI
+            Chrome 插件采集当前页面可见 DOM、真实表格和白名单指标；Web SaaS 工作台负责项目管理、采集任务、数据复核、AI
             诊断、动作建议、人工审批和审计留痕。
           </p>
           <div className="mt-6 grid gap-3 rounded-lg border border-border bg-white p-4 text-sm leading-6 text-muted">

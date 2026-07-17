@@ -26,12 +26,12 @@ function input(overrides: Partial<AnalyzeInput> = {}): AnalyzeInput {
 }
 
 describe("mockAnalyze explanation layer", () => {
-  it("does not generate final action suggestions", async () => {
+  it("returns explanation suggestions without creating final action proposals", async () => {
     const result = await mockAnalyze(input());
 
-    expect(result.summary).toContain("解释层");
+    expect(result.summary).toContain("本轮数据解读");
     expect(result.summary).toContain("decision-engine");
-    expect(result.suggestions).toEqual([]);
+    expect(result.suggestions.length).toBeGreaterThan(0);
     expect(result.confidence).toBeLessThanOrEqual(0.7);
   });
 
@@ -50,7 +50,7 @@ describe("mockAnalyze explanation layer", () => {
 
     expect(result.summary).toContain("主体待校准");
     expect(result.manualCheckItems.some((item) => item.title.includes("主体识别"))).toBe(true);
-    expect(result.suggestions).toEqual([]);
+    expect(result.suggestions.length).toBeGreaterThan(0);
     expect(result.riskLevel).toBe("MEDIUM");
     expect(result.confidence).toBeLessThan(0.6);
   });

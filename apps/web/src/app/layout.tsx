@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { AuthProvider } from "@/lib/AuthContext";
 import "./globals.css";
 
@@ -8,10 +9,11 @@ export const metadata: Metadata = {
   description: "本地生活投流数据采集与 AI 诊断辅助工具"
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get("x-nonce") || undefined;
   return (
     <html lang="zh-CN">
-      <body>
+      <body nonce={nonce}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

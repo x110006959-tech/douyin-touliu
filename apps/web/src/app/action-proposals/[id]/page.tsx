@@ -12,12 +12,14 @@ import {
   executionModeLabels,
   executionStatusLabels,
   observationWindowLabels,
+  metricKeyLabels,
   type ActionOutcomeResult,
   type ActionProposalStatus,
   type ActionType,
   type ApprovalDecision,
   type ExecutionMode,
   type ExecutionStatus,
+  type OutcomeMetric,
   type ObservationWindow,
   type RiskLevel
 } from "@douyin-local-life/shared";
@@ -26,6 +28,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { apiFetch, createIdempotencyKey } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-state";
 
 type ActionProposalDetail = {
   id: string;
@@ -50,7 +53,7 @@ type ActionProposalDetail = {
   manualExecutedAt: string | null;
   expiresAt: string | null;
   supersededAt: string | null;
-  project: { id: string; name: string };
+  project: { id: string; name: string; accountProfile: { id: string; accountName: string; platformAccountId: string | null; identityStatus: string } };
   collectionTask: { id: string; pageTitle: string | null; sourceUrl: string | null };
   decisionRun: { id: string; diagnosis: string; riskLevel: RiskLevel; confidence: number; strategyVersion: string; createdAt: string };
   approvalRecords: Array<{ id: string; decision: ApprovalDecision; comment: string | null; createdAt: string }>;
@@ -62,8 +65,8 @@ type ActionOutcomeDetail = {
   actionProposalId: string;
   observationWindow: ObservationWindow;
   customWindow: string | null;
-  beforeMetrics?: unknown;
-  afterMetrics?: unknown;
+  beforeMetrics?: OutcomeMetric[];
+  afterMetrics?: OutcomeMetric[];
   result: ActionOutcomeResult;
   note: string | null;
   conclusion: string | null;
@@ -72,7 +75,7 @@ type ActionOutcomeDetail = {
 
 export default function ActionProposalDetailPage() {
   const params = useParams<{ id: string }>();
-  const { token } = useAuth();
+  const { token, hydrated } = useAuth();
   const [proposal, setProposal] = useState<ActionProposalDetail | null>(null);
   const [outcomes, setOutcomes] = useState<ActionOutcomeDetail[]>([]);
   const [comment, setComment] = useState("");
@@ -146,8 +149,8 @@ export default function ActionProposalDetailPage() {
     setBusy("outcome");
     setError("");
     try {
-      const beforeMetrics = parseOptionalJson(beforeMetricsJson, "执行前指标");
-      const afterMetrics = parseOptionalJson(afterMetricsJson, "执行后指标");
+      const beforeMetrics = parseOutcomeMetrics(beforeMetricsJson, "执行前指标");
+      const afterMetrics = parseOutcomeMetrics(afterMetricsJson, "执行后指标");
       const created = await apiFetch<ActionOutcomeDetail>(`/action-proposals/${proposal.id}/outcomes`, token, {
         method: "POST",
         headers: { "idempotency-key": createIdempotencyKey(`outcome:${proposal.id}`) },
@@ -176,18 +179,8 @@ export default function ActionProposalDetailPage() {
     }
   }
 
-  if (!token) {
-    return (
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <Card>
-          <CardTitle>请先登录</CardTitle>
-          <Link className="text-primary" href="/login">
-            前往登录页
-          </Link>
-        </Card>
-      </main>
-    );
-  }
+  if (!hydrated) return <AuthLoadingState />;
+  if (!token) return <AuthRequiredState />;
 
   if (!proposal) {
     return <main className="mx-auto max-w-5xl px-6 py-8 text-sm text-muted">{error || "加载中..."}</main>;
@@ -205,8 +198,9 @@ export default function ActionProposalDetailPage() {
             返回决策中心
           </Link>
           <h1 className="mt-3 text-3xl font-bold">{proposal.title}</h1>
+          <p className="text-sm font-medium text-primary">当前账号：{proposal.project.accountProfile.accountName}{proposal.project.accountProfile.platformAccountId ? ` / ${proposal.project.accountProfile.platformAccountId}` : " / 账号 ID 待补"}</p>
           <p className="text-sm text-muted">
-            {proposal.project.name} / {proposal.collectionTask.pageTitle || proposal.collectionTask.sourceUrl || proposal.collectionTask.id}
+            当前项目：{proposal.project.name} / 当前任务：{proposal.collectionTask.pageTitle || proposal.collectionTask.sourceUrl || proposal.collectionTask.id}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
@@ -394,8 +388,16 @@ export default function ActionProposalDetailPage() {
                     <option value="UNCLEAR">不明确</option>
                   </select>
                 </label>
-                <Textarea value={beforeMetricsJson} onChange={(event) => setBeforeMetricsJson(event.target.value)} placeholder='执行前指标 JSON，例如 {"verify_roi":0.8}' />
-                <Textarea value={afterMetricsJson} onChange={(event) => setAfterMetricsJson(event.target.value)} placeholder='执行后指标 JSON，例如 {"verify_roi":1.1}' />
+                <Textarea
+                  value={beforeMetricsJson}
+                  onChange={(event) => setBeforeMetricsJson(event.target.value)}
+                  placeholder={'执行前指标 JSON 数组，例如 [{"metricKey":"verify_roi","value":0.8,"unit":"倍"}]'}
+                />
+                <Textarea
+                  value={afterMetricsJson}
+                  onChange={(event) => setAfterMetricsJson(event.target.value)}
+                  placeholder={'执行后指标 JSON 数组，例如 [{"metricKey":"verify_roi","value":1.1,"unit":"倍"}]'}
+                />
                 <Textarea value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="复盘备注" />
                 <Textarea value={outcomeConclusion} onChange={(event) => setOutcomeConclusion(event.target.value)} placeholder="复盘结论" />
                 <Button type="submit" disabled={busy === "outcome"}>
@@ -426,12 +428,28 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function parseOptionalJson(value: string, label: string) {
+function parseOutcomeMetrics(value: string, label: string): OutcomeMetric[] | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   try {
-    return JSON.parse(trimmed) as unknown;
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed) || parsed.length > 100) throw new Error();
+    return parsed.map((metric) => {
+      if (!metric || typeof metric !== "object") throw new Error();
+      const { metricKey, value: metricValue, unit } = metric as Record<string, unknown>;
+      if (
+        typeof metricKey !== "string" ||
+        metricKey === "unknown" ||
+        !(metricKey in metricKeyLabels) ||
+        typeof metricValue !== "number" ||
+        !Number.isFinite(metricValue) ||
+        (unit !== undefined && unit !== null && (typeof unit !== "string" || unit.trim().length > 30))
+      ) {
+        throw new Error();
+      }
+      return { metricKey: metricKey as OutcomeMetric["metricKey"], value: metricValue, unit: typeof unit === "string" ? unit.trim() || null : null };
+    });
   } catch {
-    throw new Error(`${label}必须是合法 JSON`);
+    throw new Error(`${label}必须是最多 100 项的指标数组，且每项包含 metricKey、有限 value 和可选 unit`);
   }
 }

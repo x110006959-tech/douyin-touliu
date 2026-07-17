@@ -2,6 +2,23 @@ import type { ApiResponse } from "@douyin-local-life/shared";
 
 export const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export const cookieSessionMarker = "__http_only_cookie_session__";
+let csrfToken: string | null = null;
+
+export function setCsrfToken(value: string | null) {
+  csrfToken = value;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly fieldErrors: Record<string, string> = {},
+    public readonly requestId?: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 export function createIdempotencyKey(scope: string) {
   const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -20,6 +37,7 @@ export async function apiFetch<T>(path: string, token: string | null, init: Requ
       headers: {
         "content-type": "application/json",
         ...(token && token !== cookieSessionMarker ? { authorization: `Bearer ${token}` } : {}),
+        ...(token === cookieSessionMarker && csrfToken ? { "x-csrf-token": csrfToken } : {}),
         ...(init.headers || {})
       }
     });
@@ -31,7 +49,7 @@ export async function apiFetch<T>(path: string, token: string | null, init: Requ
   const payload = (await response.json()) as ApiResponse<T>;
   if (!payload.success) {
     const requestId = payload.error.requestId ? `（请求 ${payload.error.requestId}）` : "";
-    throw new Error(`${payload.error.message}${requestId}`);
+    throw new ApiError(`${payload.error.message}${requestId}`, payload.error.code, payload.error.fieldErrors || {}, payload.error.requestId);
   }
   return payload.data;
 }

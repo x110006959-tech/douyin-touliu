@@ -1,5 +1,6 @@
 import type { ActionProposal, ApprovalDecision, Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
+import { sanitizePersistedJson } from "./persisted-input.js";
 
 export type ActionProposalAuditInput = {
   action: string;
@@ -41,7 +42,7 @@ export async function markActionProposalManualExecuted(input: {
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.actionProposal.updateMany({
-      where: { id: input.actionProposalId, status: "APPROVED" },
+      where: { id: input.actionProposalId, status: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
       data: { status: "MANUAL_EXECUTED", manualExecutedAt: now }
     });
     if (updated.count !== 1) return null;
@@ -71,7 +72,7 @@ async function transitionApprovalActionProposal(
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.actionProposal.updateMany({
-      where: { id: input.actionProposalId, status: "PENDING_APPROVAL" },
+      where: { id: input.actionProposalId, status: "PENDING_APPROVAL", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
       data: approvalUpdateData(targetStatus, now)
     });
     if (updated.count !== 1) return null;
@@ -104,7 +105,7 @@ async function createAuditLog(tx: Prisma.TransactionClient, userId: string, audi
       projectId: audit.projectId || null,
       taskId: audit.taskId || null,
       action: audit.action,
-      detailJson: audit.detailJson == null ? undefined : toJson(audit.detailJson),
+      detailJson: audit.detailJson == null ? undefined : toJson(sanitizePersistedJson(audit.detailJson)),
       ip: audit.ip || null,
       userAgent: audit.userAgent || null
     }

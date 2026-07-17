@@ -1,4 +1,4 @@
-import type { CollectionRunStatus, Prisma } from "@prisma/client";
+import type { CollectionRunStatus, Prisma, PrismaClient } from "@prisma/client";
 import {
   assessCollectionQuality,
   collectionFreshnessPolicy,
@@ -8,6 +8,7 @@ import {
 } from "@douyin-local-life/shared";
 import { z } from "zod";
 import { prisma } from "./prisma.js";
+import { findCurrentSnapshotIdsByRoute } from "./current-snapshots.js";
 
 export const createCollectionRunSchema = z.object({
   requiredRoutes: z.array(z.enum(collectionRouteKeys)).min(1).max(collectionRouteKeys.length).default(defaultRequiredCollectionRoutes)
@@ -50,15 +51,38 @@ export function assessCollectionRunQuality(
   return quality;
 }
 
-export function getOwnedCollectionRun(userId: string, id: string) {
-  return prisma.collectionRun.findFirst({
+export async function hydrateCurrentRunSnapshots<T extends { id: string; taskId: string; requiredRoutesJson: Prisma.JsonValue }>(
+  client: Prisma.TransactionClient | PrismaClient,
+  runs: T[]
+) {
+  const idsByRun = new Map<string, string[]>();
+  await Promise.all(runs.map(async (run) => idsByRun.set(run.id, await findCurrentSnapshotIdsByRoute(client, {
+    taskId: run.taskId,
+    collectionRunId: run.id,
+    routeKeys: requiredRoutesFromJson(run.requiredRoutesJson)
+  }))));
+  const ids = [...new Set([...idsByRun.values()].flat())];
+  const snapshots = ids.length ? await client.dataSnapshot.findMany({
+    where: { id: { in: ids } },
+    orderBy: [{ localCollectedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    select: { id: true, collectionRunId: true, routeKey: true, pageType: true, localCollectedAt: true }
+  }) : [];
+  const byId = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+  return runs.map((run) => ({
+    ...run,
+    snapshots: (idsByRun.get(run.id) || []).flatMap((id) => byId.get(id) ? [byId.get(id)!] : [])
+  }));
+}
+
+export async function getOwnedCollectionRun(userId: string, id: string) {
+  const run = await prisma.collectionRun.findFirst({
     where: { id, task: { project: { workspace: { ownerId: userId } } } },
     include: {
       task: { include: { project: true } },
-      snapshots: { orderBy: { localCollectedAt: "desc" }, take: 100 },
       routeHealth: true
     }
   });
+  return run ? (await hydrateCurrentRunSnapshots(prisma, [run]))[0] || null : null;
 }
 
 export function toCollectionRunDTO(run: {
@@ -110,12 +134,12 @@ export async function refreshCollectionRunStatus(tx: Prisma.TransactionClient, c
   const run = await tx.collectionRun.findUnique({
     where: { id: collectionRunId },
     include: {
-      snapshots: { orderBy: { localCollectedAt: "desc" }, take: 100 },
       routeHealth: true
     }
   });
   if (!run || run.status === "STOPPED") return run;
-  const quality = assessCollectionRunQuality(run.requiredRoutesJson, run.snapshots, run.routeHealth);
+  const snapshots = (await hydrateCurrentRunSnapshots(tx, [run]))[0]?.snapshots || [];
+  const quality = assessCollectionRunQuality(run.requiredRoutesJson, snapshots, run.routeHealth);
   const status: CollectionRunStatus = run.routeHealth.some((route) => route.consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold)
     ? "DEGRADED"
     : quality.blocksStrongActions
@@ -125,7 +149,7 @@ export async function refreshCollectionRunStatus(tx: Prisma.TransactionClient, c
     where: { id: run.id },
     data: {
       status,
-      lastSnapshotAt: run.snapshots[0]?.localCollectedAt || run.lastSnapshotAt,
+      lastSnapshotAt: snapshots[0]?.localCollectedAt || run.lastSnapshotAt,
       completedAt: status === "COMPLETED" ? run.completedAt || new Date() : null
     }
   });

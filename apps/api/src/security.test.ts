@@ -1,9 +1,10 @@
 import bcrypt from "bcryptjs";
 import type { Server } from "node:http";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { signToken } from "./auth.js";
+import { createUserSession } from "./auth.js";
+import { resetTestEmailDeliveries, takeLatestVerificationForTest } from "./email-verification.js";
 import { prisma } from "./prisma.js";
-import { resetAuthRateLimiters } from "./rate-limit.js";
+import { resetRateLimitBuckets } from "./rate-limit.js";
 import { createServer } from "./server.js";
 
 type ApiEnvelope<T> =
@@ -16,6 +17,7 @@ let baseUrl = "";
 const originalNodeEnv = process.env.NODE_ENV;
 const originalJwtSecret = process.env.JWT_SECRET;
 const originalExtensionOrigins = process.env.EXTENSION_ORIGINS;
+const originalWebOrigin = process.env.WEB_ORIGIN;
 
 beforeAll(async () => {
   await new Promise<void>((resolve) => {
@@ -27,13 +29,14 @@ beforeAll(async () => {
   });
 });
 
-beforeEach(() => {
-  resetAuthRateLimiters();
+beforeEach(async () => {
+  await resetRateLimitBuckets();
+  resetTestEmailDeliveries();
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  resetAuthRateLimiters();
+  await resetRateLimitBuckets();
   process.env.NODE_ENV = originalNodeEnv;
   if (originalJwtSecret === undefined) {
     delete process.env.JWT_SECRET;
@@ -45,6 +48,11 @@ afterEach(() => {
   } else {
     process.env.EXTENSION_ORIGINS = originalExtensionOrigins;
   }
+  if (originalWebOrigin === undefined) {
+    delete process.env.WEB_ORIGIN;
+  } else {
+    process.env.WEB_ORIGIN = originalWebOrigin;
+  }
 });
 
 afterAll(async () => {
@@ -53,6 +61,17 @@ afterAll(async () => {
 });
 
 describe("auth security controls", () => {
+  it("reports an expired browser session without asking users to provide a token", async () => {
+    const response = await rawApi("/auth/me");
+
+    expect(response.status).toBe(401);
+    expect(response.envelope.error).toMatchObject({
+      code: "UNAUTHORIZED",
+      message: "登录状态已失效，请重新登录"
+    });
+    expect(response.envelope.error?.message.toLowerCase()).not.toContain("token");
+  });
+
   it("rate limits repeated failed login attempts by email", async () => {
     const body = { email: `missing-${unique()}@example.com`, password: "wrong-password" };
 
@@ -74,9 +93,9 @@ describe("auth security controls", () => {
     const email = `register-limit-${unique()}@example.com`;
     const body = { email, password: "password123", name: "Rate Limited User" };
 
-    expect((await rawApi("/auth/register", { method: "POST", body })).status).toBe(201);
-    expect((await rawApi("/auth/register", { method: "POST", body })).envelope.error?.code).toBe("REGISTER_FAILED");
-    expect((await rawApi("/auth/register", { method: "POST", body })).envelope.error?.code).toBe("REGISTER_FAILED");
+    expect((await rawApi("/auth/register", { method: "POST", body })).status).toBe(202);
+    expect((await rawApi("/auth/register", { method: "POST", body })).status).toBe(202);
+    expect((await rawApi("/auth/register", { method: "POST", body })).status).toBe(202);
 
     const blocked = await rawApi("/auth/register", { method: "POST", body });
     expect(blocked.status).toBe(429);
@@ -117,25 +136,120 @@ describe("auth security controls", () => {
     expect(wrongPassword.status).toBe(401);
     expect(missing.envelope.error?.code).toBe("INVALID_CREDENTIALS");
     expect(wrongPassword.envelope.error?.code).toBe("INVALID_CREDENTIALS");
+
+    expect((await rawApi("/auth/login", { method: "POST", body: { email, password: "right-password" } })).status).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { email }, select: { passwordHash: true } })).passwordHash).toMatch(/^\$argon2id\$/);
   });
 
-  it("stores browser sessions in an HttpOnly cookie while keeping Bearer support", async () => {
+  it("creates a session only after a single-use email verification", async () => {
+    const email = `cookie-session-${unique()}@example.com`;
     const registered = await rawApi("/auth/register", {
       method: "POST",
-      body: { email: `cookie-session-${unique()}@example.com`, password: "password123", name: "Cookie Session" }
+      body: { email, password: "password123", name: "Cookie Session" }
     });
-    const setCookie = registered.headers.get("set-cookie") || "";
+    const verification = takeLatestVerificationForTest(email);
+
+    expect(registered.status).toBe(202);
+    expect(registered.headers.get("set-cookie")).toBeNull();
+    expect(verification).toBeTruthy();
+    const verified = await rawApi("/auth/email-verifications/confirm", { method: "POST", body: { token: verification?.token } });
+    const setCookie = verified.headers.get("set-cookie") || "";
     const cookie = setCookie.split(";")[0] || "";
 
-    expect(registered.status).toBe(201);
+    expect(verified.status).toBe(200);
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Lax");
     expect(setCookie).toContain("Max-Age=3600");
-    expect((await rawApi("/auth/me", { cookie })).status).toBe(200);
+    const me = await rawApi("/auth/me", { cookie });
+    expect(me.status).toBe(200);
 
-    const logout = await rawApi("/auth/logout", { method: "POST", cookie });
+    const csrfToken = me.envelope.success ? (me.envelope.data as { csrfToken: string }).csrfToken : "";
+    const logout = await rawApi("/auth/logout", { method: "POST", cookie, csrfToken });
     expect(logout.status).toBe(200);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect((await rawApi("/auth/me", { cookie })).status).toBe(401);
+    const replay = await rawApi("/auth/email-verifications/confirm", { method: "POST", body: { token: verification?.token } });
+    expect(replay.envelope.error?.code).toBe("EMAIL_VERIFICATION_INVALID");
+  });
+
+  it("rejects expired verification tokens and unverified logins", async () => {
+    const email = `verification-${unique()}@example.com`;
+    await rawApi("/auth/register", { method: "POST", body: { email, password: "password123", name: "Verification User" } });
+    const verification = takeLatestVerificationForTest(email);
+    expect(verification).toBeTruthy();
+    await prisma.emailVerificationToken.updateMany({ where: { pendingRegistration: { email } }, data: { expiresAt: new Date(Date.now() - 1_000) } });
+    const expired = await rawApi("/auth/email-verifications/confirm", { method: "POST", body: { token: verification?.token } });
+    expect(expired.envelope.error?.code).toBe("EMAIL_VERIFICATION_INVALID");
+    const login = await rawApi("/auth/login", { method: "POST", body: { email, password: "password123" } });
+    expect(login.status).toBe(403);
+    expect(login.envelope.error?.code).toBe("EMAIL_NOT_VERIFIED");
+  });
+
+  it("rate limits email verification resends", async () => {
+    const email = `verification-resend-${unique()}@example.com`;
+    await rawApi("/auth/register", { method: "POST", body: { email, password: "password123", name: "Verification Resend" } });
+    expect((await rawApi("/auth/email-verifications/resend", { method: "POST", body: { email } })).status).toBe(202);
+    expect((await rawApi("/auth/email-verifications/resend", { method: "POST", body: { email } })).status).toBe(202);
+    const blocked = await rawApi("/auth/email-verifications/resend", { method: "POST", body: { email } });
+    expect(blocked.status).toBe(429);
+    expect(blocked.envelope.error?.code).toBe("RATE_LIMITED");
+  });
+
+  it("rejects forged cross-site writes and accepts only the issued CSRF token", async () => {
+    const registered = await registerAndVerify({
+      method: "POST",
+      body: { email: `csrf-${unique()}@example.com`, password: "password123", name: "CSRF User" }
+    });
+    const cookie = (registered.headers.get("set-cookie") || "").split(";")[0] || "";
+    const csrfToken = registered.envelope.success ? (registered.envelope.data as { csrfToken: string }).csrfToken : "";
+
+    const forged = await rawApi("/workspaces", {
+      method: "POST",
+      cookie,
+      body: { name: "forged" }
+    });
+    expect(forged.status).toBe(403);
+    expect(forged.envelope.error?.code).toBe("CSRF_INVALID");
+
+    const crossSite = await rawApi("/workspaces", {
+      method: "POST",
+      cookie,
+      csrfToken,
+      origin: "https://evil.example.com",
+      fetchSite: "cross-site",
+      body: { name: "cross-site" }
+    });
+    expect(crossSite.status).toBe(403);
+    expect(crossSite.envelope.error?.code).toBe("CSRF_INVALID");
+
+    const accepted = await rawApi("/workspaces", {
+      method: "POST",
+      cookie,
+      csrfToken,
+      body: { name: "same-origin" }
+    });
+    expect(accepted.status).toBe(201);
+  });
+
+  it("rejects same-site writes from a sibling origin", async () => {
+    const registered = await registerAndVerify({
+      method: "POST",
+      body: { email: `csrf-same-site-${unique()}@example.com`, password: "password123", name: "CSRF Same Site" }
+    });
+    const cookie = (registered.headers.get("set-cookie") || "").split(";")[0] || "";
+    const csrfToken = registered.envelope.success ? (registered.envelope.data as { csrfToken: string }).csrfToken : "";
+
+    const response = await rawApi("/workspaces", {
+      method: "POST",
+      cookie,
+      csrfToken,
+      origin: "http://localhost:3000",
+      fetchSite: "same-site",
+      body: { name: "sibling-origin" }
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.envelope.error?.code).toBe("CSRF_INVALID");
   });
 });
 
@@ -256,18 +370,53 @@ describe.sequential("production error hardening", () => {
       }
     );
   });
+
+  it("allows only exact configured web origins in production", async () => {
+    await withIsolatedServer(
+      { nodeEnv: "production", webOrigin: "https://console.example.com" },
+      async (url) => {
+        const allowed = await fetch(`${url}/health`, { headers: { origin: "https://console.example.com" } });
+        const denied = await fetch(`${url}/health`, { headers: { origin: "https://console.example.com.evil" } });
+
+        expect(allowed.headers.get("access-control-allow-origin")).toBe("https://console.example.com");
+        expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+      }
+    );
+  });
+
+  it("sets API security headers without overriding the Web CSP", async () => {
+    await withIsolatedServer({ nodeEnv: "production", webOrigin: "https://console.example.com" }, async (url) => {
+      const response = await fetch(`${url}/health`);
+
+      expect(response.headers.get("x-powered-by")).toBeNull();
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+      expect(response.headers.get("strict-transport-security")).toContain("max-age=");
+    });
+  });
+
+  it("refuses localhost origins in production configuration", () => {
+    process.env.NODE_ENV = "production";
+    process.env.WEB_ORIGIN = "http://localhost:3000";
+    process.env.JWT_SECRET = "strong-jwt-secret-for-isolated-server-tests-12345";
+
+    expect(() => createServer()).toThrow("WEB_ORIGIN must not contain localhost or loopback origins in production");
+  });
 });
 
 async function rawApi(
   path: string,
-  options: { base?: string; method?: string; token?: string; cookie?: string; body?: unknown; requestId?: string } = {}
+  options: { base?: string; method?: string; token?: string; cookie?: string; csrfToken?: string; origin?: string; fetchSite?: string; body?: unknown; requestId?: string } = {}
 ): Promise<{ status: number; envelope: ApiEnvelope<unknown>; headers: Headers }> {
+  const session = options.token?.startsWith("test-session:") ? decodeTestSession(options.token) : null;
   const response = await fetch(`${options.base || baseUrl}${path}`, {
     method: options.method || "GET",
     headers: {
       "content-type": "application/json",
-      ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+      ...(options.token && !session ? { authorization: `Bearer ${options.token}` } : {}),
+      ...(session ? { cookie: session.cookie, origin: "http://localhost:3000", "sec-fetch-site": "same-origin", "x-csrf-token": session.csrfToken } : {}),
       ...(options.cookie ? { cookie: options.cookie } : {}),
+      ...(options.csrfToken ? { origin: options.origin || "http://localhost:3000", "sec-fetch-site": options.fetchSite || "same-origin", "x-csrf-token": options.csrfToken } : {}),
       ...(options.requestId ? { "x-request-id": options.requestId } : {})
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
@@ -277,6 +426,14 @@ async function rawApi(
     envelope: (await response.json()) as ApiEnvelope<unknown>,
     headers: response.headers
   };
+}
+
+async function registerAndVerify(options: { method: "POST"; body: { email: string; password: string; name: string } }) {
+  const registered = await rawApi("/auth/register", options);
+  if (registered.status !== 202) throw new Error("Expected registration to require verification");
+  const verification = takeLatestVerificationForTest(options.body.email);
+  if (!verification) throw new Error("Expected test verification delivery");
+  return rawApi("/auth/email-verifications/confirm", { method: "POST", body: { token: verification.token } });
 }
 
 async function createActionProposalFixture(status: "PENDING_APPROVAL" | "APPROVED") {
@@ -293,9 +450,21 @@ async function createActionProposalFixture(status: "PENDING_APPROVAL" | "APPROVE
   const workspaceId = user.workspaces[0]?.id;
   if (!workspaceId) throw new Error("Expected workspace to be created");
 
+  const account = await prisma.accountProfile.create({
+    data: {
+      workspaceId,
+      identityKey: `id:security-${unique()}`,
+      accountName: "Security proposal account",
+      normalizedName: "securityproposalaccount",
+      platformAccountId: `security-${unique()}`,
+      identityStatus: "VERIFIED"
+    }
+  });
+
   const project = await prisma.project.create({
     data: {
       workspaceId,
+      accountProfileId: account.id,
       name: "Security proposal project",
       businessType: "DOUYIN_LOCAL_LIFE",
       subjectType: "SERVICE_PROVIDER",
@@ -343,20 +512,30 @@ async function createActionProposalFixture(status: "PENDING_APPROVAL" | "APPROVE
     }
   });
 
+  const session = await createUserSession(user.id);
   return {
     proposalId: proposal.id,
-    token: signToken({ id: user.id, email: user.email, workspaceId })
+    token: encodeTestSession(`pxxis_session=${session.token}`, session.csrfToken)
   };
 }
 
+function encodeTestSession(cookie: string, csrfToken: string) {
+  return `test-session:${Buffer.from(JSON.stringify({ cookie, csrfToken })).toString("base64url")}`;
+}
+
+function decodeTestSession(value: string) {
+  return JSON.parse(Buffer.from(value.slice("test-session:".length), "base64url").toString("utf8")) as { cookie: string; csrfToken: string };
+}
+
 async function withIsolatedServer(
-  env: { nodeEnv: "production" | "development"; extensionOrigins?: string },
+  env: { nodeEnv: "production" | "development"; extensionOrigins?: string; webOrigin?: string },
   callback: (url: string) => Promise<void>
 ) {
   process.env.NODE_ENV = env.nodeEnv;
   process.env.JWT_SECRET = "strong-jwt-secret-for-isolated-server-tests-12345";
+  process.env.WEB_ORIGIN = env.webOrigin || "https://www.pxxis.cn";
   if (env.extensionOrigins) process.env.EXTENSION_ORIGINS = env.extensionOrigins;
-  resetAuthRateLimiters();
+  await resetRateLimitBuckets();
   const isolatedApp = createServer();
   let isolatedServer: Server | undefined;
   let isolatedBaseUrl = "";

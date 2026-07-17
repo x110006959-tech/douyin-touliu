@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Douyin Local Life Diagnosis Collector",
-  "version": "0.2.1",
-  "description": "Collects user-visible page data for diagnosis without intercepting platform network requests.",
+  "name": "PXXIS 智能投流采集（本地测试）",
+  "version": "0.2.2",
+  "description": "本地测试包：只用于本机开发验收，不得上传 Chrome 网上应用店。",
   "permissions": [
     "activeTab",
     "storage",
@@ -15,20 +15,20 @@
     "128": "icons/icon128.png"
   },
   "host_permissions": [
-    "https://*.douyin.com/*",
-    "https://*.douyinlife.com/*",
-    "https://*.juliangengine.com/*",
-    "https://*.oceanengine.com/*",
-    "https://*.bytedance.com/*",
+    "https://eos.douyin.com/dp/liveScreen*",
+    "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
+    "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*",
     "https://api.pxxis.cn/*",
-    "http://localhost/*"
+    "https://www.pxxis.cn/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"
   },
   "action": {
-    "default_title": "Douyin Diagnosis Collector",
+    "default_title": "PXXIS 智能投流采集（本地测试）",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -43,14 +43,23 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.douyin.com/*",
-        "https://*.douyinlife.com/*",
-        "https://*.juliangengine.com/*",
-        "https://*.oceanengine.com/*",
-        "https://*.bytedance.com/*"
+        "https://eos.douyin.com/dp/liveScreen*",
+        "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
+        "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*"
       ],
       "js": [
         "content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.pxxis.cn/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "web-bridge.js"
       ],
       "run_at": "document_start"
     }

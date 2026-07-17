@@ -10,7 +10,7 @@ const databaseUrl =
 const env = {
   ...process.env,
   DATABASE_URL: databaseUrl,
-  JWT_SECRET: process.env.JWT_SECRET || "local-test-jwt-secret-at-least-32-characters",
+  SECURITY_SECRET: process.env.SECURITY_SECRET || process.env.JWT_SECRET || "local-test-security-secret-at-least-32-characters",
   NODE_ENV: "test"
 };
 const pnpmCli = process.env.npm_execpath;
@@ -24,7 +24,7 @@ try {
     ownsContainer = true;
   }
   run(process.execPath, [pnpmCli, "exec", "prisma", "db", "push", "--skip-generate"], repoRoot, env);
-  run(process.execPath, [pnpmCli, "exec", "vitest", "run", "src"], apiRoot, env);
+  run(process.execPath, [pnpmCli, "exec", "vitest", "run", "--no-file-parallelism", "src"], apiRoot, env);
 } finally {
   if (ownsContainer) {
     run("docker", ["compose", "-f", composeFile, "-p", "pxxis-api-test", "down", "--volumes", "--remove-orphans"], repoRoot, process.env, false);

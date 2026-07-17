@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeCollectionSnapshotPayload, sanitizeSensitiveData } from "./safety";
+import { sanitizeAndValidatePersistedInput, sanitizeCollectionSnapshotPayload, sanitizeSensitiveData } from "./safety";
 
 describe("shared collection safety", () => {
   it("redacts nested credentials and personal data", () => {
@@ -68,5 +68,17 @@ describe("shared collection safety", () => {
     expect(performance.now() - startedAt).toBeLessThan(1_000);
     expect(JSON.stringify(sanitized)).not.toContain("secret");
     expect(JSON.stringify(sanitized)).toContain("[TRUNCATED]");
+  });
+
+  it("flags sensitive values and keys for non-capture persisted input", () => {
+    const result = sanitizeAndValidatePersistedInput({
+      comment: "Bearer eyJheader.payload.signature",
+      nested: { access_token: "do-not-store" },
+      metrics: [{ metricKey: "verify_roi", value: 1.2 }]
+    });
+
+    expect(result.hasSensitiveData).toBe(true);
+    expect(JSON.stringify(result.value)).not.toContain("do-not-store");
+    expect(JSON.stringify(result.value)).not.toContain("eyJheader.payload.signature");
   });
 });

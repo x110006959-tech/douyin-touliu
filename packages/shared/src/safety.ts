@@ -13,6 +13,11 @@ export const snapshotSafetyLimits = {
   stringChars: 200_000
 } as const;
 
+export const aiDisclaimer = "AI 诊断结果仅供投流决策参考，请结合业务目标、预算和平台规则人工确认。第一版系统不会自动执行任何投放操作。";
+
+export const extensionSafetyNotice =
+  "本插件仅在用户授权并打开目标后台页面时采集可见 DOM、真实表格和白名单指标，不读取平台网络响应正文。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。";
+
 type NetworkRecordLike = {
   url: string;
   method: string;
@@ -34,6 +39,8 @@ type SnapshotLike = {
 const redacted = "[REDACTED]";
 const truncated = "[TRUNCATED]";
 const sensitiveContains = ["token", "cookie", "password", "passwd", "authorization", "secret", "session", "credential"];
+const persistedSensitiveValuePattern = /(?:\bbearer\s+|\b(?:access|refresh)[_-]?token\s*[:=]|\b(?:api[_-]?key|password|passwd|authorization|cookie|secret|session|credential)\s*[:=])[A-Za-z0-9._~+/=-]+/i;
+const jwtPattern = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/;
 const sensitiveExact = new Set([
   "accesstoken",
   "refreshtoken",
@@ -56,6 +63,76 @@ const sensitiveExact = new Set([
 export function shouldRedactSensitiveKey(key: string) {
   const normalized = normalizeKey(key);
   return sensitiveExact.has(normalized) || sensitiveContains.some((part) => normalized.includes(part));
+}
+
+export type PersistedInputValidation = {
+  value: unknown;
+  hasSensitiveData: boolean;
+  violations: string[];
+};
+
+export function sanitizeAndValidatePersistedInput(value: unknown): PersistedInputValidation {
+  const holder: { value?: unknown } = {};
+  const violations: string[] = [];
+  const stack: Array<{ input: unknown; parent: Record<string | number, unknown>; key: string | number; path: string; depth: number }> = [
+    { input: value, parent: holder as Record<string | number, unknown>, key: "value", path: "$", depth: 0 }
+  ];
+  const seen = new WeakSet<object>();
+
+  while (stack.length) {
+    const current = stack.pop()!;
+    if (current.depth > snapshotSafetyLimits.depth) {
+      current.parent[current.key] = truncated;
+      violations.push(`${current.path}: maximum nesting exceeded`);
+      continue;
+    }
+    if (typeof current.input === "string") {
+      const sensitive = persistedSensitiveValuePattern.test(current.input) || jwtPattern.test(current.input);
+      current.parent[current.key] = sensitive
+        ? sanitizeVisibleText(current.input).replace(persistedSensitiveValuePattern, redacted).replace(jwtPattern, redacted)
+        : sanitizeVisibleText(current.input, snapshotSafetyLimits.stringChars);
+      if (sensitive) violations.push(`${current.path}: sensitive value`);
+      continue;
+    }
+    if (!current.input || typeof current.input !== "object") {
+      current.parent[current.key] = current.input;
+      continue;
+    }
+    if (seen.has(current.input)) {
+      current.parent[current.key] = truncated;
+      violations.push(`${current.path}: cyclic value`);
+      continue;
+    }
+    seen.add(current.input);
+    if (Array.isArray(current.input)) {
+      const output: unknown[] = [];
+      current.parent[current.key] = output;
+      if (current.input.length > snapshotSafetyLimits.arrayItems) violations.push(`${current.path}: too many array items`);
+      const length = Math.min(current.input.length, snapshotSafetyLimits.arrayItems);
+      for (let index = length - 1; index >= 0; index -= 1) {
+        stack.push({ input: current.input[index], parent: output as Record<number, unknown>, key: index, path: `${current.path}[${index}]`, depth: current.depth + 1 });
+      }
+      continue;
+    }
+    const output: Record<string, unknown> = {};
+    current.parent[current.key] = output;
+    const entries = Object.entries(current.input as Record<string, unknown>);
+    if (entries.length > snapshotSafetyLimits.objectKeys) violations.push(`${current.path}: too many object keys`);
+    for (const [key, raw] of entries.slice(0, snapshotSafetyLimits.objectKeys).reverse()) {
+      if (shouldRedactSensitiveKey(key)) {
+        output[key] = redacted;
+        violations.push(`${current.path}.${key}: sensitive key`);
+      } else {
+        stack.push({ input: raw, parent: output, key, path: `${current.path}.${key}`, depth: current.depth + 1 });
+      }
+    }
+  }
+
+  return { value: holder.value, hasSensitiveData: violations.some((violation) => violation.includes("sensitive")), violations };
+}
+
+export function containsSensitivePersistedInput(value: unknown) {
+  return sanitizeAndValidatePersistedInput(value).hasSensitiveData;
 }
 
 export function sanitizeVisibleText(text: string, maxChars: number = snapshotSafetyLimits.stringChars) {

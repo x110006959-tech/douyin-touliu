@@ -14,6 +14,7 @@ import {
   type VisibleMetric
 } from "@douyin-local-life/shared";
 import { prisma } from "./prisma.js";
+import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 
 export const unreviewedDataManualCheck = "当前数据未经过人工复核，请确认关键指标后再进行投流决策。";
 
@@ -31,6 +32,9 @@ type NormalizedMetricLike = {
 type SnapshotLike = {
   id: string;
   pageType: string | null;
+  routeKey?: string | null;
+  collectionRunId?: string | null;
+  localCollectedAt?: Date;
   rawDomText?: string | null;
   normalizedMetrics: NormalizedMetricLike[];
 };
@@ -39,36 +43,48 @@ export type TaskReviewInput = {
   id: string;
   snapshots: SnapshotLike[];
   reviewedMetrics?: ReviewedMetric[];
+  collectionRuns?: Array<{ id: string }>;
 };
 
 export function latestSnapshot(task: TaskReviewInput) {
   return task.snapshots[0] || null;
 }
 
+export function currentReviewSnapshots(task: TaskReviewInput) {
+  const newest = latestSnapshot(task);
+  if (!newest) return [];
+  const latestCollectionRunId = task.collectionRuns?.[0]?.id || newest.collectionRunId || null;
+  return selectLatestSnapshotsByRoute(task.snapshots, latestCollectionRunId);
+}
+
 export async function ensureReviewMetricsForTask(
   task: TaskReviewInput,
   db: Pick<Prisma.TransactionClient, "reviewedMetric"> = prisma
 ) {
-  const snapshot = latestSnapshot(task);
-  if (!snapshot) return { metrics: [] as ReviewedMetric[], createdCount: 0 };
+  const snapshots = currentReviewSnapshots(task);
+  if (!snapshots.length) return { metrics: [] as ReviewedMetric[], createdCount: 0, snapshotIds: [] as string[] };
+  const snapshotIds = snapshots.map((snapshot) => snapshot.id);
 
   const existing = await db.reviewedMetric.findMany({
-    where: { taskId: task.id, snapshotId: snapshot.id },
+    where: { taskId: task.id, snapshotId: { in: snapshotIds } },
     orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
   });
-  if (existing.length) return { metrics: existing, createdCount: 0 };
-  if (!snapshot.normalizedMetrics.length) return { metrics: [] as ReviewedMetric[], createdCount: 0 };
+  const existingNormalizedMetricIds = new Set(existing.flatMap((metric) => metric.normalizedMetricId ? [metric.normalizedMetricId] : []));
+  const missing = snapshots.flatMap((snapshot) => snapshot.normalizedMetrics
+    .filter((metric) => !existingNormalizedMetricIds.has(metric.id))
+    .map((metric) => toReviewedMetricCreate(task.id, snapshot, metric)));
+  if (!missing.length) return { metrics: existing, createdCount: 0, snapshotIds };
 
   await db.reviewedMetric.createMany({
-    data: snapshot.normalizedMetrics.map((metric) => toReviewedMetricCreate(task.id, snapshot, metric)),
+    data: missing,
     skipDuplicates: true
   });
 
   const metrics = await db.reviewedMetric.findMany({
-    where: { taskId: task.id, snapshotId: snapshot.id },
+    where: { taskId: task.id, snapshotId: { in: snapshotIds } },
     orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
   });
-  return { metrics, createdCount: metrics.length };
+  return { metrics, createdCount: Math.max(0, metrics.length - existing.length), snapshotIds };
 }
 
 export function toReviewedMetricDTO(metric: ReviewedMetric): ReviewedMetricDTO {

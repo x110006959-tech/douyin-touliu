@@ -6,12 +6,17 @@ import {
   runDecisionRules
 } from "@douyin-local-life/decision-engine";
 import {
+  decisionEngineInputSchema,
+  generatedDecisionEngineOutputSchema,
+  normalizeCollectionRouteKey,
   type ActionProposalDTO,
+  type DecisionTableCell,
   type DecisionEngineInput,
   type DecisionEngineOutput
 } from "@douyin-local-life/shared";
 import { assessCollectionRunQuality } from "./collection-runs.js";
 import { proposalExpiresAfterMs } from "./proposal-lifecycle.js";
+import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 import {
   normalizedMetricsToVisibleMetrics,
   reviewedMetricsToVisibleMetrics,
@@ -40,9 +45,11 @@ export function buildDecisionInput(task: {
   snapshots: Array<{
     id: string;
     collectionRunId?: string | null;
+    routeVerificationStatus?: "VERIFIED" | "MANUAL_PENDING";
     routeKey?: string | null;
     pageType?: string | null;
     localCollectedAt?: Date;
+    createdAt?: Date;
     rawDomText: string | null;
     rawNetworkJson: Prisma.JsonValue | null;
     rawTableData: Prisma.JsonValue | null;
@@ -90,19 +97,13 @@ export function buildDecisionInput(task: {
     routeHealth?: Array<{ routeKey: string; consecutiveFailures: number }>;
   }>;
 }): DecisionEngineInput {
-  const latestSnapshot = task.snapshots[0];
-  if (!latestSnapshot) {
+  if (!task.snapshots.length) {
     throw new Error("SNAPSHOT_REQUIRED");
   }
   const latestCollectionRun = task.collectionRuns?.[0];
-  const collectionRun = latestCollectionRun || (latestSnapshot.collectionRunId
-    ? task.collectionRuns?.find((run) => run.id === latestSnapshot.collectionRunId)
-    : undefined);
-  const selectedSnapshots = collectionRun
-    ? task.snapshots.filter((snapshot) => snapshot.collectionRunId === collectionRun.id)
-    : latestSnapshot.collectionRunId
-      ? task.snapshots.filter((snapshot) => snapshot.collectionRunId === latestSnapshot.collectionRunId)
-      : [latestSnapshot];
+  const collectionRun = latestCollectionRun;
+  const selectedSnapshots = selectLatestSnapshotsByRoute(task.snapshots, collectionRun?.id)
+    .filter((snapshot) => snapshot.routeVerificationStatus !== "MANUAL_PENDING");
   const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
   const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
   const usableReviewedMetrics = selectedReviewedMetrics(latestReviewedMetrics);
@@ -130,7 +131,10 @@ export function buildDecisionInput(task: {
     metrics: useReviewedMetrics
       ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics)
       : normalizedMetricsToVisibleMetrics(selectedSnapshots.flatMap((snapshot) => snapshot.normalizedMetrics)),
-    tables: selectedSnapshots.flatMap((snapshot) => Array.isArray(snapshot.rawTableData) ? [...snapshot.rawTableData] : []),
+    tables: selectedSnapshots.flatMap((snapshot) => projectDecisionTables(snapshot.rawTableData, {
+      routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
+      pageType: snapshot.pageType || "UNKNOWN"
+    })),
     visibleText: selectedSnapshots.map((snapshot) => snapshot.rawDomText || "").filter(Boolean).join("\n\n"),
     networkJsonSummary: selectedSnapshots.flatMap((snapshot) => Array.isArray(snapshot.rawNetworkJson)
       ? (snapshot.rawNetworkJson.slice(0, 20) as DecisionEngineInput["networkJsonSummary"])
@@ -142,9 +146,37 @@ export function buildDecisionInput(task: {
   };
 }
 
+function projectDecisionTables(
+  raw: unknown,
+  context: { routeKey: DecisionEngineInput["tables"][number]["routeKey"]; pageType: string }
+): DecisionEngineInput["tables"] {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const tables = isTableMatrix(raw) ? [raw] : raw.filter((candidate): candidate is unknown[] => Array.isArray(candidate));
+  return tables
+    .filter(isTableMatrix)
+    .map((rows) => ({
+      ...context,
+      rows: rows.slice(0, 1_000).map((row) => (row as unknown[]).slice(0, 100).map(normalizeDecisionTableCell))
+    }));
+}
+
+function normalizeDecisionTableCell(value: unknown): DecisionTableCell {
+  if (value == null) return null;
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : null;
+}
+
+function isTableMatrix(value: unknown[]): boolean {
+  return value.length > 0
+    && value.every((row) => Array.isArray(row))
+    && value.some((row) => (row as unknown[]).some((cell) => !Array.isArray(cell) && (cell == null || ["string", "number", "boolean"].includes(typeof cell))));
+}
+
 export function runDecisionEngine(input: DecisionEngineInput) {
+  decisionEngineInputSchema.parse(input);
   const ruleOutput = withVersions(runDecisionRules(input));
   const finalOutput = withVersions(applyApprovalGuard(ruleOutput));
+  generatedDecisionEngineOutputSchema.parse(ruleOutput);
+  generatedDecisionEngineOutputSchema.parse(finalOutput);
   return { ruleOutput, finalOutput };
 }
 

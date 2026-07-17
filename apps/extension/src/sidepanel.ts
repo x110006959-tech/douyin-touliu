@@ -6,6 +6,9 @@ const elements = {
   version: document.getElementById("version")!,
   activity: document.getElementById("activity")!,
   runId: document.getElementById("runId")!,
+  accountName: document.getElementById("accountName")!,
+  projectName: document.getElementById("projectName")!,
+  taskId: document.getElementById("taskId")!,
   signals: document.getElementById("signals")!,
   proposals: document.getElementById("proposals")!
 };
@@ -22,10 +25,13 @@ async function render() {
 }
 
 async function renderLocalState() {
-  const local = await chrome.storage.local.get([STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY]);
+  const local = await chrome.storage.local.get([STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY, STORAGE.CONFIG]);
   const patrol = local[STORAGE.PATROL] || {};
   const activity = local[STORAGE.PAGE_ACTIVITY] || {};
   elements.runId.textContent = patrol.collectionRunId || "-";
+  elements.accountName.textContent = local[STORAGE.CONFIG]?.accountName || "未绑定";
+  elements.projectName.textContent = local[STORAGE.CONFIG]?.projectName || "未绑定";
+  elements.taskId.textContent = local[STORAGE.CONFIG]?.collectionTaskId || "-";
   elements.activity.textContent = activity.tabState === "VISIBLE" ? "活跃" : activity.tabState === "HIDDEN" ? "页面非活跃" : "未知";
   const signals = (local[STORAGE.LATEST_SIGNALS] || []) as RealtimeSignal[];
   elements.signals.replaceChildren(...(signals.length ? signals.map(renderSignal) : [textNode("暂无信号", "muted")]));
@@ -34,7 +40,7 @@ async function renderLocalState() {
 async function renderProposals() {
   const { apiBaseUrl, collectionTaskId, token } = await apiContext();
   if (!apiBaseUrl || !collectionTaskId || !token) {
-    elements.status.textContent = "请先在插件弹窗配置API、任务和Token";
+    elements.status.textContent = "请先在插件弹窗配对账号并选择采集任务";
     return;
   }
   try {
@@ -48,8 +54,8 @@ async function renderProposals() {
     const body = await response.json();
     if (!response.ok) throw new Error(body?.error?.message || `HTTP ${response.status}`);
     const proposals = (body?.data?.actionProposals || []) as ActionProposalDTO[];
-    elements.proposals.replaceChildren(...(proposals.length ? proposals.map((proposal) => renderProposal(proposal, apiBaseUrl, token)) : [textNode("暂无正式建议", "muted")]));
-    elements.status.textContent = "已连接，仅展示和记录人工决策";
+    elements.proposals.replaceChildren(...(proposals.length ? proposals.map((proposal) => renderProposal(proposal, apiBaseUrl)) : [textNode("暂无正式建议", "muted")]));
+    elements.status.textContent = "已连接；审批请在网页工作台完成";
   } catch (error) {
     elements.status.textContent = error instanceof Error ? error.message : "连接失败";
   }
@@ -62,7 +68,7 @@ function renderSignal(signal: RealtimeSignal) {
   return node;
 }
 
-function renderProposal(proposal: ActionProposalDTO, apiBaseUrl: string, token: string) {
+function renderProposal(proposal: ActionProposalDTO, apiBaseUrl: string) {
   const node = document.createElement("div");
   node.className = "proposal";
   const title = document.createElement("strong");
@@ -71,32 +77,31 @@ function renderProposal(proposal: ActionProposalDTO, apiBaseUrl: string, token: 
   reason.className = "muted";
   reason.textContent = proposal.reason;
   node.append(title, reason);
-  if (proposal.status === "PENDING_APPROVAL" && proposal.id) {
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    for (const [label, action] of [["审批", "approve"], ["观察", "observe"], ["拒绝", "reject"]] as const) {
-      const button = document.createElement("button");
-      button.textContent = label;
-      button.addEventListener("click", () => void transitionProposal(apiBaseUrl, token, proposal.id!, action));
-      actions.append(button);
-    }
-    node.append(actions);
+  if (proposal.id) {
+    const link = document.createElement("a");
+    link.href = `${webBaseUrl(apiBaseUrl)}/action-proposals/${proposal.id}`;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = proposal.status === "PENDING_APPROVAL" ? "在网页中审核" : "查看网页详情";
+    node.append(link);
   }
   return node;
 }
 
-async function transitionProposal(apiBaseUrl: string, token: string, proposalId: string, action: "approve" | "observe" | "reject") {
-  const response = await fetch(`${apiBaseUrl}/action-proposals/${proposalId}/${action}`, { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${token}` }, body: "{}" });
-  const body = await response.json();
-  elements.status.textContent = response.ok ? "审批状态已记录，平台操作仍需人工完成" : body?.error?.message || "状态更新失败";
-  await renderProposals();
+async function apiContext() {
+  const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN]);
+  const config = local[STORAGE.CONFIG] || {};
+  return { apiBaseUrl: config.apiBaseUrl as string | undefined, collectionTaskId: config.collectionTaskId as string | undefined, token: local[STORAGE.TOKEN] as string | undefined };
 }
 
-async function apiContext() {
-  const local = await chrome.storage.local.get([STORAGE.CONFIG]);
-  const session = await chrome.storage.session.get([STORAGE.TOKEN]);
-  const config = local[STORAGE.CONFIG] || {};
-  return { apiBaseUrl: config.apiBaseUrl as string | undefined, collectionTaskId: config.collectionTaskId as string | undefined, token: session[STORAGE.TOKEN] as string | undefined };
+function webBaseUrl(apiBaseUrl: string) {
+  try {
+    const url = new URL(apiBaseUrl);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return `${url.protocol}//${url.hostname}:3300`;
+    return "https://www.pxxis.cn";
+  } catch {
+    return "https://www.pxxis.cn";
+  }
 }
 
 function textNode(text: string, className: string) {

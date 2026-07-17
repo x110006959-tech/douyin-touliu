@@ -12,6 +12,12 @@ enum UserRole {
   MEMBER
 }
 
+enum PendingRegistrationStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+}
+
 enum BusinessType {
   DOUYIN_LOCAL_LIFE
 }
@@ -58,6 +64,33 @@ enum ControlLevel {
 enum ProjectStatus {
   ACTIVE
   ARCHIVED
+}
+
+enum AccountProfileStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum AccountIdentityStatus {
+  PENDING_ID
+  VERIFIED
+}
+
+enum AccountMatchStatus {
+  MATCHED
+  MISMATCHED
+  UNVERIFIED
+}
+
+enum CollectionRouteSourceStatus {
+  PENDING
+  CAPTURED
+  FAILED
+}
+
+enum RouteVerificationStatus {
+  VERIFIED
+  MANUAL_PENDING
 }
 
 enum CollectionTaskStatus {
@@ -189,9 +222,15 @@ enum MetricReviewStatus {
   IGNORED
 }
 
+enum ExtensionCredentialScope {
+  COLLECT
+  READ_DIAGNOSIS
+}
+
 model User {
   id              String           @id @default(cuid())
   email           String           @unique
+  emailVerifiedAt DateTime         @default(now())
   passwordHash    String
   name            String?
   role            UserRole         @default(MEMBER)
@@ -206,6 +245,65 @@ model User {
   actionOutcomes  ActionOutcome[]
   metricAliasesCreated MetricAliasOverride[] @relation("MetricAliasCreatedBy")
   metricDriftsResolved MetricDriftEvent[] @relation("MetricDriftResolvedBy")
+  snapshotAccountConfirmations DataSnapshot[] @relation("SnapshotAccountConfirmedBy")
+  snapshotRouteConfirmations   DataSnapshot[] @relation("SnapshotRouteConfirmedBy")
+  extensionPairingCodes ExtensionPairingCode[]
+  extensionCredentials ExtensionCredential[]
+  sessions        UserSession[]
+}
+
+model PendingRegistration {
+  id           String                    @id @default(cuid())
+  email        String                    @unique
+  passwordHash String
+  name         String?
+  status       PendingRegistrationStatus @default(PENDING)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  verificationTokens EmailVerificationToken[]
+
+  @@index([status, updatedAt])
+}
+
+model EmailVerificationToken {
+  id                    String              @id @default(cuid())
+  pendingRegistrationId String
+  tokenHash             String              @unique
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  pendingRegistration   PendingRegistration @relation(fields: [pendingRegistrationId], references: [id], onDelete: Cascade)
+
+  @@index([pendingRegistrationId, expiresAt])
+  @@index([expiresAt])
+}
+
+model UserSession {
+  id                String   @id @default(cuid())
+  userId            String
+  tokenHash         String   @unique
+  csrfTokenHash     String
+  idleExpiresAt     DateTime
+  absoluteExpiresAt DateTime
+  lastSeenAt        DateTime @default(now())
+  revokedAt         DateTime?
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([idleExpiresAt])
+  @@index([absoluteExpiresAt])
+}
+
+model RateLimitBucket {
+  keyHash         String   @id
+  windowStartedAt DateTime
+  expiresAt       DateTime
+  count           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([expiresAt])
 }
 
 model Workspace {
@@ -216,15 +314,86 @@ model Workspace {
   updatedAt DateTime   @updatedAt
   owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   projects  Project[]
+  accountProfiles AccountProfile[]
   auditLogs AuditLog[]
   metricAliasOverrides MetricAliasOverride[]
+  extensionPairingCodes ExtensionPairingCode[]
+  extensionCredentials ExtensionCredential[]
 
   @@index([ownerId])
+}
+
+model AccountProfile {
+  id                 String                @id @default(cuid())
+  workspaceId        String
+  platform           String                @default("DOUYIN_LOCAL_LIFE")
+  platformAccountId  String?
+  identityKey        String
+  accountName        String
+  normalizedName     String
+  merchantName       String?
+  storeName          String?
+  memo               String?
+  identityStatus     AccountIdentityStatus @default(PENDING_ID)
+  status             AccountProfileStatus  @default(ACTIVE)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  workspace          Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projects           Project[]
+  extensionPairingCodes ExtensionPairingCode[]
+  extensionCredentials ExtensionCredential[]
+
+  @@unique([workspaceId, platform, identityKey])
+  @@index([workspaceId, status])
+  @@index([platformAccountId])
+  @@index([normalizedName])
+}
+
+model ExtensionPairingCode {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  accountProfileId String
+  collectionTaskId String?
+  userId           String
+  codeHash         String         @unique
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accountProfile   AccountProfile @relation(fields: [accountProfileId], references: [id], onDelete: Cascade)
+  collectionTask   CollectionTask? @relation(fields: [collectionTaskId], references: [id], onDelete: SetNull)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([accountProfileId, expiresAt])
+  @@index([collectionTaskId, expiresAt])
+  @@index([userId, createdAt])
+}
+
+model ExtensionCredential {
+  id               String                     @id @default(cuid())
+  workspaceId      String
+  accountProfileId String
+  userId           String
+  tokenHash        String                     @unique
+  label            String?
+  scopes           ExtensionCredentialScope[]
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  workspace        Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accountProfile   AccountProfile             @relation(fields: [accountProfileId], references: [id], onDelete: Cascade)
+  user             User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([accountProfileId, revokedAt, expiresAt])
+  @@index([userId, createdAt])
 }
 
 model Project {
   id                  String           @id @default(cuid())
   workspaceId         String
+  accountProfileId    String
   name                String
   businessType        BusinessType     @default(DOUYIN_LOCAL_LIFE)
   subjectType         SubjectType      @default(SUBJECT_PENDING)
@@ -239,6 +408,7 @@ model Project {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
   workspace           Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accountProfile      AccountProfile   @relation(fields: [accountProfileId], references: [id], onDelete: Restrict)
   tasks               CollectionTask[]
   auditLogs           AuditLog[]
   decisionRuns        DecisionRun[]
@@ -250,6 +420,7 @@ model Project {
   actionProposalQuotas ActionProposalQuota[]
 
   @@index([workspaceId])
+  @@index([accountProfileId, status])
   @@index([subjectType, operatorType])
 }
 
@@ -257,6 +428,7 @@ model CollectionTask {
   id              String               @id @default(cuid())
   projectId       String
   userId          String
+  idempotencyKey  String?
   status          CollectionTaskStatus @default(PENDING)
   sourceUrl       String?
   pageTitle       String?
@@ -277,10 +449,31 @@ model CollectionTask {
   collectionRuns  CollectionRun[]
   metricDriftEvents MetricDriftEvent[]
   actionProposalGates ActionProposalGate[]
+  routeSources    CollectionRouteSource[]
+  extensionPairingCodes ExtensionPairingCode[]
 
+  @@unique([projectId, idempotencyKey])
   @@index([projectId])
   @@index([userId])
   @@index([status])
+}
+
+model CollectionRouteSource {
+  id          String                      @id @default(cuid())
+  taskId      String
+  routeKey    String
+  label       String
+  sourceUrl   String?
+  required    Boolean                     @default(false)
+  status      CollectionRouteSourceStatus @default(PENDING)
+  lastCapturedAt DateTime?
+  lastError   String?
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+  task        CollectionTask              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, routeKey])
+  @@index([taskId, status])
 }
 
 model CollectionRun {
@@ -332,17 +525,31 @@ model DataSnapshot {
   localCollectedAt   DateTime
   collectionRunId    String?
   routeKey           String?
+  routeVerificationStatus RouteVerificationStatus @default(VERIFIED)
+  routeConfirmedById String?
+  routeConfirmedAt   DateTime?
+  accountMatchStatus AccountMatchStatus @default(UNVERIFIED)
+  detectedAccountId  String?
+  detectedAccountName String?
+  accountMatchEvidence Json?
+  accountConfirmedById String?
+  accountConfirmedAt DateTime?
   uploadedAt         DateTime           @default(now())
   createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   task               CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   normalizedMetrics  NormalizedMetric[]
   reviewedMetrics    ReviewedMetric[]
   collectionRun      CollectionRun?     @relation(fields: [collectionRunId], references: [id], onDelete: SetNull)
   metricDriftEvents  MetricDriftEvent[]
+  accountConfirmedBy User? @relation("SnapshotAccountConfirmedBy", fields: [accountConfirmedById], references: [id], onDelete: SetNull)
+  routeConfirmedBy   User? @relation("SnapshotRouteConfirmedBy", fields: [routeConfirmedById], references: [id], onDelete: SetNull)
 
   @@unique([taskId, idempotencyKey])
   @@index([taskId])
   @@index([collectionRunId, routeKey])
+  @@index([taskId, accountMatchStatus])
+  @@index([taskId, routeVerificationStatus])
 }
 
 model NormalizedMetric {
@@ -442,6 +649,7 @@ model DecisionRun {
   engineVersion        String
   ruleVersion          String
   strategyVersion      String           @default("local-life-rules-v0.1.0")
+  evidenceFingerprint  String?
   inputJson            Json?
   riskLevel            RiskLevel
   confidence           Float

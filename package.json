@@ -1,6 +1,6 @@
 {
   "name": "douyin-local-life-subject-diagnosis",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "scripts": {
@@ -10,9 +10,16 @@
     "build": "corepack pnpm -r build",
     "typecheck": "corepack pnpm -r typecheck",
     "test": "corepack pnpm -r test",
+    "architecture:check": "node tools/architecture-check.mjs",
+    "format:check": "node tools/source-hygiene-check.mjs",
+    "lint": "corepack pnpm format:check && corepack pnpm architecture:check",
     "extension:build": "corepack pnpm --filter @douyin-local-life/extension build",
     "db:push": "corepack pnpm exec prisma db push",
     "prisma:generate": "corepack pnpm exec prisma generate",
+    "retention:dry-run": "corepack pnpm --filter @douyin-local-life/api retention:dry-run",
+    "retention:run": "corepack pnpm --filter @douyin-local-life/api retention:run",
+    "backup:postgres": "sh tools/backup-postgres.sh",
+    "backup:verify": "sh tools/verify-postgres-backup.sh",
     "version:check": "node tools/version-check.mjs"
   },
   "dependencies": {

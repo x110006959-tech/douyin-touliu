@@ -1,6 +1,8 @@
 export const collectionRouteKeys = [
   "LOCAL_PROMOTION_DASHBOARD",
   "LIVE_DATA_SCREEN",
+  "LIVE_PRODUCT_TAB",
+  "LIVE_TRAFFIC_TAB",
   "TASK_TABLE",
   "MATERIAL_LIBRARY",
   "HOURLY_TREND",
@@ -9,6 +11,89 @@ export const collectionRouteKeys = [
 
 export type CollectionRouteKey = (typeof collectionRouteKeys)[number];
 export type CollectionRouteState = "FRESH" | "AGING" | "STALE" | "MISSING";
+export type CollectionRouteDetectionSource = "MANUAL" | "URL" | "ACTIVE_TAB" | "VISIBLE_CONTENT" | "PAGE_TYPE" | "UNKNOWN";
+
+export type CollectionRouteDetection = {
+  routeKey: CollectionRouteKey;
+  source: CollectionRouteDetectionSource;
+  confidence: number;
+  manuallyConfirmed: boolean;
+  evidence: string[];
+};
+
+export type CollectionRouteTemplate = {
+  routeKey: CollectionRouteKey;
+  label: string;
+  website: string;
+  purpose: string;
+  required: boolean;
+  urlHint: string;
+};
+
+export const collectionRouteTemplates: CollectionRouteTemplate[] = [
+  {
+    routeKey: "LIVE_DATA_SCREEN",
+    label: "直播数据大屏概览",
+    website: "抖音生活服务直播数据大屏",
+    purpose: "采集成交、观看、曝光和直播间承接指标",
+    required: true,
+    urlHint: "例如 localads.chengzijianzhan.cn/lamp/pc/liveboard2"
+  },
+  {
+    routeKey: "LIVE_PRODUCT_TAB",
+    label: "直播大屏商品页",
+    website: "抖音生活服务直播数据大屏",
+    purpose: "采集商品支付、订单、曝光和商品转化数据",
+    required: false,
+    urlHint: "在直播大屏中切换到“商品”后采集"
+  },
+  {
+    routeKey: "LIVE_TRAFFIC_TAB",
+    label: "直播大屏流量页",
+    website: "抖音生活服务直播数据大屏",
+    purpose: "采集自然流量、商业流量和流量趋势",
+    required: false,
+    urlHint: "在直播大屏中切换到“流量”后采集"
+  },
+  {
+    routeKey: "LOCAL_PROMOTION_DASHBOARD",
+    label: "巨量本地推数据总览",
+    website: "巨量本地推",
+    purpose: "采集消耗、预算、ROI、订单和成本指标",
+    required: true,
+    urlHint: "请粘贴当前已登录的巨量本地推数据页面地址"
+  },
+  {
+    routeKey: "TASK_TABLE",
+    label: "巨量本地推任务列表",
+    website: "巨量本地推",
+    purpose: "采集计划状态、预算、出价和任务层级数据",
+    required: true,
+    urlHint: "请打开巨量本地推的任务或计划列表"
+  }
+];
+
+export const collectionRouteLabels = Object.fromEntries(
+  collectionRouteTemplates.map((route) => [route.routeKey, route.label])
+) as Partial<Record<CollectionRouteKey, string>>;
+
+export const supportedCollectionHosts = [
+  "douyin.com",
+  "douyinlife.com",
+  "juliangengine.com",
+  "oceanengine.com",
+  "bytedance.com",
+  "localads.chengzijianzhan.cn"
+] as const;
+
+export function isSupportedCollectionUrl(value: string) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return supportedCollectionHosts.some((allowed) => host === allowed || (allowed !== "localads.chengzijianzhan.cn" && host.endsWith(`.${allowed}`)));
+  } catch {
+    return false;
+  }
+}
 
 export const collectionFreshnessPolicy = {
   agingAfterMs: 5 * 60 * 1000,
@@ -44,16 +129,149 @@ export function normalizeCollectionRouteKey(value: unknown): CollectionRouteKey 
   return collectionRouteKeys.includes(value as CollectionRouteKey) ? (value as CollectionRouteKey) : "UNKNOWN";
 }
 
+export function detectActiveCollectionRoute(input: {
+  pageType?: string | null;
+  sourceUrl?: string | null;
+  pageTitle?: string | null;
+  selectedTabLabels?: string[];
+  visibleHeadings?: string[];
+  visibleText?: string | null;
+  manualOverride?: CollectionRouteKey | null;
+}): CollectionRouteDetection {
+  if (input.manualOverride && input.manualOverride !== "UNKNOWN") {
+    return {
+      routeKey: input.manualOverride,
+      source: "MANUAL",
+      confidence: 1,
+      manuallyConfirmed: true,
+      evidence: [`人工选择：${collectionRouteLabels[input.manualOverride] || input.manualOverride}`]
+    };
+  }
+
+  const urlRoute = routeFromUrl(input.sourceUrl);
+  if (urlRoute) {
+    return { routeKey: urlRoute, source: "URL", confidence: 0.98, manuallyConfirmed: false, evidence: [`URL：${urlRoute}`] };
+  }
+
+  const selectedRoutes = [...new Set((input.selectedTabLabels || []).map(routeFromSelectedLabel).filter((route): route is CollectionRouteKey => Boolean(route)))];
+  if (selectedRoutes.length === 1) {
+    return {
+      routeKey: selectedRoutes[0]!,
+      source: "ACTIVE_TAB",
+      confidence: 0.92,
+      manuallyConfirmed: false,
+      evidence: [`选中分栏：${(input.selectedTabLabels || []).join(" / ")}`]
+    };
+  }
+  if (selectedRoutes.length > 1) {
+    return {
+      routeKey: "UNKNOWN",
+      source: "UNKNOWN",
+      confidence: 0,
+      manuallyConfirmed: false,
+      evidence: [`检测到冲突的选中分栏：${selectedRoutes.join(" / ")}`]
+    };
+  }
+
+  const headingRoutes = [...new Set([input.pageTitle || "", ...(input.visibleHeadings || [])]
+    .map(routeFromSpecificHeading)
+    .filter((route): route is CollectionRouteKey => Boolean(route)))];
+  if (headingRoutes.length === 1) {
+    return {
+      routeKey: headingRoutes[0]!,
+      source: "VISIBLE_CONTENT",
+      confidence: 0.9,
+      manuallyConfirmed: false,
+      evidence: [`专属标题：${collectionRouteLabels[headingRoutes[0]!] || headingRoutes[0]}`]
+    };
+  }
+  if (headingRoutes.length > 1) {
+    return {
+      routeKey: "UNKNOWN",
+      source: "UNKNOWN",
+      confidence: 0,
+      manuallyConfirmed: false,
+      evidence: [`检测到冲突的专属标题：${headingRoutes.join(" / ")}`]
+    };
+  }
+
+  const content = `${input.pageTitle || ""}\n${(input.visibleHeadings || []).join("\n")}\n${input.visibleText || ""}`;
+  const scores: Array<{ routeKey: CollectionRouteKey; score: number; markers: string[] }> = [
+    scoreRoute("LIVE_PRODUCT_TAB", content, ["商品列表", "关注商品", "推荐返场", "商品画像", "商品曝光次数", "商品点击人数", "支付成功用户数"]),
+    scoreRoute("LIVE_TRAFFIC_TAB", content, ["直播流量", "流量分析", "小时看播次数", "小时自然看播次数", "小时商业看播次数", "流量渠道", "引流短视频"]),
+    scoreRoute("LIVE_DATA_SCREEN", content, ["直播间成交金额", "趋势分析", "用户画像", "转化分析", "累计曝光次数", "商品转化率"])
+  ].filter((item) => item.score >= 2);
+  scores.sort((left, right) => right.score - left.score);
+  if (scores.length && (scores.length === 1 || scores[0]!.score > scores[1]!.score)) {
+    const winner = scores[0]!;
+    return {
+      routeKey: winner.routeKey,
+      source: "VISIBLE_CONTENT",
+      confidence: Math.min(0.9, 0.68 + winner.score * 0.05),
+      manuallyConfirmed: false,
+      evidence: winner.markers.map((marker) => `可见内容：${marker}`)
+    };
+  }
+
+  const pageType = normalizeCollectionRouteKey(input.pageType);
+  if (pageType !== "UNKNOWN" && pageType !== "LIVE_DATA_SCREEN") {
+    return { routeKey: pageType, source: "PAGE_TYPE", confidence: 0.7, manuallyConfirmed: false, evidence: [`页面类型：${pageType}`] };
+  }
+  return { routeKey: "UNKNOWN", source: "UNKNOWN", confidence: 0, manuallyConfirmed: false, evidence: ["当前可见区域不足以确定分栏"] };
+}
+
 export function inferCollectionRoute(input: { pageType?: string | null; sourceUrl?: string | null; pageTitle?: string | null }): CollectionRouteKey {
+  const detected = detectActiveCollectionRoute({ ...input, visibleHeadings: input.pageTitle ? [input.pageTitle] : [] });
+  if (detected.routeKey !== "UNKNOWN") return detected.routeKey;
   const haystack = `${input.sourceUrl || ""}\n${input.pageTitle || ""}`.toLowerCase();
   if (/material|creative|素材/.test(haystack)) return "MATERIAL_LIBRARY";
   if (/hour|trend|小时|趋势/.test(haystack)) return "HOURLY_TREND";
   if (/task|campaign|计划|任务/.test(haystack)) return "TASK_TABLE";
-  if (/live|room|直播|大屏/.test(haystack)) return "LIVE_DATA_SCREEN";
   const pageType = normalizeCollectionRouteKey(input.pageType);
-  if (pageType !== "UNKNOWN") return pageType;
+  if (pageType !== "UNKNOWN" && pageType !== "LIVE_DATA_SCREEN") return pageType;
   if (/promotion|local|投放|本地推/.test(haystack)) return "LOCAL_PROMOTION_DASHBOARD";
   return "UNKNOWN";
+}
+
+function routeFromUrl(value?: string | null): CollectionRouteKey | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname.toLowerCase();
+    const mode = ["mode", "tab", "view", "section"].map((key) => url.searchParams.get(key)?.toLowerCase() || "").join(" ");
+    if (host === "localads.chengzijianzhan.cn" && /\/lamp\/pc\/liveboard2(?:\/|$)/.test(path)) return "LOCAL_PROMOTION_DASHBOARD";
+    if (host === "localads.chengzijianzhan.cn" && /\/lamp\/pc\/promotion\/roi2(?:\/|$)/.test(path)) return "TASK_TABLE";
+    if (/\b(product|products|goods|commodity)\b/.test(mode) || /\/(product|goods)(?:\/|$)/.test(path)) return "LIVE_PRODUCT_TAB";
+    if (/\b(traffic|flow|channel)\b/.test(mode) || /\/(traffic|flow)(?:\/|$)/.test(path)) return "LIVE_TRAFFIC_TAB";
+    if ((/\b(main|overview|summary)\b/.test(mode) && /live|room|screen|liveboard/.test(path))) return "LIVE_DATA_SCREEN";
+    if (/material|creative/.test(path)) return "MATERIAL_LIBRARY";
+    if (/task|campaign/.test(path)) return "TASK_TABLE";
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function routeFromSelectedLabel(value: string): CollectionRouteKey | null {
+  const label = value.replace(/[\s\u00a0]+/g, "").replace(/[（(].*?[）)]/g, "");
+  if (["概览", "直播概览", "数据概览"].includes(label)) return "LIVE_DATA_SCREEN";
+  if (["商品", "商品分析", "商品列表"].includes(label)) return "LIVE_PRODUCT_TAB";
+  if (["流量", "流量分析", "直播流量"].includes(label)) return "LIVE_TRAFFIC_TAB";
+  return null;
+}
+
+function routeFromSpecificHeading(value: string): CollectionRouteKey | null {
+  const heading = value.replace(/[\s\u00a0]+/g, "");
+  if (/商品列表|关注商品|推荐返场|商品画像/.test(heading)) return "LIVE_PRODUCT_TAB";
+  if (/直播流量|流量分析|流量趋势/.test(heading)) return "LIVE_TRAFFIC_TAB";
+  if (/直播间成交金额|直播数据大屏概览/.test(heading)) return "LIVE_DATA_SCREEN";
+  return null;
+}
+
+function scoreRoute(routeKey: CollectionRouteKey, content: string, markers: string[]) {
+  const matched = markers.filter((marker) => content.includes(marker));
+  return { routeKey, score: matched.length, markers: matched };
 }
 
 export function assessCollectionQuality(

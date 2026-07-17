@@ -3,120 +3,141 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>&#26412;&#22320;&#29983;&#27963;&#35786;&#26029;&#37319;&#38598;</title>
+    <title>本地生活诊断采集</title>
     <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
       body {
         width: 380px;
         margin: 0;
-        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
         color: #172033;
-        background: #f7f8fa;
+        background: #f4f6fa;
       }
-      header,
-      section,
-      footer {
-        padding: 12px;
-      }
-      header {
-        background: #fff;
-        border-bottom: 1px solid #dde3ee;
-      }
-      h1 {
-        margin: 0;
-        font-size: 16px;
-      }
-      section {
-        display: grid;
-        gap: 8px;
-      }
-      .panel {
-        border: 1px solid #dde3ee;
-        border-radius: 8px;
-        background: #fff;
-        padding: 10px;
-      }
-      .muted {
-        color: #667085;
-      }
-      .notice {
-        border-color: #bfdbfe;
-        background: #eff6ff;
-        color: #1e3a8a;
-      }
-      .row {
-        display: grid;
-        grid-template-columns: 84px 1fr;
-        gap: 6px;
-      }
-      button {
-        min-height: 32px;
-        border: 1px solid #dde3ee;
-        border-radius: 7px;
-        background: #fff;
-        cursor: pointer;
-      }
-      button.primary {
-        border-color: #2563eb;
-        background: #2563eb;
-        color: #fff;
-      }
-      footer {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      pre {
-        max-height: 160px;
-        overflow: auto;
-        border-radius: 6px;
-        background: #101828;
-        color: #e5e7eb;
-        padding: 8px;
-        white-space: pre-wrap;
-      }
+      header { padding: 16px; color: #fff; background: #172554; }
+      h1 { margin: 0; font-size: 17px; letter-spacing: 0; }
+      header p { margin: 4px 0 0; color: #bfdbfe; }
+      main { display: grid; gap: 10px; padding: 12px; }
+      .panel { border: 1px solid #dce2ec; border-radius: 8px; background: #fff; padding: 12px; }
+      .panel h2 { margin: 0 0 8px; font-size: 14px; }
+      .stack { display: grid; gap: 8px; }
+      .row { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; align-items: start; }
+      .value { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+      .muted { color: #667085; }
+      .status-line { display: flex; align-items: center; gap: 7px; }
+      .status-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #94a3b8; }
+      .status-dot.ready { background: #16a34a; }
+      .status-dot.warning { background: #d97706; }
+      .status-dot.error { background: #dc2626; }
+      .notice { border-color: #bfdbfe; background: #eff6ff; color: #1e3a8a; }
+      .success { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+      .error-box { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+      button, input, select { min-height: 36px; width: 100%; border-radius: 7px; font: inherit; }
+      input, select { border: 1px solid #cfd6e2; padding: 7px 9px; background: #fff; }
+      button { border: 1px solid #cfd6e2; padding: 7px 10px; background: #fff; color: #172033; cursor: pointer; }
+      button:hover { border-color: #2563eb; }
+      button:disabled { cursor: not-allowed; opacity: .55; }
+      button.primary { border-color: #2563eb; background: #2563eb; color: #fff; font-weight: 700; }
+      button.danger { color: #b91c1c; }
+      .capture-button { min-height: 44px; font-size: 14px; }
+      .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .hidden { display: none !important; }
+      details { border-top: 1px solid #e5e7eb; padding-top: 9px; }
+      summary { cursor: pointer; color: #475467; font-weight: 600; }
+      .route-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 9px 0; }
+      .route-grid label { display: flex; align-items: center; gap: 5px; }
+      .route-grid input { width: 15px; min-height: 15px; }
+      pre { max-height: 130px; overflow: auto; margin: 8px 0 0; border-radius: 6px; background: #111827; color: #e5e7eb; padding: 8px; white-space: pre-wrap; }
     </style>
   </head>
   <body>
     <header>
-      <h1>&#26412;&#22320;&#29983;&#27963;&#35786;&#26029;&#37319;&#38598;</h1>
-      <div id="status" class="muted">&#21021;&#22987;&#21270;&#20013;</div>
+      <h1>本地生活诊断采集</h1>
+      <p>连接账号后，采集并上传当前已打开的后台页面</p>
     </header>
-    <section>
-      <div class="panel">
-        <div class="row"><span class="muted">&#24403;&#21069; URL</span><span id="currentUrl">-</span></div>
-        <div class="row"><span class="muted">&#39029;&#38754;&#31867;&#22411;</span><span id="pageType">-</span></div>
-        <div class="row"><span class="muted">&#21487;&#37319;&#38598;</span><span id="collectable">-</span></div>
-        <div class="row"><span class="muted">Token</span><span id="hasToken">-</span></div>
-        <div class="row"><span class="muted">&#20219;&#21153; ID</span><span id="taskId">-</span></div>
-        <div class="row"><span class="muted">巡检状态</span><span id="patrolStatus">未开启</span></div>
-        <div class="row"><span class="muted">巡检批次</span><span id="collectionRunId">-</span></div>
-      </div>
-      <div class="panel">
-        <div class="muted">固定目标页面（请先由用户自行打开）</div>
-        <label><input id="routeDashboard" type="checkbox" checked /> 投放总览</label>
-        <label><input id="routeLive" type="checkbox" checked /> 直播大屏</label>
-        <label><input id="routeTask" type="checkbox" checked /> 任务/计划表</label>
-        <label><input id="routeMaterial" type="checkbox" /> 素材库</label>
-        <label><input id="routeTrend" type="checkbox" /> 小时趋势</label>
-      </div>
-      <div class="panel notice">
-        本插件仅在用户授权并打开目标后台页面时采集当前页面可见数据，不拦截平台网络请求。插件不会自动点击、修改预算、暂停任务、创建计划或提交任何平台操作。
-      </div>
-      <div class="panel">
-        <div class="muted">&#26412;&#22320;&#24555;&#29031;</div>
-        <pre id="snapshot">{}</pre>
-      </div>
-    </section>
-    <footer>
-      <button id="configBtn">&#37197;&#32622; API</button>
-      <button id="sidePanelBtn">打开实时侧边栏</button>
-      <button id="startBtn" class="primary">&#24320;&#22987;&#37319;&#38598;</button>
-      <button id="startPatrolBtn" class="primary">开启固定页面巡检</button>
-      <button id="stopPatrolBtn">停止巡检</button>
-      <button id="refreshBtn">&#26597;&#30475;&#26412;&#22320;&#24555;&#29031;</button>
-      <button id="uploadBtn">&#19978;&#20256;&#24555;&#29031;</button>
-      <button id="clearBtn">&#28165;&#31354;&#26412;&#22320;&#24555;&#29031;</button>
-    </footer>
+    <main>
+      <section class="panel stack">
+        <div class="status-line"><span id="statusDot" class="status-dot"></span><strong id="status">正在检查插件状态</strong></div>
+        <div class="row"><span class="muted">当前页面</span><span id="pageType" class="value">识别中</span></div>
+        <div class="row"><span class="muted">当前分栏</span><span id="routeKey" class="value">识别中</span></div>
+        <div class="row"><span class="muted">页面网址</span><span id="currentUrl" class="value">读取中</span></div>
+        <div class="row"><span class="muted">采集能力</span><span id="collectable" class="value">检查中</span></div>
+      </section>
+
+      <section id="pairingPanel" class="panel stack">
+        <h2>连接网页任务</h2>
+        <span class="muted">在任务页生成六位配对码。配对码只绑定账号和任务，不会读取平台密码。</span>
+        <input id="pairingCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="输入六位配对码" />
+        <details><summary>服务器地址</summary><input id="apiBaseUrl" type="url" value="{{PXXIS_DEFAULT_API_BASE_URL}}" placeholder="https://api.pxxis.cn" /></details>
+        <button id="pairBtn" class="primary">查看配对信息</button>
+      </section>
+
+      <section id="pairingConfirmationPanel" class="panel stack hidden">
+        <h2>确认插件配对</h2>
+        <span class="muted">请核对目标服务器、账号和任务。确认后才会兑换插件凭证。</span>
+        <div class="row"><span class="muted">服务器</span><span id="pendingPairServer" class="value">-</span></div>
+        <div class="row"><span class="muted">账号</span><span id="pendingPairAccount" class="value">-</span></div>
+        <div class="row"><span class="muted">任务</span><span id="pendingPairTask" class="value">-</span></div>
+        <div class="row"><span class="muted">有效期</span><span id="pendingPairExpiresAt" class="value">-</span></div>
+        <div class="button-row"><button id="cancelPairBtn">取消</button><button id="confirmPairBtn" class="primary">确认并配对</button></div>
+      </section>
+
+      <section id="taskPanel" class="panel stack hidden">
+        <h2>选择采集任务</h2>
+        <p class="muted">当前账号已配对，请选择该账号下的任务。跨账号任务不会出现在列表中。</p>
+        <select id="taskSelect"><option value="">暂无可用任务</option></select>
+        <button id="selectTaskBtn" class="primary">绑定所选任务</button>
+      </section>
+
+      <section id="boundPanel" class="panel stack hidden">
+        <h2>当前采集上下文</h2>
+        <div class="row"><span class="muted">账号</span><span id="accountName" class="value">未绑定</span></div>
+        <div class="row"><span class="muted">项目</span><span id="projectName" class="value">未绑定</span></div>
+        <div class="row"><span class="muted">任务</span><span id="taskId" class="value">未绑定</span></div>
+        <div class="row"><span class="muted">下一路线</span><span id="nextRoute" class="value">等待任务信息</span></div>
+        <div id="routeOverridePanel" class="stack hidden">
+          <label for="routeOverride"><strong>确认本次采集路线</strong></label>
+          <span class="muted">当前页面无法自动确定路线。该选择只用于本次采集，不会修改平台页面。</span>
+          <select id="routeOverride">
+            <option value="">请选择当前可见路线</option>
+          </select>
+        </div>
+        <button id="captureBtn" class="primary capture-button">采集并上传当前路线</button>
+      </section>
+
+      <section id="captureResult" class="panel success hidden"></section>
+
+      <section class="panel notice">
+        插件只读取当前已打开页面的可见 DOM、真实表格和白名单指标，不会点击平台按钮、修改预算、暂停任务、创建计划或提交表单。
+      </section>
+
+      <section id="advancedPanel" class="panel stack">
+        <details>
+          <summary>高级设置与故障排查</summary>
+          <div class="stack" style="margin-top: 10px">
+            <div class="row"><span class="muted">授权</span><span id="hasToken" class="value">未配对</span></div>
+            <div class="row"><span class="muted">巡检</span><span id="patrolStatus" class="value">未开启</span></div>
+            <div class="row"><span class="muted">批次</span><span id="collectionRunId" class="value">-</span></div>
+            <div class="row"><span class="muted">插件构建</span><span id="extensionBuild" class="value">读取中</span></div>
+            <div class="route-grid">
+              <label><input id="routeDashboard" type="checkbox" checked />投放总览</label>
+              <label><input id="routeLive" type="checkbox" checked />直播大屏</label>
+              <label><input id="routeTask" type="checkbox" checked />任务列表</label>
+              <label><input id="routeProduct" type="checkbox" />商品页</label>
+              <label><input id="routeTraffic" type="checkbox" />流量页</label>
+              <label><input id="routeMaterial" type="checkbox" />素材库</label>
+              <label><input id="routeTrend" type="checkbox" />小时趋势</label>
+            </div>
+            <div class="button-row"><button id="startPatrolBtn">开启巡检</button><button id="stopPatrolBtn">停止巡检</button></div>
+            <div class="button-row"><button id="sidePanelBtn">实时侧边栏</button><button id="uploadBtn">重传上次快照</button></div>
+            <button id="refreshBtn">刷新插件状态</button>
+            <button id="clearBtn">清空本地快照</button>
+            <button id="clearPairingBtn" class="danger">解除本地绑定</button>
+            <pre id="snapshot">暂无本地快照</pre>
+          </div>
+        </details>
+      </section>
+    </main>
     <script type="module" src="/src/popup.ts"></script>
   </body>
 </html>

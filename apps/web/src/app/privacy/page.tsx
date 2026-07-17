@@ -9,14 +9,14 @@ export default function PrivacyPage() {
           返回首页
         </Link>
         <h1 className="mt-3 text-4xl font-bold tracking-tight">隐私政策</h1>
-        <p className="mt-3 text-sm text-muted">最后更新：2026 年 7 月 7 日</p>
+        <p className="mt-3 text-sm text-muted">最后更新：2026 年 7 月 13 日</p>
       </header>
 
       <div className="grid gap-5 text-sm leading-7 text-muted">
         <section className="rounded-lg border border-border bg-white p-5">
           <h2 className="text-lg font-semibold text-foreground">数据采集范围</h2>
           <p className="mt-2">
-            在用户授权并打开目标后台页面时，系统会采集当前页面可见数据、表格数据、指标文本，以及同源或白名单域名允许的 JSON 响应。
+            在用户授权并打开目标后台页面时，系统会采集可见 DOM、真实表格和白名单指标。截图/OCR、CSV 和人工校准数据仅在用户主动提供时处理，生产插件不读取平台网络响应正文。
           </p>
         </section>
 

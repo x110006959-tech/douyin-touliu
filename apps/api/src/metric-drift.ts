@@ -11,7 +11,8 @@ import {
 
 export const metricAliasOverrideInputSchema = z.object({
   metricKey: z.enum(metricKeys).refine((key) => key !== "unknown", "metricKey cannot be unknown"),
-  pageType: z.union([z.enum(pageTypes), z.literal("ANY")]).default("ANY")
+  pageType: z.union([z.enum(pageTypes), z.literal("ANY")]).default("ANY"),
+  note: z.string().trim().max(500).optional()
 });
 
 export const metricDriftStatusSchema = z.enum(["OPEN", "RESOLVED", "IGNORED"]);

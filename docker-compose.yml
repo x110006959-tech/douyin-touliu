@@ -10,6 +10,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-douyin_subject_diagnosis}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diagnosis} -d ${POSTGRES_DB:-douyin_subject_diagnosis}"]
       interval: 5s
@@ -18,22 +20,66 @@ services:
     networks:
       - backend
 
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+        BUILD_TIME: ${BUILD_TIME:-}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260717_v029_email_verification}
+    restart: "no"
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.50
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+        BUILD_TIME: ${BUILD_TIME:-}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260717_v029_email_verification}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment:
       NODE_ENV: production
       API_PORT: 4000
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      SECURITY_SECRET: ${SECURITY_SECRET:-${JWT_SECRET:?SECURITY_SECRET or JWT_SECRET is required}}
+      JWT_SECRET: ${JWT_SECRET:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
       WEB_ORIGIN: ${WEB_ORIGIN:?WEB_ORIGIN is required}
       EXTENSION_ORIGINS: ${EXTENSION_ORIGINS:-}
+      EXTENSION_ARTIFACT_SHA256: ${EXTENSION_ARTIFACT_SHA256:-}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
+      SMTP_PASS: ${SMTP_PASS:?SMTP_PASS is required}
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM is required}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${API_BIND_PORT:-4000}:4000"
     healthcheck:
@@ -41,6 +87,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.00
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - backend
 
@@ -51,6 +107,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -65,6 +123,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.00
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - backend
 

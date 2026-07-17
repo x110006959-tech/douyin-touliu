@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { apiFetch, cookieSessionMarker } from "./api";
+import { apiFetch, cookieSessionMarker, setCsrfToken } from "./api";
 
 type AuthState = {
   token: string | null;
@@ -18,9 +18,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     window.localStorage.removeItem("douyin-local-life-token");
     window.sessionStorage.removeItem("douyin-local-life-token");
-    void apiFetch("/auth/me", null)
-      .then(() => setTokenState(cookieSessionMarker))
-      .catch(() => setTokenState(null))
+    void apiFetch<{ csrfToken: string }>("/auth/me", null)
+      .then((session) => {
+        setCsrfToken(session.csrfToken);
+        setTokenState(cookieSessionMarker);
+      })
+      .catch(() => {
+        setCsrfToken(null);
+        setTokenState(null);
+      })
       .finally(() => setHydrated(true));
   }, []);
 
@@ -28,9 +34,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       token,
       hydrated,
-      setToken: (nextToken) => {
-        setTokenState(nextToken ? cookieSessionMarker : null);
-        if (!nextToken) void apiFetch("/auth/logout", cookieSessionMarker, { method: "POST" }).catch(() => undefined);
+      setToken: (nextCsrfToken) => {
+        if (nextCsrfToken) {
+          setCsrfToken(nextCsrfToken);
+          setTokenState(cookieSessionMarker);
+          return;
+        }
+
+        // Send the CSRF-protected revocation request before clearing its in-memory token.
+        void apiFetch("/auth/logout", cookieSessionMarker, { method: "POST" })
+          .catch(() => undefined)
+          .finally(() => {
+            setCsrfToken(null);
+            setTokenState(null);
+          });
       }
     }),
     [hydrated, token]

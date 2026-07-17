@@ -1,4 +1,4 @@
-import type { CaptureMeta, PageType, VisibleMetric } from "@douyin-local-life/shared";
+import type { CaptureMeta, CollectionRouteKey, PageType, VisibleMetric } from "@douyin-local-life/shared";
 
 export type PageAdapterInput = {
   document: Document;
@@ -6,6 +6,7 @@ export type PageAdapterInput = {
   title: string;
   visibleText: string;
   tables: unknown[];
+  routeKey?: CollectionRouteKey;
 };
 
 export type PageAdapter = {
@@ -28,11 +29,16 @@ const commonMetrics: MetricDefinition[] = [
   { key: "clicks", name: "clicks", labels: ["点击人数", "商品点击人数", "点击次数"] },
   { key: "ctr", name: "click through rate", unit: "%", labels: ["商品点击率", "点击率", "CTR"] },
   { key: "orders", name: "orders", labels: ["成交订单数", "支付订单", "支付订单数", "成交人数"] },
-  { key: "pay_roi", name: "pay ROI", labels: ["支付 ROI", "付款 ROI"] },
+  { key: "pay_roi", name: "整体支付 ROI", labels: ["整体支付ROI", "整体支付 ROI", "付款 ROI"] },
+  { key: "full_domain_pay_roi", name: "全域支付 ROI", labels: ["全域支付ROI", "全域支付 ROI", "全域ROI", "全域 ROI"] },
   { key: "verify_roi", name: "verify ROI", labels: ["核销 ROI"] },
   { key: "gross_profit_roi", name: "gross profit ROI", labels: ["毛利 ROI"] },
   { key: "gmv", name: "GMV", unit: "yuan", labels: ["成交金额", "支付金额", "GMV"] },
+  { key: "gpm", name: "GPM", unit: "yuan", labels: ["千次观看成交金额", "GPM"] },
   { key: "live_viewers", name: "live viewers", labels: ["直播间观看人数", "观看人数", "看播人数", "整场累计看播人数"] },
+  { key: "hourly_live_views", name: "小时看播次数", labels: ["小时看播次数"] },
+  { key: "hourly_natural_live_views", name: "小时自然看播次数", labels: ["小时自然看播次数"] },
+  { key: "hourly_commercial_live_views", name: "小时商业看播次数", labels: ["小时商业看播次数"] },
   { key: "store_searches", name: "store searches", labels: ["门店搜索量", "搜索量"] },
   { key: "poi_visits", name: "POI visits", labels: ["POI访问", "POI 访问", "门店访问"] },
   { key: "shelf_gmv", name: "shelf GMV", unit: "yuan", labels: ["货架成交", "团购货架"] },
@@ -40,22 +46,26 @@ const commonMetrics: MetricDefinition[] = [
 ];
 
 const adapters: PageAdapter[] = [
-  createAdapter("live-screen", "LIVE_DATA_SCREEN", ["gmv", "live_viewers", "impressions", "clicks", "orders"], ["直播数据大屏", "直播间", "看播", "曝光人数", "成交人数"]),
-  createAdapter("local-promotion", "LOCAL_PROMOTION_DASHBOARD", ["spend", "daily_budget", "pay_roi", "orders", "impressions", "clicks"], ["巨量本地推", "本地推", "投放", "出价", "预算", "消耗"]),
-  createAdapter("task-table", "TASK_TABLE", ["spend", "daily_budget", "orders"], ["任务列表", "计划列表", "广告组", "单元", "创意", "状态"])
+  createAdapter("live-product-tab", "LIVE_DATA_SCREEN", ["gmv", "orders", "impressions", "clicks", "ctr"], ["商品列表", "关注商品", "推荐返场", "商品画像"], "LIVE_PRODUCT_TAB"),
+  createAdapter("live-traffic-tab", "LIVE_DATA_SCREEN", ["live_viewers", "hourly_live_views", "hourly_natural_live_views", "hourly_commercial_live_views"], ["直播流量", "流量分析", "小时自然看播次数", "小时商业看播次数"], "LIVE_TRAFFIC_TAB"),
+  createAdapter("live-screen", "LIVE_DATA_SCREEN", ["gmv", "gpm", "live_viewers", "impressions", "clicks", "orders"], ["直播数据大屏", "直播间", "看播", "曝光人数", "成交人数"], "LIVE_DATA_SCREEN"),
+  createAdapter("local-promotion", "LOCAL_PROMOTION_DASHBOARD", ["spend", "daily_budget", "pay_roi", "full_domain_pay_roi", "orders", "impressions", "clicks"], ["巨量本地推", "本地推", "投放", "出价", "预算", "消耗"], "LOCAL_PROMOTION_DASHBOARD"),
+  createAdapter("task-table", "TASK_TABLE", ["spend", "daily_budget", "orders"], ["任务列表", "计划列表", "广告组", "单元", "创意", "状态"], "TASK_TABLE")
 ];
 
 export function selectPageAdapter(input: PageAdapterInput): PageAdapter {
   return adapters.find((adapter) => adapter.detect(input)) || unknownAdapter;
 }
 
-function createAdapter(id: string, pageType: PageType, expectedFields: string[], keywords: string[]): PageAdapter {
+function createAdapter(id: string, pageType: PageType, expectedFields: string[], keywords: string[], routeKey?: CollectionRouteKey): PageAdapter {
   return {
     id,
-    version: "1.0.0",
+    version: "1.2.0",
     pageType,
     expectedFields,
     detect(input) {
+      if (routeKey && input.routeKey === routeKey) return true;
+      if (routeKey && input.routeKey && input.routeKey !== "UNKNOWN") return false;
       const combined = `${input.title}\n${input.url}\n${input.visibleText.slice(0, 50_000)}`;
       return keywords.some((keyword) => combined.includes(keyword));
     },

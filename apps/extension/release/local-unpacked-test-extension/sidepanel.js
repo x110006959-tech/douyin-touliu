@@ -9,7 +9,10 @@
     PATROL: "douyinLocalLifeDiagnosisPatrol",
     ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState",
     LATEST_SIGNALS: "douyinLocalLifeDiagnosisLatestSignals",
-    PAGE_ACTIVITY: "douyinLocalLifeDiagnosisPageActivity"
+    PAGE_ACTIVITY: "douyinLocalLifeDiagnosisPageActivity",
+    CONTEXT: "douyinLocalLifeDiagnosisContext",
+    ACTIVE_COLLECTION_SESSION: "douyinLocalLifeDiagnosisActiveCollectionSession",
+    PENDING_PAIRING_CONFIRMATION: "douyinLocalLifeDiagnosisPendingPairingConfirmation"
   };
 
   // src/sidepanel.ts
@@ -18,6 +21,9 @@
     version: document.getElementById("version"),
     activity: document.getElementById("activity"),
     runId: document.getElementById("runId"),
+    accountName: document.getElementById("accountName"),
+    projectName: document.getElementById("projectName"),
+    taskId: document.getElementById("taskId"),
     signals: document.getElementById("signals"),
     proposals: document.getElementById("proposals")
   };
@@ -31,10 +37,13 @@
     await renderProposals();
   }
   async function renderLocalState() {
-    const local = await chrome.storage.local.get([STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY]);
+    const local = await chrome.storage.local.get([STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY, STORAGE.CONFIG]);
     const patrol = local[STORAGE.PATROL] || {};
     const activity = local[STORAGE.PAGE_ACTIVITY] || {};
     elements.runId.textContent = patrol.collectionRunId || "-";
+    elements.accountName.textContent = local[STORAGE.CONFIG]?.accountName || "\u672A\u7ED1\u5B9A";
+    elements.projectName.textContent = local[STORAGE.CONFIG]?.projectName || "\u672A\u7ED1\u5B9A";
+    elements.taskId.textContent = local[STORAGE.CONFIG]?.collectionTaskId || "-";
     elements.activity.textContent = activity.tabState === "VISIBLE" ? "\u6D3B\u8DC3" : activity.tabState === "HIDDEN" ? "\u9875\u9762\u975E\u6D3B\u8DC3" : "\u672A\u77E5";
     const signals = local[STORAGE.LATEST_SIGNALS] || [];
     elements.signals.replaceChildren(...signals.length ? signals.map(renderSignal) : [textNode("\u6682\u65E0\u4FE1\u53F7", "muted")]);
@@ -42,7 +51,7 @@
   async function renderProposals() {
     const { apiBaseUrl, collectionTaskId, token } = await apiContext();
     if (!apiBaseUrl || !collectionTaskId || !token) {
-      elements.status.textContent = "\u8BF7\u5148\u5728\u63D2\u4EF6\u5F39\u7A97\u914D\u7F6EAPI\u3001\u4EFB\u52A1\u548CToken";
+      elements.status.textContent = "\u8BF7\u5148\u5728\u63D2\u4EF6\u5F39\u7A97\u914D\u5BF9\u8D26\u53F7\u5E76\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1";
       return;
     }
     try {
@@ -56,8 +65,8 @@
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || `HTTP ${response.status}`);
       const proposals = body?.data?.actionProposals || [];
-      elements.proposals.replaceChildren(...proposals.length ? proposals.map((proposal) => renderProposal(proposal, apiBaseUrl, token)) : [textNode("\u6682\u65E0\u6B63\u5F0F\u5EFA\u8BAE", "muted")]);
-      elements.status.textContent = "\u5DF2\u8FDE\u63A5\uFF0C\u4EC5\u5C55\u793A\u548C\u8BB0\u5F55\u4EBA\u5DE5\u51B3\u7B56";
+      elements.proposals.replaceChildren(...proposals.length ? proposals.map((proposal) => renderProposal(proposal, apiBaseUrl)) : [textNode("\u6682\u65E0\u6B63\u5F0F\u5EFA\u8BAE", "muted")]);
+      elements.status.textContent = "\u5DF2\u8FDE\u63A5\uFF1B\u5BA1\u6279\u8BF7\u5728\u7F51\u9875\u5DE5\u4F5C\u53F0\u5B8C\u6210";
     } catch (error) {
       elements.status.textContent = error instanceof Error ? error.message : "\u8FDE\u63A5\u5931\u8D25";
     }
@@ -68,7 +77,7 @@
     node.textContent = signal.message;
     return node;
   }
-  function renderProposal(proposal, apiBaseUrl, token) {
+  function renderProposal(proposal, apiBaseUrl) {
     const node = document.createElement("div");
     node.className = "proposal";
     const title = document.createElement("strong");
@@ -77,30 +86,29 @@
     reason.className = "muted";
     reason.textContent = proposal.reason;
     node.append(title, reason);
-    if (proposal.status === "PENDING_APPROVAL" && proposal.id) {
-      const actions = document.createElement("div");
-      actions.className = "actions";
-      for (const [label, action] of [["\u5BA1\u6279", "approve"], ["\u89C2\u5BDF", "observe"], ["\u62D2\u7EDD", "reject"]]) {
-        const button = document.createElement("button");
-        button.textContent = label;
-        button.addEventListener("click", () => void transitionProposal(apiBaseUrl, token, proposal.id, action));
-        actions.append(button);
-      }
-      node.append(actions);
+    if (proposal.id) {
+      const link = document.createElement("a");
+      link.href = `${webBaseUrl(apiBaseUrl)}/action-proposals/${proposal.id}`;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = proposal.status === "PENDING_APPROVAL" ? "\u5728\u7F51\u9875\u4E2D\u5BA1\u6838" : "\u67E5\u770B\u7F51\u9875\u8BE6\u60C5";
+      node.append(link);
     }
     return node;
   }
-  async function transitionProposal(apiBaseUrl, token, proposalId, action) {
-    const response = await fetch(`${apiBaseUrl}/action-proposals/${proposalId}/${action}`, { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${token}` }, body: "{}" });
-    const body = await response.json();
-    elements.status.textContent = response.ok ? "\u5BA1\u6279\u72B6\u6001\u5DF2\u8BB0\u5F55\uFF0C\u5E73\u53F0\u64CD\u4F5C\u4ECD\u9700\u4EBA\u5DE5\u5B8C\u6210" : body?.error?.message || "\u72B6\u6001\u66F4\u65B0\u5931\u8D25";
-    await renderProposals();
-  }
   async function apiContext() {
-    const local = await chrome.storage.local.get([STORAGE.CONFIG]);
-    const session = await chrome.storage.session.get([STORAGE.TOKEN]);
+    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN]);
     const config = local[STORAGE.CONFIG] || {};
-    return { apiBaseUrl: config.apiBaseUrl, collectionTaskId: config.collectionTaskId, token: session[STORAGE.TOKEN] };
+    return { apiBaseUrl: config.apiBaseUrl, collectionTaskId: config.collectionTaskId, token: local[STORAGE.TOKEN] };
+  }
+  function webBaseUrl(apiBaseUrl) {
+    try {
+      const url = new URL(apiBaseUrl);
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return `${url.protocol}//${url.hostname}:3300`;
+      return "https://www.pxxis.cn";
+    } catch {
+      return "https://www.pxxis.cn";
+    }
   }
   function textNode(text, className) {
     const node = document.createElement("div");

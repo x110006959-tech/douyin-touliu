@@ -2,6 +2,7 @@ import { Prisma, type ActionOutcome, type OutcomeObservationWindow } from "@pris
 import type { ActionOutcomeDTO, CreateActionOutcomeInput, ObservationWindow, ProjectOutcomeSummary } from "@douyin-local-life/shared";
 import { prisma } from "./prisma.js";
 import { cursorArgs } from "./pagination.js";
+import { sanitizePersistedJson } from "./persisted-input.js";
 
 const apiToDbWindow: Record<ObservationWindow, OutcomeObservationWindow> = {
   "30m": "THIRTY_MINUTES",
@@ -25,8 +26,8 @@ export function toActionOutcomeDTO(outcome: ActionOutcome): ActionOutcomeDTO {
     collectionTaskId: outcome.collectionTaskId,
     observationWindow: dbToApiWindow[outcome.observationWindow],
     customWindow: outcome.customWindow,
-    beforeMetrics: outcome.beforeMetricsJson,
-    afterMetrics: outcome.afterMetricsJson,
+    beforeMetrics: outcome.beforeMetricsJson as ActionOutcomeDTO["beforeMetrics"],
+    afterMetrics: outcome.afterMetricsJson as ActionOutcomeDTO["afterMetrics"],
     result: outcome.result,
     note: outcome.note,
     conclusion: outcome.conclusion,
@@ -52,8 +53,8 @@ export async function createActionOutcome(input: {
       userId: input.userId,
       observationWindow: apiToDbWindow[input.body.observationWindow],
       customWindow: input.body.observationWindow === "custom" ? input.body.customWindow || null : null,
-      beforeMetricsJson: input.body.beforeMetrics === undefined ? undefined : toJson(input.body.beforeMetrics),
-      afterMetricsJson: input.body.afterMetrics === undefined ? undefined : toJson(input.body.afterMetrics),
+      beforeMetricsJson: input.body.beforeMetrics === undefined ? undefined : toJson(sanitizePersistedJson(input.body.beforeMetrics)),
+      afterMetricsJson: input.body.afterMetrics === undefined ? undefined : toJson(sanitizePersistedJson(input.body.afterMetrics)),
       result: input.body.result,
       note: input.body.note || null,
       conclusion: input.body.conclusion || null
