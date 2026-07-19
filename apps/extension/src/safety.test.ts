@@ -68,7 +68,7 @@ describe("extension safety helpers", () => {
 
   it("allows HTTPS SaaS endpoints and localhost development only", () => {
     expect(normalizeApiBaseUrl("https://api.pxxis.cn/")).toBe("https://api.pxxis.cn");
-    expect(normalizeApiBaseUrl("http://127.0.0.1:4000")).toBe("http://127.0.0.1:4000");
+    expect(normalizeApiBaseUrl("http://127.0.0.1:4000", ["localhost", "127.0.0.1"])).toBe("http://127.0.0.1:4000");
     expect(normalizeApiBaseUrl("http://api.pxxis.cn")).toBeNull();
     expect(normalizeApiBaseUrl("https://user:secret@api.pxxis.cn")).toBeNull();
   });

@@ -12,7 +12,7 @@ export function getBuildMetadata(): BuildMetadata {
     productVersion: rootPackage.version,
     gitSha: process.env.GIT_SHA || readGitSha(),
     buildTime: process.env.BUILD_TIME || processStartedAt,
-    schemaVersion: process.env.SCHEMA_VERSION || "20260717_v029_email_verification",
+    schemaVersion: process.env.SCHEMA_VERSION || "20260720_v032_audit_actor_snapshot",
     extensionVersion: rootPackage.version,
     artifactSha256: process.env.EXTENSION_ARTIFACT_SHA256 || null
   };

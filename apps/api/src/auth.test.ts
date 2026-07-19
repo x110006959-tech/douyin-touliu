@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveSecuritySecret, resolveSessionCookieSecure, sessionCookieName } from "./auth.js";
+import { ensureSecurityConfiguration, resolveSecuritySecret, resolveSessionCookieSecure, sessionCookieName } from "./auth.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalSecuritySecret = process.env.SECURITY_SECRET;
 const originalJwtSecret = process.env.JWT_SECRET;
+const originalSessionCookieSecure = process.env.SESSION_COOKIE_SECURE;
 
 afterEach(() => {
   process.env.NODE_ENV = originalNodeEnv;
@@ -16,6 +17,11 @@ afterEach(() => {
     delete process.env.JWT_SECRET;
   } else {
     process.env.JWT_SECRET = originalJwtSecret;
+  }
+  if (originalSessionCookieSecure === undefined) {
+    delete process.env.SESSION_COOKIE_SECURE;
+  } else {
+    process.env.SESSION_COOKIE_SECURE = originalSessionCookieSecure;
   }
 });
 
@@ -70,6 +76,14 @@ describe("session cookie security configuration", () => {
   it("allows an explicit local HTTP override without weakening production defaults", () => {
     expect(resolveSessionCookieSecure("production", "false")).toBe(false);
     expect(resolveSessionCookieSecure("development", "true")).toBe(true);
+  });
+
+  it("rejects an insecure cookie override when the production server starts", () => {
+    process.env.NODE_ENV = "production";
+    process.env.SECURITY_SECRET = "strong-security-secret-for-security-tests-12345";
+    process.env.SESSION_COOKIE_SECURE = "false";
+
+    expect(() => ensureSecurityConfiguration()).toThrow(/SESSION_COOKIE_SECURE must be true/);
   });
 
   it("uses the __Host cookie prefix only for secure sessions", () => {

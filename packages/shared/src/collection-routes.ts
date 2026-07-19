@@ -119,6 +119,7 @@ export type CollectionRouteHealth = {
 export type CollectionQuality = {
   requiredRoutes: CollectionRouteKey[];
   routes: CollectionRouteHealth[];
+  diagnostics?: import("./collection-diagnostics.js").CollectionRouteDiagnostic[];
   completeness: number;
   missingRoutes: CollectionRouteKey[];
   staleRoutes: CollectionRouteKey[];

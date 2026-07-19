@@ -35,7 +35,8 @@ import { pairExtensionTask } from "@/lib/extension-bridge";
 import { useAuth } from "@/lib/AuthContext";
 import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-state";
 import { getTaskWizardProgress } from "@/lib/task-progress";
-import type { DecisionRun } from "./task-types";
+import { DiagnosisComparison } from "./diagnosis-comparison";
+import type { DecisionRun, ExpertAnalysis } from "./task-types";
 import { useExtensionTaskStatus, type WebBridgeUiState } from "./use-extension-task-status";
 import { useTaskData } from "./use-task-data";
 
@@ -53,6 +54,8 @@ export default function TaskDetailPage() {
     task,
     decisionRun,
     setDecisionRun,
+    expertAnalysis,
+    setExpertAnalysis,
     collectionRun,
     reviewMetrics,
     reviewDrafts,
@@ -159,6 +162,23 @@ export default function TaskDetailPage() {
     }
   }
 
+  async function runExpertAnalysis() {
+    if (!token) return;
+    setBusy("expert-analysis");
+    setError("");
+    try {
+      const nextExpertAnalysis = await apiFetch<ExpertAnalysis>(`/collection-tasks/${params.id}/explain`, token, {
+        method: "POST",
+        body: "{}"
+      });
+      setExpertAnalysis(nextExpertAnalysis);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "专家参考分析失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function loadCsvFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -198,7 +218,7 @@ export default function TaskDetailPage() {
     setBusy("review-refresh");
     setReviewMessage("");
     try {
-      const nextReviewMetrics = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token);
+      const nextReviewMetrics = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/initialize`, token, { method: "POST", body: "{}" });
       applyReviewMetrics(nextReviewMetrics);
       setReviewMessage("复核指标已刷新");
     } catch (err) {
@@ -458,7 +478,9 @@ export default function TaskDetailPage() {
           <div className="grid gap-3">
             {(captureSummary?.routes || task.routeSources).map((route) => {
               const template = collectionRouteTemplates.find((item) => item.routeKey === route.routeKey);
-              const state = "state" in route ? route.state : route.status === "CAPTURED" ? "UPLOADED" : route.sourceUrl ? "READY" : "PENDING";
+              const diagnostic = "diagnostic" in route ? route.diagnostic : null;
+              const state = diagnostic?.summaryStatus
+                || ("state" in route ? route.state : route.status === "CAPTURED" ? "UPLOADED" : route.sourceUrl ? "READY" : "PENDING");
               const isCurrentPage = extensionStatus?.routeKey === route.routeKey && extensionStatus.collectable;
               const isEditingUrl = editingRouteKey === route.routeKey;
               const routeUrlBusy = busy === `route-url:${route.routeKey}`;
@@ -492,10 +514,33 @@ export default function TaskDetailPage() {
                     ) : (
                       <p className="mt-2 break-all text-xs text-muted">{route.sourceUrl || template?.urlHint || "请先在平台后台打开对应页面"}</p>
                     )}
-                    {"lastError" in route && route.lastError ? <p className="mt-1 text-xs text-danger">最近失败：{route.lastError}</p> : null}
+                    {diagnostic ? (
+                      <div className="mt-3 grid gap-1 text-xs text-muted">
+                        <p>
+                          最近成功：{diagnostic.lastSuccessAt ? formatDiagnosticAge(diagnostic.lastSuccessAt) : "暂无"}
+                          {" · "}覆盖率：{diagnostic.coverageRatio == null ? "未知" : `${Math.round(diagnostic.coverageRatio * 100)}%`}
+                          {" · "}连续失败：{diagnostic.consecutiveFailures}
+                        </p>
+                        {diagnostic.missingFields.length ? <p>缺失字段：{diagnostic.missingFields.join("、")}</p> : null}
+                        {diagnostic.truncationReasons.length ? <p>截断原因：{diagnostic.truncationReasons.join("、")}</p> : null}
+                        {diagnostic.issues.length ? (
+                          <details className="mt-1 rounded border border-amber-200 bg-amber-50 p-2 text-amber-950">
+                            <summary className="cursor-pointer font-medium">查看采集诊断（{diagnostic.issues.length}）</summary>
+                            <div className="mt-2 grid gap-2">
+                              {diagnostic.issues.map((issue) => (
+                                <div key={issue.code}>
+                                  <p>{issue.message}</p>
+                                  <p className="text-amber-800">人工处理：{issue.recoveryAction}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex min-w-32 flex-col items-end justify-center gap-2">
-                    <strong className={state === "UPLOADED" ? "text-primary" : state === "FAILED" ? "text-danger" : state === "UNVERIFIED" || state === "PARTIAL" ? "text-amber-700" : ""}>{captureRouteStateLabel(state)}</strong>
+                    <strong className={state === "UPLOADED" ? "text-primary" : state === "FAILED" ? "text-danger" : ["AGING", "STALE", "UNVERIFIED", "MANUAL_PENDING", "PARTIAL"].includes(state) ? "text-amber-700" : ""}>{captureRouteStateLabel(state)}</strong>
                     {"metricCount" in route && route.metricCount > 0 ? <span className="text-xs text-muted">{route.metricCount} 项指标</span> : null}
                     {"snapshotId" in route && route.state === "UNVERIFIED" && route.snapshotId ? <Button className="h-8 border border-amber-400 bg-amber-50 px-3 text-xs text-amber-900" disabled={busy === "confirm-account"} onClick={() => { if (route.snapshotId) setSnapshotToConfirm(route.snapshotId); }} type="button">确认当前账号</Button> : null}
                     {!isEditingUrl ? <Button className="h-8 border border-border bg-white px-3 text-xs text-foreground" onClick={() => startRouteUrlEdit(route.routeKey, route.sourceUrl)} type="button">编辑网址</Button> : null}
@@ -565,11 +610,16 @@ export default function TaskDetailPage() {
             <div className="mb-4"><p className="mb-1 text-xs font-semibold text-primary">第 5 步</p><CardTitle>诊断与建议</CardTitle><p className="text-sm text-muted">{aiDisclaimer}</p></div>
             <div className="mb-4 grid gap-3 sm:grid-cols-4"><Info label="主体类型" value={subjectTypeLabels[task.project.subjectType]} /><Info label="操盘主体" value={operatorTypeLabels[task.project.operatorType]} /><Info label="合作关系" value={cooperationTypeLabels[task.project.cooperationType]} /><Info label="当前模式" value={managedLiveGrowthMode ? "代直播增长诊断" : task.project.subjectType === "SERVICE_PROVIDER" ? "服务商经营诊断" : "主体框架诊断"} /></div>
             {managedLiveGrowthMode ? <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm"><strong>当前只做代直播增长目标：</strong>诊断流量进入、直播间承接、商品成交、平台活动权益和履约合规；不计算服务商毛利、服务费后 ROI 或平台收益。</div> : null}
-            <div className="mb-4 flex flex-wrap gap-2"><Button onClick={runDecision} disabled={!formalReady || busy === "decision"} title={formalReady ? "输出问题、证据和优化方案" : "请先确认账号、完成基础路线采集和指标复核"} type="button">运行完整诊断</Button></div>
-            {!formalReady ? <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"><strong>正式决策尚未就绪</strong><ul className="mt-2 list-disc space-y-1 pl-5">{formalReadiness.blockingReasons.map((item) => <li key={item}>{item}</li>)}</ul><p className="mt-2 text-muted">处理完成后可运行正式决策；缺少 ROI、GPM 等单项指标只会限制依赖该指标的动作，不再阻断整个诊断。</p></div> : null}
-            {formalReady && evidenceAdvisories.length ? <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"><strong>可生成正式诊断，但动作将按证据降级：</strong>{evidenceAdvisories.map((route) => `${route.label}${route.state === "STALE" ? "数据已过期" : "仅部分可见"}`).join("；")}。暂停、加预算或减预算等动作仍需满足各自证据门槛。</div> : null}
-            {decisionRun ? (
-              <div className="grid gap-4 lg:grid-cols-2">
+            <DiagnosisComparison
+              busy={busy}
+              decisionRun={decisionRun}
+              evidenceAdvisory={formalReady && evidenceAdvisories.length
+                ? `${evidenceAdvisories.map((route) => `${route.label}${route.state === "STALE" ? "数据已过期" : "仅部分可见"}`).join("；")}。暂停、加预算或减预算等动作仍需满足各自证据门槛。`
+                : null}
+              expertAnalysis={expertAnalysis}
+              formalBlockingReasons={formalReadiness.blockingReasons}
+              formalContent={decisionRun ? (
+                <div className="grid gap-4">
                 <div className="rounded-md border border-border p-4 lg:col-span-2">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div><h3 className="font-semibold">本轮结论</h3><p className="mt-2 text-base font-medium">{businessAnalysis?.headline || decisionRun.diagnosis}</p></div>
@@ -593,8 +643,12 @@ export default function TaskDetailPage() {
 
                 {displayedMetricExplanations?.length ? <div className="rounded-md border border-border p-4 lg:col-span-2"><h3 className="mb-1 font-semibold">{managedLiveGrowthMode ? "这些直播增长指标有什么用" : "这些经营指标到底有什么用"}</h3><p className="mb-3 text-xs text-muted">{managedLiveGrowthMode ? "用于定位流量、进房、商品点击和成交承接；平台代金券等权益作为真实转化助力单独核验。" : "财务口径用于守住盈利底线，不替代直播流量、商品和内容诊断。"}</p><div className="grid gap-3 md:grid-cols-2">{displayedMetricExplanations.map((metric) => <div className="rounded-md bg-slate-50 p-3" key={metric.title}><div className="flex items-baseline justify-between gap-2"><strong>{metric.title}</strong><span className="text-lg font-semibold">{formatOptionalNumber(metric.value)}</span></div><p className="mt-2 text-sm">{metric.meaning}</p><p className="mt-1 text-xs text-muted"><strong>用途：</strong>{metric.use}</p><p className="mt-1 text-xs text-muted"><strong>注意：</strong>{metric.caveat}</p></div>)}</div></div> : null}
 
-              </div>
-            ) : <p className="rounded-md border border-border bg-slate-50 p-4 text-sm text-muted">尚未生成诊断。完成指标复核后点击“运行完整诊断”，系统会同时输出问题、证据、风险、直播/商品/投流优化方案和验证指标。</p>}
+                </div>
+              ) : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">尚未生成正式诊断。完成指标复核后运行正式诊断，系统会输出问题、证据、经营方案和验证指标。</p>}
+              formalReady={formalReady}
+              onRunExpert={() => void runExpertAnalysis()}
+              onRunFormal={() => void runDecision()}
+            />
           </Card>
         </section>
       ) : null}
@@ -711,8 +765,27 @@ function webBridgeStateLabel(state: WebBridgeUiState["state"]) {
 }
 
 function captureRouteStateLabel(state: string) {
-  const labels: Record<string, string> = { PENDING: "待打开", READY: "待采集", UPLOADED: "已采集", PARTIAL: "已采集，部分可见", UNVERIFIED: "已采集，账号待确认", STALE: "数据已过期", FAILED: "采集失败" };
+  const labels: Record<string, string> = {
+    PENDING: "待打开",
+    READY: "待采集",
+    MISSING: "尚未采集",
+    UPLOADED: "已采集",
+    AGING: "数据即将过期",
+    PARTIAL: "已采集，部分可见",
+    UNVERIFIED: "已采集，账号待确认",
+    MANUAL_PENDING: "已采集，路线待确认",
+    STALE: "数据已过期",
+    FAILED: "采集失败"
+  };
   return labels[state] || state;
+}
+
+function formatDiagnosticAge(value: string) {
+  const ageMs = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return new Date(value).toLocaleString("zh-CN");
+  if (ageMs < 60_000) return "刚刚";
+  if (ageMs < 60 * 60_000) return `${Math.floor(ageMs / 60_000)} 分钟前`;
+  return new Date(value).toLocaleString("zh-CN");
 }
 
 function accountMatchLabel(status: AccountMatchStatus | null) {

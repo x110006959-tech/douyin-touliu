@@ -33,6 +33,9 @@ describe("mockAnalyze explanation layer", () => {
     expect(result.summary).toContain("decision-engine");
     expect(result.suggestions.length).toBeGreaterThan(0);
     expect(result.confidence).toBeLessThanOrEqual(0.7);
+    expect(result.decisionReference.mode).toBe("ADVISORY_ONLY");
+    expect(result.decisionReference.insights.length).toBeGreaterThan(0);
+    expect(result.decisionReference.insights.every((insight) => insight.confidence === "REFERENCE_ONLY")).toBe(true);
   });
 
   it("keeps subject calibration as a manual check only", async () => {
@@ -59,5 +62,6 @@ describe("mockAnalyze explanation layer", () => {
     const provider = createLlmProvider("mock");
 
     expect(provider.model).toContain("explanation-only");
+    expect(provider.model).toContain("agency-reference");
   });
 });

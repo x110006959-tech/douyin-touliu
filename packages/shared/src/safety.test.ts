@@ -81,4 +81,25 @@ describe("shared collection safety", () => {
     expect(JSON.stringify(result.value)).not.toContain("do-not-store");
     expect(JSON.stringify(result.value)).not.toContain("eyJheader.payload.signature");
   });
+
+  it("redacts personal data without rejecting ordinary business audit fields", () => {
+    const result = sanitizeAndValidatePersistedInput({ name: "张三", email: "demo@example.com", workspaceName: "测试工作区" });
+
+    expect(result.hasSensitiveData).toBe(false);
+    expect(result.value).toMatchObject({ name: "[REDACTED]", email: "[REDACTED]", workspaceName: "测试工作区" });
+  });
+
+  it("allows credential reference identifiers without treating them as credential values", () => {
+    const result = sanitizeAndValidatePersistedInput({ credentialId: "cred_123", sessionId: "session_123" });
+
+    expect(result.hasSensitiveData).toBe(false);
+    expect(result.value).toEqual({ credentialId: "cred_123", sessionId: "session_123" });
+  });
+
+  it("rejects derived credential material even when it is not a raw token", () => {
+    const result = sanitizeAndValidatePersistedInput({ passwordHash: "derived-secret-material" });
+
+    expect(result.hasSensitiveData).toBe(true);
+    expect(result.value).toEqual({ passwordHash: "[REDACTED]" });
+  });
 });

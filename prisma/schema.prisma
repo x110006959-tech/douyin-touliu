@@ -502,6 +502,7 @@ model CollectionRouteHeartbeat {
   consecutiveFailures Int           @default(0)
   lastAttemptAt       DateTime      @default(now())
   lastSuccessAt       DateTime?
+  lastErrorCode       String?
   lastError           String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -519,6 +520,8 @@ model DataSnapshot {
   rawDomText         String?
   rawNetworkJson     Json?
   rawTableData       Json?
+  structuredDataJson Json?
+  structuredDataVersion String?
   visibleMetricsJson Json?
   captureMetaJson    Json?
   screenshotUrl      String?
@@ -894,7 +897,8 @@ model LegacyStrategyRule {
 
 model AuditLog {
   id          String          @id @default(cuid())
-  userId      String
+  userId      String?
+  actorSnapshotJson Json?
   workspaceId String?
   projectId   String?
   taskId      String?
@@ -903,7 +907,7 @@ model AuditLog {
   ip          String?
   userAgent   String?
   createdAt   DateTime        @default(now())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   task        CollectionTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
@@ -913,4 +917,18 @@ model AuditLog {
   @@index([projectId])
   @@index([taskId])
   @@index([action])
+}
+
+model SecurityMetric {
+  id              String   @id @default(cuid())
+  metricKey       String
+  windowStartedAt DateTime
+  occurrenceCount Int      @default(0)
+  valueTotal      BigInt   @default(0)
+  lastValue       BigInt   @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([metricKey, windowStartedAt])
+  @@index([windowStartedAt])
 }

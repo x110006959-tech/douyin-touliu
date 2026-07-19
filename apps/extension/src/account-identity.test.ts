@@ -8,11 +8,22 @@ describe("extension account identity boundary", () => {
     expect(result.evidence.idSource).toBe("URL:advid");
   });
 
+  it.each([
+    ["advertiser_id", "URL:advertiser_id"],
+    ["account_id", "URL:account_id"],
+    ["advid", "URL:advid"],
+    ["aadvid", "URL:aadvid"]
+  ] as const)("records the registered source for %s", (queryParam, expectedSource) => {
+    const result = detectAccountIdentity("直播数据大屏", `https://eos.douyin.com/dp/liveScreen?${queryParam}=account-1001`);
+    expect(result.evidence.idSource).toBe(expectedSource);
+  });
+
   it("requires an exact page id when the account profile has an id", () => {
     expect(compareAccountIdentity({ platformAccountId: "1001", accountName: "账号 A" }, { detectedAccountId: "1001" })).toBe("MATCHED");
     expect(compareAccountIdentity({ platformAccountId: "1001", accountName: "账号 A" }, { detectedAccountId: "1002" })).toBe("MISMATCHED");
     expect(compareAccountIdentity({ platformAccountId: "1001", accountName: "账号 A" }, { detectedAccountName: "账号 A" })).toBe("UNVERIFIED");
-    expect(compareAccountIdentity({ accountName: "账号 A" }, { detectedAccountName: "账号A" })).toBe("MATCHED");
+    expect(compareAccountIdentity({ accountName: "账号 A" }, { detectedAccountName: "账号A" })).toBe("UNVERIFIED");
+    expect(compareAccountIdentity({ accountName: "账号 A" }, { detectedAccountName: "账号 B" })).toBe("MISMATCHED");
     expect(compareAccountIdentity({ accountName: "账号 A" }, {})).toBe("UNVERIFIED");
   });
 });

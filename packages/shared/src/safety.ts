@@ -62,7 +62,14 @@ const sensitiveExact = new Set([
 
 export function shouldRedactSensitiveKey(key: string) {
   const normalized = normalizeKey(key);
+  if (isCredentialReferenceKey(normalized)) return false;
   return sensitiveExact.has(normalized) || sensitiveContains.some((part) => normalized.includes(part));
+}
+
+export function shouldRejectPersistedSensitiveKey(key: string) {
+  const normalized = normalizeKey(key);
+  if (isCredentialReferenceKey(normalized)) return false;
+  return sensitiveContains.some((part) => normalized.includes(part));
 }
 
 export type PersistedInputValidation = {
@@ -121,7 +128,9 @@ export function sanitizeAndValidatePersistedInput(value: unknown): PersistedInpu
     for (const [key, raw] of entries.slice(0, snapshotSafetyLimits.objectKeys).reverse()) {
       if (shouldRedactSensitiveKey(key)) {
         output[key] = redacted;
-        violations.push(`${current.path}.${key}: sensitive key`);
+        if (shouldRejectPersistedSensitiveKey(key)) {
+          violations.push(`${current.path}.${key}: sensitive credential key`);
+        }
       } else {
         stack.push({ input: raw, parent: output, key, path: `${current.path}.${key}`, depth: current.depth + 1 });
       }
@@ -326,4 +335,8 @@ function truncateText(value: string, maxChars: number) {
 
 function normalizeKey(key: string) {
   return key.replace(/[^a-z0-9\u4e00-\u9fa5]/gi, "").toLowerCase();
+}
+
+function isCredentialReferenceKey(normalizedKey: string) {
+  return normalizedKey.endsWith("id");
 }

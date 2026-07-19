@@ -414,6 +414,8 @@ ${input.visibleText.slice(0, 5e4)}`;
   ]);
   function shouldRedactSensitiveKey(key) {
     const normalized = normalizeKey(key);
+    if (isCredentialReferenceKey(normalized))
+      return false;
     return sensitiveExact.has(normalized) || sensitiveContains.some((part) => normalized.includes(part));
   }
   function sanitizeVisibleText(text, maxChars = snapshotSafetyLimits.stringChars) {
@@ -571,17 +573,21 @@ ${input.visibleText.slice(0, 5e4)}`;
   function normalizeKey(key) {
     return key.replace(/[^a-z0-9\u4e00-\u9fa5]/gi, "").toLowerCase();
   }
+  function isCredentialReferenceKey(normalizedKey) {
+    return normalizedKey.endsWith("id");
+  }
 
   // src/safety.ts
   var sanitizeSnapshotPayload = sanitizeCollectionSnapshotPayload;
 
   // src/account-identity.ts
+  var accountIdQueryParams = ["advertiser_id", "account_id", "advid", "aadvid"];
   function detectAccountIdentity(text, sourceUrl) {
     let accountId = null;
     let idSource = null;
     try {
       const url = new URL(sourceUrl);
-      for (const key of ["advertiser_id", "account_id", "advid", "aadvid"]) {
+      for (const key of accountIdQueryParams) {
         const value = url.searchParams.get(key)?.trim();
         if (value && /^[A-Za-z0-9_-]{4,100}$/.test(value)) {
           accountId = value;
@@ -800,6 +806,7 @@ ${input.visibleText.slice(0, 5e4)}`;
           tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
           detectedAccountId: context.detectedAccountId,
           detectedAccountName: context.detectedAccountName,
+          accountMatchEvidence: context.accountMatchEvidence,
           observedAt: (/* @__PURE__ */ new Date()).toISOString()
         }
       }, () => void chrome.runtime.lastError);
@@ -813,14 +820,15 @@ ${input.visibleText.slice(0, 5e4)}`;
     const baseAdapter = selectPageAdapter(baseInput);
     const routeDetection = rawDomText ? detectCurrentRoute(rawDomText, baseAdapter.pageType) : null;
     const adapter = selectPageAdapter({ ...baseInput, routeKey: routeDetection?.routeKey || "UNKNOWN" });
-    const accountIdentity = rawDomText ? detectAccountIdentity(rawDomText, window.location.href) : { accountId: null, accountName: null };
+    const accountIdentity = rawDomText ? detectAccountIdentity(rawDomText, window.location.href) : { accountId: null, accountName: null, evidence: null };
     return {
       currentUrl: window.location.href,
       pageType: adapter.pageType,
       routeKey: routeDetection?.routeKey || "UNKNOWN",
       routeDetection,
       detectedAccountId: accountIdentity.accountId,
-      detectedAccountName: accountIdentity.accountName
+      detectedAccountName: accountIdentity.accountName,
+      accountMatchEvidence: accountIdentity.evidence
     };
   }
   function detectCurrentRoute(rawDomText, pageType, manualOverride) {
@@ -919,8 +927,10 @@ ${input.visibleText.slice(0, 5e4)}`;
       tabState: "VISIBLE",
       metrics: snapshot.visibleMetricsJson.slice(0, 32),
       captureMeta: snapshot.captureMeta,
+      sourceUrl: snapshot.sourceUrl,
       detectedAccountId: snapshot.detectedAccountId || null,
-      detectedAccountName: snapshot.detectedAccountName || null
+      detectedAccountName: snapshot.detectedAccountName || null,
+      accountMatchEvidence: snapshot.accountMatchEvidence || null
     };
     chrome.runtime.sendMessage({ type: MESSAGE.METRIC_PULSE_CAPTURED, payload: pulse }, () => void chrome.runtime.lastError);
   }

@@ -1,15 +1,19 @@
+import type { AccountIdEvidenceSource, AccountMatchEvidence } from "@douyin-local-life/shared";
+
 export type DetectedAccountIdentity = {
   accountId: string | null;
   accountName: string | null;
-  evidence: { idSource: string | null; nameSource: string | null };
+  evidence: AccountMatchEvidence;
 };
+
+const accountIdQueryParams = ["advertiser_id", "account_id", "advid", "aadvid"] as const;
 
 export function detectAccountIdentity(text: string, sourceUrl: string): DetectedAccountIdentity {
   let accountId: string | null = null;
-  let idSource: string | null = null;
+  let idSource: AccountIdEvidenceSource | null = null;
   try {
     const url = new URL(sourceUrl);
-    for (const key of ["advertiser_id", "account_id", "advid", "aadvid"]) {
+    for (const key of accountIdQueryParams) {
       const value = url.searchParams.get(key)?.trim();
       if (value && /^[A-Za-z0-9_-]{4,100}$/.test(value)) {
         accountId = value;
@@ -37,7 +41,7 @@ export function compareAccountIdentity(
   }
   const expectedName = normalizeAccountValue(expected.accountName);
   const detectedName = normalizeAccountValue(detected.detectedAccountName);
-  if (expectedName && detectedName) return expectedName === detectedName ? "MATCHED" : "MISMATCHED";
+  if (expectedName && detectedName && expectedName !== detectedName) return "MISMATCHED";
   return "UNVERIFIED";
 }
 

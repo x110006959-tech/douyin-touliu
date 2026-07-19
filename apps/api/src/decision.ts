@@ -9,8 +9,9 @@ import {
   decisionEngineInputSchema,
   generatedDecisionEngineOutputSchema,
   normalizeCollectionRouteKey,
+  projectRawTableData,
+  structuredCollectionDataSchema,
   type ActionProposalDTO,
-  type DecisionTableCell,
   type DecisionEngineInput,
   type DecisionEngineOutput
 } from "@douyin-local-life/shared";
@@ -53,6 +54,7 @@ export function buildDecisionInput(task: {
     rawDomText: string | null;
     rawNetworkJson: Prisma.JsonValue | null;
     rawTableData: Prisma.JsonValue | null;
+    structuredDataJson?: Prisma.JsonValue | null;
     normalizedMetrics: Array<{
       id: string;
       metricKey: string;
@@ -131,10 +133,14 @@ export function buildDecisionInput(task: {
     metrics: useReviewedMetrics
       ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics)
       : normalizedMetricsToVisibleMetrics(selectedSnapshots.flatMap((snapshot) => snapshot.normalizedMetrics)),
-    tables: selectedSnapshots.flatMap((snapshot) => projectDecisionTables(snapshot.rawTableData, {
+    tables: selectedSnapshots.flatMap((snapshot) => projectRawTableData(snapshot.rawTableData, {
       routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
       pageType: snapshot.pageType || "UNKNOWN"
     })),
+    structuredCollectionData: selectedSnapshots.flatMap((snapshot) => {
+      const parsed = structuredCollectionDataSchema.safeParse(snapshot.structuredDataJson);
+      return parsed.success ? [parsed.data] : [];
+    }),
     visibleText: selectedSnapshots.map((snapshot) => snapshot.rawDomText || "").filter(Boolean).join("\n\n"),
     networkJsonSummary: selectedSnapshots.flatMap((snapshot) => Array.isArray(snapshot.rawNetworkJson)
       ? (snapshot.rawNetworkJson.slice(0, 20) as DecisionEngineInput["networkJsonSummary"])
@@ -144,31 +150,6 @@ export function buildDecisionInput(task: {
     metricLayer: useReviewedMetrics ? "REVIEWED_METRIC" : "NORMALIZED_METRIC",
     collectionQuality
   };
-}
-
-function projectDecisionTables(
-  raw: unknown,
-  context: { routeKey: DecisionEngineInput["tables"][number]["routeKey"]; pageType: string }
-): DecisionEngineInput["tables"] {
-  if (!Array.isArray(raw) || !raw.length) return [];
-  const tables = isTableMatrix(raw) ? [raw] : raw.filter((candidate): candidate is unknown[] => Array.isArray(candidate));
-  return tables
-    .filter(isTableMatrix)
-    .map((rows) => ({
-      ...context,
-      rows: rows.slice(0, 1_000).map((row) => (row as unknown[]).slice(0, 100).map(normalizeDecisionTableCell))
-    }));
-}
-
-function normalizeDecisionTableCell(value: unknown): DecisionTableCell {
-  if (value == null) return null;
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : null;
-}
-
-function isTableMatrix(value: unknown[]): boolean {
-  return value.length > 0
-    && value.every((row) => Array.isArray(row))
-    && value.some((row) => (row as unknown[]).some((cell) => !Array.isArray(cell) && (cell == null || ["string", "number", "boolean"].includes(typeof cell))));
 }
 
 export function runDecisionEngine(input: DecisionEngineInput) {

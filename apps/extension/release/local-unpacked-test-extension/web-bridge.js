@@ -6,6 +6,9 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // <define:__PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS__>
+  var define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default = ["localhost", "127.0.0.1"];
+
   // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
   var external_exports = {};
   __export(external_exports, {
@@ -4133,6 +4136,148 @@
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
+  // ../../packages/shared/dist/account-evidence.js
+  var accountIdEvidenceSources = [
+    "URL:advertiser_id",
+    "URL:account_id",
+    "URL:advid",
+    "URL:aadvid",
+    "MANUAL_CONFIRMATION"
+  ];
+  var accountNameEvidenceSources = ["VISIBLE_TEXT_LABEL", "MANUAL_CONFIRMATION"];
+  var accountMatchEvidenceSchema = external_exports.object({
+    idSource: external_exports.enum(accountIdEvidenceSources).nullable(),
+    nameSource: external_exports.enum(accountNameEvidenceSources).nullable()
+  }).strict();
+
+  // ../../packages/shared/dist/collection-diagnostics.js
+  var collectionRouteDiagnosticStatuses = [
+    "UPLOADED",
+    "AGING",
+    "PARTIAL",
+    "UNVERIFIED",
+    "MANUAL_PENDING",
+    "STALE",
+    "FAILED",
+    "MISSING"
+  ];
+  var collectionIssueCodes = [
+    "NO_SNAPSHOT",
+    "SNAPSHOT_STALE",
+    "COLLECTOR_STALLED",
+    "CONSECUTIVE_FAILURES",
+    "ACCOUNT_UNVERIFIED",
+    "ROUTE_UNVERIFIED",
+    "PARTIAL_CAPTURE",
+    "LOW_FIELD_COVERAGE",
+    "CAPTURE_TRUNCATED",
+    "UPLOAD_FAILED"
+  ];
+  var collectionRouteDiagnosticSchema = external_exports.object({
+    routeKey: external_exports.enum([
+      "LOCAL_PROMOTION_DASHBOARD",
+      "LIVE_DATA_SCREEN",
+      "LIVE_PRODUCT_TAB",
+      "LIVE_TRAFFIC_TAB",
+      "TASK_TABLE",
+      "MATERIAL_LIBRARY",
+      "HOURLY_TREND",
+      "UNKNOWN"
+    ]),
+    required: external_exports.boolean(),
+    summaryStatus: external_exports.enum(collectionRouteDiagnosticStatuses),
+    freshnessState: external_exports.enum(["FRESH", "AGING", "STALE", "MISSING"]),
+    lastAttemptAt: external_exports.string().datetime().nullable(),
+    lastSuccessAt: external_exports.string().datetime().nullable(),
+    lastCapturedAt: external_exports.string().datetime().nullable(),
+    ageMs: external_exports.number().nonnegative().nullable(),
+    consecutiveFailures: external_exports.number().int().nonnegative(),
+    completeness: external_exports.enum(["COMPLETE", "PARTIAL", "UNKNOWN"]).nullable(),
+    coverageRatio: external_exports.number().min(0).max(1).nullable(),
+    adapterId: external_exports.string().nullable(),
+    adapterVersion: external_exports.string().nullable(),
+    pageFingerprint: external_exports.string().nullable(),
+    expectedFields: external_exports.array(external_exports.string()),
+    extractedFields: external_exports.array(external_exports.string()),
+    missingFields: external_exports.array(external_exports.string()),
+    truncationReasons: external_exports.array(external_exports.string()),
+    issues: external_exports.array(external_exports.object({
+      code: external_exports.enum(collectionIssueCodes),
+      severity: external_exports.enum(["INFO", "WARNING", "ERROR"]),
+      message: external_exports.string(),
+      recoveryAction: external_exports.string()
+    })),
+    blocksFormalDecision: external_exports.boolean(),
+    blocksStrongActions: external_exports.boolean()
+  });
+
+  // ../../packages/shared/dist/collection-records.js
+  var structuredCollectionDataVersion = "collection-records-v1";
+  var nullableNumber = external_exports.number().finite().nullable();
+  var provenanceSchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    capturedAt: external_exports.string().datetime(),
+    tableIndex: external_exports.number().int().nonnegative(),
+    rowIndex: external_exports.number().int().nonnegative(),
+    adapterId: external_exports.string().nullable(),
+    adapterVersion: external_exports.string().nullable(),
+    schemaVersion: external_exports.literal(structuredCollectionDataVersion)
+  });
+  var baseSchema = {
+    routeKey: external_exports.enum(collectionRouteKeys),
+    capturedAt: external_exports.string().datetime(),
+    schemaVersion: external_exports.literal(structuredCollectionDataVersion),
+    adapterId: external_exports.string().nullable(),
+    adapterVersion: external_exports.string().nullable(),
+    acceptedRowCount: external_exports.number().int().nonnegative(),
+    rejectedRowCount: external_exports.number().int().nonnegative(),
+    warnings: external_exports.array(external_exports.string())
+  };
+  var taskCollectionRowSchema = external_exports.object({
+    taskId: external_exports.string().nullable(),
+    taskName: external_exports.string().nullable(),
+    status: external_exports.string().nullable(),
+    budget: nullableNumber,
+    spend: nullableNumber,
+    roi: nullableNumber,
+    targetRoi: nullableNumber,
+    orders: nullableNumber,
+    impressions: nullableNumber,
+    clicks: nullableNumber,
+    ctr: nullableNumber,
+    provenance: provenanceSchema
+  }).refine((row) => Boolean(row.taskId || row.taskName), "\u4EFB\u52A1\u884C\u5FC5\u987B\u5305\u542B taskId \u6216 taskName");
+  var hourlyCollectionRowSchema = external_exports.object({
+    intervalStart: external_exports.string().nullable(),
+    intervalLabel: external_exports.string().nullable(),
+    spend: nullableNumber,
+    orders: nullableNumber,
+    roi: nullableNumber,
+    liveViews: nullableNumber,
+    naturalViews: nullableNumber,
+    commercialViews: nullableNumber,
+    provenance: provenanceSchema
+  });
+  var materialCollectionRowSchema = external_exports.object({
+    materialId: external_exports.string().nullable(),
+    materialName: external_exports.string().nullable(),
+    auditStatus: external_exports.string().nullable(),
+    createdAt: external_exports.string().nullable(),
+    spend: nullableNumber,
+    impressions: nullableNumber,
+    clicks: nullableNumber,
+    ctr: nullableNumber,
+    orders: nullableNumber,
+    cvr: nullableNumber,
+    roi: nullableNumber,
+    provenance: provenanceSchema
+  }).refine((row) => Boolean(row.materialId || row.materialName), "\u7D20\u6750\u884C\u5FC5\u987B\u5305\u542B materialId \u6216 materialName");
+  var structuredCollectionDataSchema = external_exports.discriminatedUnion("kind", [
+    external_exports.object({ ...baseSchema, kind: external_exports.literal("TASK_ROWS"), rows: external_exports.array(taskCollectionRowSchema) }),
+    external_exports.object({ ...baseSchema, kind: external_exports.literal("HOURLY_ROWS"), rows: external_exports.array(hourlyCollectionRowSchema) }),
+    external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
+  ]);
+
   // ../../packages/shared/dist/index.js
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
@@ -4468,10 +4613,7 @@
     captureMeta: captureMetaSchema.optional(),
     detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
     detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: external_exports.object({
-      idSource: external_exports.string().trim().max(100).nullable(),
-      nameSource: external_exports.string().trim().max(100).nullable()
-    }).strict().nullable().optional()
+    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
   });
   var createExtensionPairingCodeSchema = external_exports.object({
     accountProfileId: external_exports.string().min(1, "\u8BF7\u9009\u62E9\u8981\u7ED1\u5B9A\u7684\u5E73\u53F0\u8D26\u53F7"),
@@ -4497,6 +4639,7 @@
     tabState: external_exports.enum(captureTabStates),
     detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
     detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
+    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional(),
     accountMatchStatus: external_exports.enum(accountMatchStatuses),
     lastError: external_exports.string().trim().max(500).nullable().optional(),
     observedAt: external_exports.string().datetime()
@@ -4522,8 +4665,10 @@
     tabState: external_exports.enum(captureTabStates),
     metrics: external_exports.array(visibleMetricSchema).max(32),
     captureMeta: captureMetaSchema,
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
     detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional()
+    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
+    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
   });
   var manualCheckItemSchema = external_exports.object({
     title: external_exports.string().min(1),
@@ -4554,6 +4699,7 @@
         lastCollectedAt: external_exports.string().datetime().nullable(),
         ageMs: external_exports.number().nonnegative().nullable()
       })),
+      diagnostics: external_exports.array(collectionRouteDiagnosticSchema).optional(),
       completeness: external_exports.number().min(0).max(1),
       missingRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
@@ -4654,6 +4800,7 @@
     sourceUrl: external_exports.string().default(""),
     metrics: external_exports.array(visibleMetricSchema),
     tables: external_exports.array(decisionTableInputSchema),
+    structuredCollectionData: external_exports.array(structuredCollectionDataSchema).optional(),
     visibleText: external_exports.string().default(""),
     networkJsonSummary: external_exports.array(networkRecordSchema).max(50),
     targetRoi: external_exports.number().nullable().optional(),
@@ -4670,6 +4817,7 @@
         lastCollectedAt: external_exports.string().datetime().nullable(),
         ageMs: external_exports.number().nonnegative().nullable()
       })),
+      diagnostics: external_exports.array(collectionRouteDiagnosticSchema).optional(),
       completeness: external_exports.number().min(0).max(1),
       missingRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
@@ -4845,28 +4993,31 @@
     ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
   ]));
 
-  // src/bridge-protocol.ts
+  // src/build-target.ts
   var isLocalBuild = true;
+  var developmentLoopbackHostnames = typeof define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default === "undefined" ? [] : define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default;
+
+  // src/bridge-protocol.ts
   var extensionBridgeEvents = {
     READY: "PXXIS_EXTENSION_READY",
     LEGACY_PING: "PXXIS_EXTENSION_PING",
     REQUEST: "PXXIS_EXTENSION_REQUEST",
     RESPONSE: "PXXIS_EXTENSION_RESPONSE"
   };
-  function isAllowedBridgeOrigin(origin) {
+  function isAllowedBridgeOrigin(origin, allowedLoopbackHostnames = developmentLoopbackHostnames) {
     try {
       const url = new URL(origin);
       if (url.protocol === "https:" && url.hostname === "www.pxxis.cn") return true;
-      return isLocalBuild && url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname);
+      return isLocalBuild && url.protocol === "http:" && allowedLoopbackHostnames.includes(url.hostname);
     } catch {
       return false;
     }
   }
-  function isAllowedBridgeApiBaseUrl(value) {
+  function isAllowedBridgeApiBaseUrl(value, allowedLoopbackHostnames = developmentLoopbackHostnames) {
     try {
       const url = new URL(value);
       if (url.protocol === "https:" && url.hostname === "api.pxxis.cn") return true;
-      return isLocalBuild && url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname);
+      return isLocalBuild && url.protocol === "http:" && allowedLoopbackHostnames.includes(url.hostname);
     } catch {
       return false;
     }
@@ -4929,7 +5080,7 @@
   function announce() {
     document.documentElement.setAttribute(markerAttribute, chrome.runtime.getManifest().version);
     document.documentElement.setAttribute(protocolAttribute, String(extensionBridgeProtocolVersion));
-    document.documentElement.setAttribute(buildAttribute, "14f5cd868c56");
+    document.documentElement.setAttribute(buildAttribute, "0d6a167e1cb6");
     window.dispatchEvent(new CustomEvent(extensionBridgeEvents.READY));
   }
   window.addEventListener(extensionBridgeEvents.LEGACY_PING, announce);
@@ -4948,7 +5099,7 @@
         dispatchResponse(sanitizeBridgeResponse({
           requestId: request.requestId,
           extensionVersion: chrome.runtime.getManifest().version,
-          buildFingerprint: "14f5cd868c56",
+          buildFingerprint: "0d6a167e1cb6",
           fallbackErrorCode: "INVALID_PAIRING_REQUEST",
           fallbackMessage: "\u914D\u5BF9\u7801\u6216\u670D\u52A1\u5668\u5730\u5740\u4E0D\u7B26\u5408\u5B89\u5168\u8981\u6C42"
         }));
@@ -4968,13 +5119,13 @@
         requestId: request.requestId,
         runtimeResult,
         extensionVersion: chrome.runtime.getManifest().version,
-        buildFingerprint: "14f5cd868c56"
+        buildFingerprint: "0d6a167e1cb6"
       }));
     } catch {
       dispatchResponse(sanitizeBridgeResponse({
         requestId: request.requestId,
         extensionVersion: chrome.runtime.getManifest().version,
-        buildFingerprint: "14f5cd868c56",
+        buildFingerprint: "0d6a167e1cb6",
         fallbackErrorCode: "BACKGROUND_UNRESPONSIVE",
         fallbackMessage: "\u63D2\u4EF6\u540E\u53F0\u672A\u54CD\u5E94\uFF0C\u8BF7\u5728\u6269\u5C55\u7BA1\u7406\u9875\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6"
       }));

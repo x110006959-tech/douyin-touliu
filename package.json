@@ -18,6 +18,8 @@
     "prisma:generate": "corepack pnpm exec prisma generate",
     "retention:dry-run": "corepack pnpm --filter @douyin-local-life/api retention:dry-run",
     "retention:run": "corepack pnpm --filter @douyin-local-life/api retention:run",
+    "backup:run": "sh tools/backup-postgres.sh",
+    "restore:verify": "sh tools/verify-postgres-backup.sh",
     "backup:postgres": "sh tools/backup-postgres.sh",
     "backup:verify": "sh tools/verify-postgres-backup.sh",
     "version:check": "node tools/version-check.mjs"

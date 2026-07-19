@@ -1,4 +1,5 @@
 import { prisma } from "./prisma.js";
+import { readSafeOptionalText } from "./persisted-input.js";
 
 const backoffMs = [30_000, 2 * 60_000, 5 * 60_000, 15 * 60_000] as const;
 const halfOpenLeaseMs = 30_000;
@@ -53,6 +54,7 @@ export async function recordAiSuccess(provider: string, model: string) {
 }
 
 export async function recordAiFailure(provider: string, model: string, error: unknown, now = new Date()) {
+  const safeError = readSafeOptionalText(error instanceof Error ? error.message : String(error), 1_000);
   await prisma.$transaction(async (tx) => {
     const current = await tx.aiProviderCircuit.upsert({
       where: { provider_model: { provider, model } },
@@ -71,7 +73,7 @@ export async function recordAiFailure(provider: string, model: string, error: un
         backoffLevel: level,
         openedUntil: shouldOpen ? new Date(now.getTime() + delay) : null,
         halfOpenLeaseUntil: null,
-        lastError: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000)
+        lastError: safeError.value || "AI provider request failed"
       }
     });
   });

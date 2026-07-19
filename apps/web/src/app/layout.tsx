@@ -14,7 +14,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="zh-CN">
       <body nonce={nonce}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <div className="flex min-h-screen flex-col">
+            <main className="flex-1">{children}</main>
+            <footer className="border-t border-slate-200 bg-white px-4 py-5 text-center text-sm text-slate-500">
+              <p>
+                <a
+                  className="transition-colors hover:text-slate-700"
+                  href="https://beian.miit.gov.cn/"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  辽ICP备2026002223号
+                </a>
+              </p>
+            </footer>
+          </div>
+        </AuthProvider>
       </body>
     </html>
   );

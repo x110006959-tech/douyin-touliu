@@ -2,6 +2,7 @@ import { Router } from "express";
 import { cloneProjectSchema, createAccountProfileSchema, createProjectSchema, deleteAccountProfileSchema, updateAccountProfileSchema } from "@douyin-local-life/shared";
 import { writeAuditLog } from "../audit.js";
 import { isUniqueConstraintError } from "../idempotency.js";
+import { readSafeOptionalText } from "../persisted-input.js";
 import { prisma } from "../prisma.js";
 import { sendError, sendSuccess, validationErrorOptions } from "../response.js";
 import { currentUser } from "../server-utils.js";
@@ -39,11 +40,13 @@ export function createAccountRouter() {
     const user = currentUser(req);
     const parsed = createAccountProfileSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "账号资料不完整", validationErrorOptions(parsed.error));
+    const input = readAccountProfileText(parsed.data);
+    if (input.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", input.error);
     const workspace = parsed.data.workspaceId
       ? await prisma.workspace.findFirst({ where: { id: parsed.data.workspaceId, ownerId: user.id } })
       : await prisma.workspace.findFirst({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" } });
     if (!workspace) return sendError(res, 404, "WORKSPACE_NOT_FOUND", "默认工作区不存在，请重新登录后再试");
-    const identity = accountIdentity(parsed.data.accountName, parsed.data.platformAccountId);
+    const identity = accountIdentity(input.accountName || "", input.platformAccountId);
     try {
       const account = await prisma.$transaction(async (tx) => {
         const created = await tx.accountProfile.create({
@@ -52,11 +55,11 @@ export function createAccountRouter() {
             platform: parsed.data.platform,
             platformAccountId: identity.platformAccountId,
             identityKey: identity.identityKey,
-            accountName: parsed.data.accountName,
+            accountName: input.accountName || "",
             normalizedName: identity.normalizedName,
-            merchantName: parsed.data.merchantName || null,
-            storeName: parsed.data.storeName || null,
-            memo: parsed.data.memo || null,
+            merchantName: input.merchantName,
+            storeName: input.storeName,
+            memo: input.memo,
             identityStatus: identity.platformAccountId ? "VERIFIED" : "PENDING_ID"
           }
         });
@@ -85,8 +88,10 @@ export function createAccountRouter() {
     if (!account) return sendError(res, 404, "ACCOUNT_PROFILE_NOT_FOUND", "账号档案不存在");
     const parsed = updateAccountProfileSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "账号资料不合法", validationErrorOptions(parsed.error));
-    const accountName = parsed.data.accountName || account.accountName;
-    const platformAccountId = parsed.data.platformAccountId === undefined ? account.platformAccountId : parsed.data.platformAccountId;
+    const input = readAccountProfileText(parsed.data);
+    if (input.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", input.error);
+    const accountName = input.accountName === undefined ? account.accountName : input.accountName || account.accountName;
+    const platformAccountId = input.platformAccountId === undefined ? account.platformAccountId : input.platformAccountId;
     const identity = accountIdentity(accountName, platformAccountId);
     try {
       const updated = await prisma.$transaction(async (tx) => {
@@ -98,9 +103,9 @@ export function createAccountRouter() {
             identityKey: identity.identityKey,
             normalizedName: identity.normalizedName,
             identityStatus: identity.platformAccountId ? "VERIFIED" : "PENDING_ID",
-            merchantName: parsed.data.merchantName === undefined ? account.merchantName : parsed.data.merchantName || null,
-            storeName: parsed.data.storeName === undefined ? account.storeName : parsed.data.storeName || null,
-            memo: parsed.data.memo === undefined ? account.memo : parsed.data.memo || null
+            merchantName: input.merchantName === undefined ? account.merchantName : input.merchantName,
+            storeName: input.storeName === undefined ? account.storeName : input.storeName,
+            memo: input.memo === undefined ? account.memo : input.memo
           }
         });
         await writeAuditLog(req, "ACCOUNT_PROFILE_UPDATED", {
@@ -159,6 +164,13 @@ export function createAccountRouter() {
     const user = currentUser(req);
     const parsed = cloneProjectSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "新项目信息不完整", validationErrorOptions(parsed.error));
+    const projectNameInput = readSafeOptionalText(parsed.data.name, 100);
+    const serviceProviderNameInput = readSafeOptionalText(parsed.data.serviceProviderName, 100);
+    if (projectNameInput.error || serviceProviderNameInput.error) {
+      return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", projectNameInput.error || serviceProviderNameInput.error || "输入包含敏感认证信息，已拒绝保存");
+    }
+    const projectName = projectNameInput.value;
+    if (!projectName) return sendError(res, 400, "VALIDATION_ERROR", "请填写新项目名称");
     const source = await prisma.project.findFirst({
       where: { id: req.params.id, workspace: { ownerId: user.id } },
       include: { accountProfile: true }
@@ -172,7 +184,7 @@ export function createAccountRouter() {
     const cooperationType = parsed.data.cooperationType ?? source.cooperationType;
     const serviceProviderName = parsed.data.serviceProviderName === undefined
       ? source.serviceProviderName
-      : parsed.data.serviceProviderName;
+      : serviceProviderNameInput.value;
     const serviceFee = parsed.data.serviceFee === undefined ? source.serviceFee : parsed.data.serviceFee;
     const subjectChanged = subjectType !== source.subjectType
       || operatorType !== source.operatorType
@@ -182,7 +194,7 @@ export function createAccountRouter() {
       || operatorType === "SERVICE_PROVIDER_OPERATION";
     const merged = createProjectSchema.safeParse({
       accountProfileId: source.accountProfileId,
-      name: parsed.data.name,
+      name: projectName,
       businessType: source.businessType,
       subjectType,
       operatorType,
@@ -238,6 +250,29 @@ export function createAccountRouter() {
   });
 
   return router;
+}
+
+function readAccountProfileText(value: {
+  accountName?: string;
+  platformAccountId?: string | null;
+  merchantName?: string | null;
+  storeName?: string | null;
+  memo?: string | null;
+}) {
+  const accountName = value.accountName === undefined ? undefined : readSafeOptionalText(value.accountName, 100);
+  const platformAccountId = value.platformAccountId === undefined ? undefined : readSafeOptionalText(value.platformAccountId, 200);
+  const merchantName = value.merchantName === undefined ? undefined : readSafeOptionalText(value.merchantName, 100);
+  const storeName = value.storeName === undefined ? undefined : readSafeOptionalText(value.storeName, 100);
+  const memo = value.memo === undefined ? undefined : readSafeOptionalText(value.memo, 1_000);
+  const error = accountName?.error || platformAccountId?.error || merchantName?.error || storeName?.error || memo?.error || null;
+  return {
+    error,
+    accountName: accountName?.value,
+    platformAccountId: platformAccountId?.value,
+    merchantName: merchantName?.value,
+    storeName: storeName?.value,
+    memo: memo?.value
+  };
 }
 
 export function normalizeAccountValue(value: string | null | undefined) {

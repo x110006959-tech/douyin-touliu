@@ -2,7 +2,7 @@ import type { Request } from "express";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import type { AuthenticatedRequest } from "./auth.js";
-import { sanitizePersistedJson } from "./persisted-input.js";
+import { sanitizeDerivedPersistedJson, sanitizePersistedJson, sanitizeRequestMetadata } from "./persisted-input.js";
 
 type AuditLogDetail = {
   workspaceId?: string | null;
@@ -10,6 +10,16 @@ type AuditLogDetail = {
   taskId?: string | null;
   detailJson?: unknown;
 };
+
+export type AuditActorSnapshot = {
+  userId: string;
+};
+
+export function createAuditActorSnapshot(user: { id: string }): AuditActorSnapshot {
+  return {
+    userId: user.id
+  };
+}
 
 export async function writeAuditLog(
   req: Request,
@@ -21,13 +31,14 @@ export async function writeAuditLog(
   await db.auditLog.create({
     data: {
       userId: user.id,
+      actorSnapshotJson: toJson(sanitizeDerivedPersistedJson(createAuditActorSnapshot(user))),
       workspaceId: detail.workspaceId || null,
       projectId: detail.projectId || null,
       taskId: detail.taskId || null,
       action,
       detailJson: detail.detailJson == null ? undefined : toJson(sanitizePersistedJson(detail.detailJson)),
       ip: req.ip,
-      userAgent: req.header("user-agent") || null
+      userAgent: sanitizeRequestMetadata(req.header("user-agent"))
     }
   });
 }
@@ -42,13 +53,14 @@ export async function writeAuditLogs(
   await db.auditLog.createMany({
     data: entries.map(({ action, detail = {} }) => ({
       userId: user.id,
+      actorSnapshotJson: toJson(sanitizeDerivedPersistedJson(createAuditActorSnapshot(user))),
       workspaceId: detail.workspaceId || null,
       projectId: detail.projectId || null,
       taskId: detail.taskId || null,
       action,
       detailJson: detail.detailJson == null ? undefined : toJson(sanitizePersistedJson(detail.detailJson)),
       ip: req.ip,
-      userAgent: req.header("user-agent") || null
+      userAgent: sanitizeRequestMetadata(req.header("user-agent"))
     }))
   });
 }

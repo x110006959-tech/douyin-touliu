@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReviewedMetricDTO } from "@douyin-local-life/shared";
 import { apiFetch } from "@/lib/api";
 import { createLatestRequestGuard } from "@/lib/latest-request";
-import type { CollectionRun, DecisionRun, TaskDetail } from "./task-types";
+import type { CollectionRun, DecisionRun, ExpertAnalysis, TaskDetail } from "./task-types";
 
 export function useTaskData(taskId: string, token: string | null) {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [decisionRun, setDecisionRun] = useState<DecisionRun | null>(null);
+  const [expertAnalysis, setExpertAnalysis] = useState<ExpertAnalysis | null>(null);
   const [collectionRun, setCollectionRun] = useState<CollectionRun | null>(null);
   const [reviewMetrics, setReviewMetrics] = useState<ReviewedMetricDTO[]>([]);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
@@ -24,15 +25,17 @@ export function useTaskData(taskId: string, token: string | null) {
     if (!token) return;
     const version = requestGuard.current.begin();
     try {
-      const [nextTask, nextDecisionRun, nextReviewMetrics, nextCollectionRun] = await Promise.all([
+      const [nextTask, nextDecisionRun, nextExpertAnalysis, nextReviewMetrics, nextCollectionRun] = await Promise.all([
         apiFetch<TaskDetail>(`/collection-tasks/${taskId}`, token),
         apiFetch<DecisionRun | null>(`/collection-tasks/${taskId}/decision-runs/latest`, token),
+        apiFetch<ExpertAnalysis | null>(`/collection-tasks/${taskId}/analysis/latest`, token),
         apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${taskId}/review-metrics`, token),
         apiFetch<CollectionRun | null>(`/collection-tasks/${taskId}/collection-runs/latest`, token)
       ]);
       if (!requestGuard.current.isCurrent(version)) return;
       setTask(nextTask);
       setDecisionRun(nextDecisionRun);
+      setExpertAnalysis(nextExpertAnalysis);
       applyReviewMetrics(nextReviewMetrics);
       setCollectionRun(nextCollectionRun);
     } catch (loadError) {
@@ -53,6 +56,8 @@ export function useTaskData(taskId: string, token: string | null) {
     task,
     decisionRun,
     setDecisionRun,
+    expertAnalysis,
+    setExpertAnalysis,
     collectionRun,
     reviewMetrics,
     reviewDrafts,

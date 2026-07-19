@@ -6,6 +6,7 @@ import { authLoginSchema, authRegisterSchema, emailVerificationConfirmSchema, em
 import { authMiddleware, clearSessionCookie, createUserSession, hashOpaqueSecret, rotateSessionCsrfToken, setSessionCookie, type AuthenticatedRequest } from "../auth.js";
 import { csrfProtection } from "../csrf.js";
 import { sendEmailVerification } from "../email-verification.js";
+import { readSafeOptionalText } from "../persisted-input.js";
 import { prisma } from "../prisma.js";
 import { checkEmailVerificationRateLimit, checkLoginRateLimit, checkRegisterRateLimit } from "../rate-limit.js";
 import { sendError, sendSuccess, validationErrorOptions } from "../response.js";
@@ -19,6 +20,9 @@ export function createAuthRouter() {
   router.post("/register", async (req, res) => {
     const parsed = authRegisterSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "参数错误", validationErrorOptions(parsed.error));
+    const nameInput = readSafeOptionalText(parsed.data.name, 100);
+    if (nameInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", nameInput.error);
+    const name = nameInput.value || parsed.data.email.split("@")[0];
 
     const rateLimit = await checkRegisterRateLimit({ ip: req.ip, email: parsed.data.email });
     if (!rateLimit.allowed) {
@@ -36,12 +40,12 @@ export function createAuthRouter() {
       create: {
         email: parsed.data.email,
         passwordHash,
-        name: parsed.data.name || parsed.data.email.split("@")[0],
+        name,
         verificationTokens: { create: verification.record }
       },
       update: {
         passwordHash,
-        name: parsed.data.name || parsed.data.email.split("@")[0],
+        name,
         status: "PENDING",
         verificationTokens: {
           updateMany: { where: { consumedAt: null }, data: { consumedAt: new Date() } },

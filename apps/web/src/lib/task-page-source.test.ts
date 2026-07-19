@@ -6,13 +6,27 @@ const taskPageSource = readFileSync(
   fileURLToPath(new URL("../app/tasks/[id]/page.tsx", import.meta.url)),
   "utf8"
 );
+const diagnosisComparisonSource = readFileSync(
+  fileURLToPath(new URL("../app/tasks/[id]/diagnosis-comparison.tsx", import.meta.url)),
+  "utf8"
+);
+const dashboardSource = readFileSync(
+  fileURLToPath(new URL("../app/dashboard/page.tsx", import.meta.url)),
+  "utf8"
+);
 
 describe("task page acceptance guard", () => {
-  it("keeps only the complete diagnosis action and hides the deferred task-page regions", () => {
-    expect(taskPageSource.match(/>运行完整诊断</g)).toHaveLength(1);
-    expect(taskPageSource).not.toContain("生成保守诊断");
-    expect(taskPageSource).not.toContain("生成 AI 辅助解读");
-    expect(taskPageSource).not.toContain("需审批的投流动作");
+  it("shows formal diagnosis and advisory expert analysis side by side", () => {
+    expect(taskPageSource).toContain("<DiagnosisComparison");
+    expect(taskPageSource).toContain("onRunExpert={() => void runExpertAnalysis()}");
+    expect(taskPageSource).toContain("onRunFormal={() => void runDecision()}");
+    expect(diagnosisComparisonSource).toContain("lg:grid-cols-2");
+    expect(diagnosisComparisonSource).toContain("正式诊断");
+    expect(diagnosisComparisonSource).toContain("专家参考分析");
+    expect(diagnosisComparisonSource).toContain("待审批动作");
+    expect(diagnosisComparisonSource).toContain("不创建正式动作，也不覆盖正式诊断");
+    expect(diagnosisComparisonSource).toContain('proposal.status === "PENDING_APPROVAL"');
+    expect(diagnosisComparisonSource).toContain('href={`/action-proposals/${proposal.id}`}');
     expect(taskPageSource).not.toContain("规则依据与核验入口");
     expect(taskPageSource).not.toContain("高级信息：原始快照");
   });
@@ -26,7 +40,7 @@ describe("task page acceptance guard", () => {
     expect(reviewDetails?.[1]).toBeDefined();
     expect(reviewDetails?.[1]).not.toContain("open");
     expect(taskPageSource).toContain("该问题会阻断依赖相关字段的诊断");
-    expect(taskPageSource).toContain("正式决策尚未就绪");
+    expect(diagnosisComparisonSource).toContain("正式决策尚未就绪");
   });
 
   it("keeps bulk and per-route account confirmation with one-time snapshot scope", () => {
@@ -36,5 +50,16 @@ describe("task page acceptance guard", () => {
     expect(taskPageSource).toContain("页面识别：{route.detectedAccountId || route.detectedAccountName || \"未识别\"}");
     expect(taskPageSource).toContain("本轮快照数量：{captureSummary?.snapshotCount || 0}");
     expect(taskPageSource).toContain("不会自动确认以后新采集的数据");
+  });
+
+  it("shows safe collection diagnostics without automatic recovery controls", () => {
+    expect(taskPageSource).toContain("查看采集诊断");
+    expect(taskPageSource).toContain("连续失败");
+    expect(taskPageSource).toContain("缺失字段");
+    expect(taskPageSource).toContain("人工处理：{issue.recoveryAction}");
+    expect(taskPageSource).not.toContain("自动修复采集");
+    expect(dashboardSource).toContain("采集健康");
+    expect(dashboardSource).toContain("COLLECTOR_STALLED");
+    expect(dashboardSource).toContain("未验证");
   });
 });

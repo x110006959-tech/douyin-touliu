@@ -1,5 +1,69 @@
 # Project State
 
+## 2026-07-20 v032 审计留存状态
+
+- 当前 Schema 版本为 `20260720_v032_audit_actor_snapshot`；API、Compose、镜像、环境示例和 Extension 构建元数据均使用该默认值。
+- `AuditLog` 保留最小操作者快照，用户删除时仅将关联 `userId` 设为 `null`，不再级联删除审计；已有记录仅回填原有用户 ID，不回填或编造其他身份字段。
+- 当前认证策略仍为仅隐藏登录页公开入口：后端注册、邮箱确认/重发与验证页继续保留，不是服务端邀请制。
+- 最新验证基线：隔离空库 13 个 migration、v031 至 v032 升级与审计留存语义通过；全仓 lint/typecheck/test/build、Prisma validate/generate、生产依赖 audit、Compose 静态配置、v032 正式 Extension 制品安全测试和差异格式检查通过，共 191 项测试、0 个已知生产依赖漏洞。
+- 未执行真实 SMTP、COS、部署、平台操作或生产数据操作；生产应用 v032 前仍必须先备份并在 staging 执行 `prisma migrate deploy`。
+
+## 2026-07-20 输入安全与认证入口状态
+
+- 公开注册与邮箱验证当前仅从登录页隐藏；后端注册、邮箱确认/重发、验证页和邮件验证数据模型仍完整可用，不是服务端邀请制。
+- 外部自由文本和 JSON 现在统一拒绝 `password`、`cookie`、`token`、`authorization`、`secret` 等凭证形态；内部派生的决策/AI JSON 仅在再次脱敏后保存，兼容已有 `[REDACTED]` 标记。
+- 工作区、账号、项目、任务、人工复核、确认备注、配对标签、心跳错误与审计请求元数据已纳入同一输入边界；未新增 schema、migration、环境变量或部署配置。
+- API 路由职责进一步明确：工作区和系统健康接口已从 `server.ts` 拆出，架构依赖方向与原接口兼容。
+- 最新验证基线：全仓 lint/typecheck/test/build、Prisma validate/generate 和 `git diff --check` 全通过，共 187 项测试；未执行真实 SMTP、平台操作、部署或生产数据操作。
+
+## 2026-07-19 采集健康与标准任务数据状态
+
+- 当前 Schema 版本为 `20260719_v031_collection_diagnostics`；新增字段均为 nullable，旧快照和旧 API 调用保持兼容。
+- 采集健康状态已统一为 `UPLOADED / AGING / PARTIAL / UNVERIFIED / MANUAL_PENDING / STALE / FAILED / MISSING`，并提供稳定问题码、来源、完整度和恢复建议。
+- 任务采集摘要以最新运行心跳和最新路线快照为准，不再依赖路线配置中的旧错误文本；系统健康接口提供路线状态与问题码聚合。
+- 手动采集和巡检具备客户端单飞保护，服务端运行启动具备数据库并发保护；同任务重复启动不会产生多个活动运行或重复审计。
+- 任务表已具备服务端标准化 `TASK_ROWS`；小时趋势和素材只有版本化契约，采集器仍处于等待真实脱敏样本的校准阶段。
+- 任务页和工作台已接入安全诊断展示，不包含原始页面内容、未清洗异常或自动修复入口。
+- 最新验证基线：lint/typecheck/test/build 全通过，共 183 项测试；空库 12 migration 和 Extension production target 安全检查通过。
+
+## 2026-07-19 双栏诊断展示状态
+
+- 任务页第 5 步现在并列展示两种用途不同的结果：正式诊断来自确定性 `decision-engine`，专家参考来自现有解释接口中的 Agency 方法论参考层。
+- 正式栏展示经营结论、证据驱动方案和当前待审批动作；专家栏展示补证、人工验证、观察指标与停止条件。专家结果保持 `ADVISORY_ONLY`，不会写入或替代正式动作。
+- 两栏使用独立按钮和独立记录；页面加载最近一次 `AiAnalysisTask` 时只读取安全展示字段，不下发其 `requestPayload`。
+- 当前专家参考仍是本地 mock Provider，不是额外安装或远程调用的第三方 Agent；未改变数据采集、审批、人工执行和平台自动化红线。
+- 最新验证：全仓 lint/typecheck/build 和 Web 18 项测试通过；全仓测试为 168 项通过、API 决策流 6 项既有失败。新增最新解释读取接口已通过 API typecheck/build，但其长流程断言被更早的既有快照失败阻断。
+
+## 2026-07-19 第三方决策参考状态
+
+- `packages/llm` 已具备固定来源、固定 revision、MIT 许可和人工筛选的 `agency-agents` 决策参考库；当前覆盖测量完整性、漏斗定位、直播商品验证、投流单变量验证和证据门禁。
+- 参考库只产生 `ADVISORY_ONLY / REFERENCE_ONLY` 解释元数据，不进入正式规则、预算、审批或状态判断。`decision-engine`、人工审批、人工执行和平台动作红线保持不变。
+- `/collection-tasks/:id/explain` 会持久化来源和参考项，历史解释结果保持兼容；没有数据库、采集、Extension 或部署配置变化。
+- 最新验证：lint、全仓 typecheck/build、LLM 6 项测试通过；全仓测试当前 168 项通过、API 决策流 6 项失败，失败集中于当前账号证据/快照流程并早于解释接口断言，发布前仍需修复。
+
+## 2026-07-19 认证与账号证据状态
+
+- 登录页继续仅展示管理员发放账号的登录入口；公开注册和邮箱验证不是删除而是暂时隐藏，后端验证流程、数据模型和验证页保持可用。
+- 自动账号匹配仅接受可信 HTTPS 页面中与声明参数一致的平台账号 ID；名称相同、未声明证据或伪造 URL 参数不会自动放行，仍需人工确认。跨账号 ID 保持服务端拒绝。
+- 最新验证：全仓 lint/typecheck/test（171 项）/build、Prisma validate/generate 和 `git diff --check` 均通过；未执行真实 SMTP、部署或生产数据操作。
+
+## 2026-07-19 登录入口状态
+
+- Web 登录页当前只展示账号密码登录，并提示用户使用管理员发放的账号；公开注册、注册后邮件重发等入口暂时隐藏。
+- 后端注册与邮箱验证能力保持完整：`/auth/register`、`/auth/email-verifications/confirm`、`/auth/email-verifications/resend` 及验证页均未移除，数据库 schema 和已有待验证记录不受影响。
+- 该调整是前端访问入口收敛，不是服务端邀请制强制门禁；恢复公开注册只需恢复前端入口，仍沿用原有邮箱验证安全流程。
+- 最新验证：全仓 lint/typecheck/171 项 test/build、Prisma validate/generate 与 `git diff --check` 均通过；未执行真实 SMTP、部署或生产数据操作。
+
+## 2026-07-18 安全运行收口状态
+
+- API 读取边界明确：GET 不再初始化复核指标、不再持久化动作建议过期状态；过期仅作为响应视图状态展示，实际状态转换仅发生在显式的决策/审批等写事务中。
+- 数据留存已具备独立日常执行服务：Compose 的 `retention` 服务启动立即执行，后续间隔 24 小时；原始证据保留 30 天，结构化数据、审计和安全聚合指标保留 365 天，每批最多 500 条。
+- `SecurityMetric` 仅存 UTC 小时粒度的指标名、计数和数值汇总；没有请求体、身份、账号、IP、Cookie、Token 或其他凭证字段。新增表通过 `20260718110000_v030_security_metrics` 加法式迁移创建；COS 备份成功后会尽力记录聚合结果，但指标写入失败不影响备份成功。
+- SSE 回压会合并旧状态并保留最新待发送信号；账号匹配证据来源改为共享白名单契约，任意来源字符串不再进入新快照。
+- Extension 的生产和本地测试构建已字节级分离：正式包仅允许 HTTPS 产品/API 与精确平台路线，不含 localhost/loopback/测试标识；本地包使用独立红色 `T` 图标并才允许本地桥接。unpacked 和最终 ZIP 共用制品硬校验。
+- API、Compose 与 Extension 元数据的默认 Schema 统一为 `20260718_v030_security_metrics`；旧备份命令继续可用，新标准入口为 `backup:run`、`restore:verify`。
+- 最新验证：全仓 lint/typecheck/164 项 test/build、Prisma validate/generate、生产依赖 audit、生产 Compose 静态配置、正式 ZIP 解压验收和差异格式检查均通过；隔离空库顺序应用全部 11 个 migration 成功。未执行真实 SMTP、COS 上传/恢复、服务器部署、DNS 变更或平台操作。
+
 ## 2026-07-17 认证与运行时收口
 
 - 当前开放注册必须完成邮箱验证：`PendingRegistration` 和 `EmailVerificationToken` 只保存待验证注册信息与令牌哈希；确认成功后才原子创建用户、默认工作区和可撤销会话。既有 `User.emailVerifiedAt` 在加法式 migration 中以当前时间初始化，不伪造历史验证记录。

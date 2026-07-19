@@ -1,6 +1,13 @@
-import type { DecisionTableInput } from "@douyin-local-life/shared";
+import {
+  structuredCollectionDataSchema,
+  structuredCollectionDataVersion,
+  type CollectionRouteKey,
+  type DecisionTableInput,
+  type StructuredCollectionData,
+  type TaskCollectionRow
+} from "@douyin-local-life/shared";
 
-type DecisionTable = { routeKey: string | null; headers: string[]; rows: unknown[][] };
+type DecisionTable = { routeKey: string | null; tableIndex: number; headers: string[]; rows: unknown[][] };
 type RankedProduct = {
   label: "引流款" | "主推款" | "承接款";
   name: string;
@@ -37,13 +44,98 @@ const productColumnAliases = {
 const unitColumnAliases = {
   id: ["投流单元ID", "单元ID", "任务ID", "计划ID"],
   name: ["投流单元", "单元名称", "任务名称", "计划名称", "广告组名称"],
+  status: ["投放状态", "任务状态", "计划状态", "状态"],
+  budget: ["日预算", "每日预算", "预算"],
   spend: ["广告消耗", "总消耗", "消耗"],
   roi: ["支付ROI", "核销ROI", "整体支付ROI", "ROI"],
+  targetRoi: ["目标ROI", "目标支付ROI", "ROI目标"],
   orders: ["支付订单数", "支付订单", "成交订单数", "订单数"],
   impressions: ["曝光量", "曝光次数", "曝光"],
   clicks: ["点击量", "点击次数", "点击人数", "点击"],
   ctr: ["点击率", "CTR"]
 } as const;
+
+export function structureTaskCollectionTables(
+  tables: DecisionTableInput[],
+  context: {
+    routeKey: CollectionRouteKey;
+    capturedAt: string;
+    adapterId?: string | null;
+    adapterVersion?: string | null;
+  }
+): StructuredCollectionData | null {
+  const candidates = normalizeDecisionTables(tables).filter((table) => {
+    if (table.routeKey && table.routeKey !== "TASK_TABLE") return false;
+    const columns = columnIndexes(table.headers, unitColumnAliases);
+    return columns.id >= 0 || columns.name >= 0;
+  });
+  if (!candidates.length) return null;
+
+  const rows: TaskCollectionRow[] = [];
+  const warnings: string[] = [];
+  let rejectedRowCount = 0;
+  for (const table of candidates) {
+    const columns = columnIndexes(table.headers, unitColumnAliases);
+    table.rows.forEach((row, rowIndex) => {
+      const taskId = readTextCell(row, columns.id);
+      const taskName = readTextCell(row, columns.name);
+      if (!taskId && !taskName) {
+        rejectedRowCount += 1;
+        if (warnings.length < 20) warnings.push(`表 ${table.tableIndex + 1} 第 ${rowIndex + 1} 行缺少任务 ID 和名称`);
+        return;
+      }
+      const parseNumber = (field: string, columnIndex: number, rate = false) => {
+        if (columnIndex < 0) return null;
+        const raw = row[columnIndex];
+        const text = raw == null ? "" : String(raw).trim();
+        if (!text || text === "--" || text === "-") return null;
+        const parsed = rate
+          ? readRateCell(row, columnIndex)
+          : readNonNegativeNumberCell(row, columnIndex);
+        if (parsed == null && warnings.length < 20) {
+          warnings.push(`表 ${table.tableIndex + 1} 第 ${rowIndex + 1} 行 ${field} 无法解析，已保留为空`);
+        }
+        return parsed;
+      };
+      rows.push({
+        taskId,
+        taskName,
+        status: readTextCell(row, columns.status),
+        budget: parseNumber("预算", columns.budget),
+        spend: parseNumber("消耗", columns.spend),
+        roi: parseNumber("ROI", columns.roi),
+        targetRoi: parseNumber("目标 ROI", columns.targetRoi),
+        orders: parseNumber("订单", columns.orders),
+        impressions: parseNumber("曝光", columns.impressions),
+        clicks: parseNumber("点击", columns.clicks),
+        ctr: parseNumber("CTR", columns.ctr, true),
+        provenance: {
+          routeKey: context.routeKey,
+          capturedAt: context.capturedAt,
+          tableIndex: table.tableIndex,
+          rowIndex,
+          adapterId: context.adapterId?.trim() || null,
+          adapterVersion: context.adapterVersion?.trim() || null,
+          schemaVersion: structuredCollectionDataVersion
+        }
+      });
+    });
+  }
+
+  const result: StructuredCollectionData = {
+    kind: "TASK_ROWS",
+    routeKey: context.routeKey,
+    capturedAt: context.capturedAt,
+    schemaVersion: structuredCollectionDataVersion,
+    adapterId: context.adapterId?.trim() || null,
+    adapterVersion: context.adapterVersion?.trim() || null,
+    acceptedRowCount: rows.length,
+    rejectedRowCount,
+    warnings,
+    rows
+  };
+  return structuredCollectionDataSchema.parse(result);
+}
 
 export function analyzeProductTables(tables: DecisionTableInput[]): ProductTableAnalysis {
   const parsedTables = normalizeDecisionTables(tables);
@@ -153,7 +245,37 @@ export type InvestmentUnitAnalysis =
   | { status: "MISSING_COLUMNS"; missingColumns: string[] }
   | { status: "READY"; candidates: InvestmentUnit[]; belowTarget: InvestmentUnit[]; insufficient: InvestmentUnit[]; movableSpend: number; evidence: string[] };
 
-export function analyzeInvestmentUnitTables(tables: DecisionTableInput[], targetRoi: number | null): InvestmentUnitAnalysis {
+export function analyzeInvestmentUnitTables(
+  tables: DecisionTableInput[],
+  targetRoi: number | null,
+  structuredData: StructuredCollectionData[] = []
+): InvestmentUnitAnalysis {
+  const structuredTaskData = structuredData.filter((data) => data.kind === "TASK_ROWS");
+  if (structuredTaskData.length) {
+    const units = structuredTaskData.flatMap((data) => data.rows).flatMap((row) => {
+      if (row.spend == null || row.spend < 0) return [];
+      const ctr = row.ctr ?? (
+        row.clicks != null
+        && row.impressions != null
+        && row.impressions > 0
+        && row.clicks <= row.impressions
+          ? row.clicks / row.impressions
+          : null
+      );
+      return [{
+        name: row.taskName || row.taskId!,
+        spend: row.spend,
+        roi: row.roi,
+        orders: row.orders,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr,
+        mature: row.spend > 0 && ((row.orders ?? 0) >= 3 || (row.impressions ?? 0) >= 1000 || (row.clicks ?? 0) >= 100)
+      }];
+    });
+    return summarizeInvestmentUnits(units, targetRoi);
+  }
+
   const table = findBestTable(normalizeDecisionTables(tables), unitColumnAliases, "TASK_TABLE");
   if (!table) return { status: "MISSING_COLUMNS", missingColumns: ["任务列表/本地推投流单元表"] };
   const columns = columnIndexes(table.headers, unitColumnAliases);
@@ -176,6 +298,10 @@ export function analyzeInvestmentUnitTables(tables: DecisionTableInput[], target
     const mature = spend > 0 && ((orders ?? 0) >= 3 || (impressions ?? 0) >= 1000 || (clicks ?? 0) >= 100);
     return [{ name, spend, roi, orders, impressions, clicks, ctr, mature }];
   });
+  return summarizeInvestmentUnits(units, targetRoi);
+}
+
+function summarizeInvestmentUnits(units: InvestmentUnit[], targetRoi: number | null): InvestmentUnitAnalysis {
   const candidates = targetRoi == null ? [] : units.filter((unit) => unit.mature && unit.roi != null && unit.roi >= targetRoi).sort((a, b) => (b.roi || 0) - (a.roi || 0));
   const belowTarget = targetRoi == null ? [] : units.filter((unit) => unit.mature && unit.roi != null && unit.roi < targetRoi).sort((a, b) => b.spend - a.spend);
   const insufficient = units.filter((unit) => !unit.mature || unit.roi == null);
@@ -205,20 +331,22 @@ export function buildFunnelEvidence(values: { impressions: number | null; clicks
 
 function normalizeDecisionTables(input: DecisionTableInput[]): DecisionTable[] {
   const candidates = isMatrix(input) ? [{ routeKey: null, rows: input }] : input;
-  return candidates.flatMap((candidate) => {
+  return candidates.flatMap((candidate, tableIndex) => {
     if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
       const value = candidate as { routeKey?: unknown; rows?: unknown };
-      if (Array.isArray(value.rows) && isMatrix(value.rows)) return [toDecisionTable(typeof value.routeKey === "string" ? value.routeKey : null, value.rows)];
+      if (Array.isArray(value.rows) && isMatrix(value.rows)) {
+        return [toDecisionTable(typeof value.routeKey === "string" ? value.routeKey : null, value.rows, tableIndex)];
+      }
     }
-    if (Array.isArray(candidate) && isMatrix(candidate)) return [toDecisionTable(null, candidate)];
+    if (Array.isArray(candidate) && isMatrix(candidate)) return [toDecisionTable(null, candidate, tableIndex)];
     return [];
   });
 }
 
-function toDecisionTable(routeKey: string | null, matrix: unknown[]): DecisionTable {
+function toDecisionTable(routeKey: string | null, matrix: unknown[], tableIndex: number): DecisionTable {
   const rows = matrix.filter((row): row is unknown[] => Array.isArray(row));
   const headerIndex = Math.max(0, rows.slice(0, 5).map((row) => row.filter((cell) => String(cell ?? "").trim()).length).reduce((best, count, index, counts) => count > counts[best]! ? index : best, 0));
-  return { routeKey, headers: rows[headerIndex]!.map((cell) => String(cell ?? "").trim()), rows: rows.slice(headerIndex + 1) };
+  return { routeKey, tableIndex, headers: rows[headerIndex]!.map((cell) => String(cell ?? "").trim()), rows: rows.slice(headerIndex + 1) };
 }
 
 function isMatrix(value: unknown[]): boolean {
@@ -278,9 +406,18 @@ function readNumberCell(row: unknown[], index: number) {
   return text.includes("%") ? parsed / 100 : parsed * multiplier;
 }
 
+function readNonNegativeNumberCell(row: unknown[], index: number) {
+  const value = readNumberCell(row, index);
+  return value != null && value >= 0 ? value : null;
+}
+
 function readRateCell(row: unknown[], index: number) {
   const value = readNumberCell(row, index);
   if (value == null) return null;
+  const raw = index >= 0 ? row[index] : null;
+  if (typeof raw === "string" && raw.includes("%")) {
+    return value >= 0 && value <= 1 ? value : null;
+  }
   const normalized = value > 1 && value <= 100 ? value / 100 : value;
   return normalized >= 0 && normalized <= 1 ? normalized : null;
 }
@@ -316,4 +453,3 @@ function formatNullable(value: number | null) {
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 }
-

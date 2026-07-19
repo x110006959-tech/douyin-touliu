@@ -3,6 +3,7 @@ import type {
   ActionProposalStatus,
   ActionType,
   CooperationType,
+  CollectionRouteDiagnostic,
   DecisionBusinessAnalysis,
   OperatorType,
   RiskLevel,
@@ -85,6 +86,46 @@ export type DecisionRun = {
   };
 };
 
+export type DecisionReferenceInsight = {
+  id: string;
+  dimension: DecisionBusinessAnalysis["findings"][number]["dimension"];
+  title: string;
+  evidence: string[];
+  requiredEvidence: string[];
+  manualSteps: string[];
+  verifyMetrics: string[];
+  stopConditions: string[];
+  safetyBoundary: string;
+  confidence: "REFERENCE_ONLY";
+};
+
+export type ExpertAnalysis = {
+  id: string;
+  status: string;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  responsePayload?: {
+    summary?: string;
+    manualCheckItems?: Array<{ title: string; reason: string }>;
+    problems?: Array<{ title: string; evidence: string; severity: RiskLevel }>;
+    suggestions?: Array<{ title: string; reason: string; expectedImpact: string; priority: RiskLevel }>;
+    confidence?: number;
+    finalActionsSource?: string;
+    fallback?: boolean;
+    decisionReference?: {
+      policyVersion: string;
+      mode: "ADVISORY_ONLY";
+      notice: string;
+      insights: DecisionReferenceInsight[];
+      sources: Array<{ id: string; title: string; sourceRevision: string }>;
+    };
+  } | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CollectionRun = {
   id: string;
   status: "ACTIVE" | "COMPLETED" | "STOPPED" | "DEGRADED";
@@ -96,8 +137,14 @@ export type CollectionRun = {
     missingRoutes: string[];
     staleRoutes: string[];
     routes: Array<{ routeKey: string; state: "FRESH" | "AGING" | "STALE" | "MISSING"; lastCollectedAt: string | null; ageMs: number | null }>;
+    diagnostics?: CollectionRouteDiagnostic[];
   };
-  routeHealth: Array<{ routeKey: string; consecutiveFailures: number; lastError: string | null }>;
+  routeHealth: Array<{
+    routeKey: string;
+    consecutiveFailures: number;
+    lastAttemptAt: string;
+    lastSuccessAt: string | null;
+    lastErrorCode: string | null;
+    lastError: string | null;
+  }>;
 };
-
-

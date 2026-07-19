@@ -87,6 +87,11 @@ export async function ensureReviewMetricsForTask(
   return { metrics, createdCount: Math.max(0, metrics.length - existing.length), snapshotIds };
 }
 
+export function currentReviewedMetrics(task: TaskReviewInput) {
+  const currentSnapshotIds = new Set(currentReviewSnapshots(task).map((snapshot) => snapshot.id));
+  return (task.reviewedMetrics || []).filter((metric) => metric.snapshotId !== null && currentSnapshotIds.has(metric.snapshotId));
+}
+
 export function toReviewedMetricDTO(metric: ReviewedMetric): ReviewedMetricDTO {
   return {
     id: metric.id,

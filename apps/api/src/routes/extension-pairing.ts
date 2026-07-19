@@ -1,9 +1,10 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { Router } from "express";
-import { createExtensionPairingCodeSchema, exchangeExtensionPairingCodeSchema, extensionHeartbeatSchema } from "@douyin-local-life/shared";
+import { createExtensionPairingCodeSchema, evaluateAccountIdentityMatch, exchangeExtensionPairingCodeSchema, extensionHeartbeatSchema } from "@douyin-local-life/shared";
 import { hashExtensionSecret, requireHumanSession, type AuthenticatedRequest } from "../auth.js";
-import { writeAuditLog } from "../audit.js";
+import { createAuditActorSnapshot, writeAuditLog } from "../audit.js";
 import { getExtensionStatus, recordExtensionPresence, removeExtensionPresence } from "../extension-presence.js";
+import { readSafeOptionalText, sanitizeRequestMetadata } from "../persisted-input.js";
 import { prisma } from "../prisma.js";
 import { checkExtensionPairingRateLimit } from "../rate-limit.js";
 import { sendError, sendSuccess, validationErrorOptions } from "../response.js";
@@ -53,6 +54,8 @@ export function createExtensionPublicRouter() {
     }
     const parsed = exchangeExtensionPairingCodeSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "配对信息不完整", validationErrorOptions(parsed.error));
+    const labelInput = readSafeOptionalText(parsed.data.label, 100);
+    if (labelInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", labelInput.error);
     const pairing = await prisma.extensionPairingCode.findUnique({
       where: { codeHash: hashExtensionSecret(parsed.data.code) },
       include: {
@@ -79,7 +82,7 @@ export function createExtensionPublicRouter() {
             accountProfileId: pairing.accountProfileId,
             userId: pairing.userId,
             tokenHash: hashExtensionSecret(rawToken),
-            label: parsed.data.label || "Chrome 采集插件",
+            label: labelInput.value || "Chrome 采集插件",
             scopes: ["COLLECT", "READ_DIAGNOSIS"],
             expiresAt: new Date(Date.now() + credentialLifetimeMs)
           }
@@ -87,11 +90,12 @@ export function createExtensionPublicRouter() {
         await tx.auditLog.create({
           data: {
             userId: pairing.userId,
+            actorSnapshotJson: toJson(createAuditActorSnapshot(pairing.user)),
             workspaceId: pairing.workspaceId,
             action: "EXTENSION_CREDENTIAL_PAIRED",
             detailJson: toJson({ credentialId: created.id, accountProfileId: pairing.accountProfileId, scopes: created.scopes }),
             ip: req.ip,
-            userAgent: req.header("user-agent") || null
+            userAgent: sanitizeRequestMetadata(req.header("user-agent"))
           }
         });
         return created;
@@ -220,15 +224,29 @@ export function createExtensionProtectedRouter() {
     }
     const parsed = extensionHeartbeatSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "插件状态不完整", validationErrorOptions(parsed.error));
+    const lastErrorInput = readSafeOptionalText(parsed.data.lastError, 500);
+    if (lastErrorInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", lastErrorInput.error);
     const task = await prisma.collectionTask.findFirst({
       where: { id: parsed.data.collectionTaskId, project: { accountProfileId: extensionUser.extensionAccountProfileId } },
-      select: { id: true }
+      select: { id: true, project: { select: { accountProfile: { select: { platformAccountId: true, accountName: true } } } } }
     });
     if (!task) return sendError(res, 403, "EXTENSION_ACCOUNT_MISMATCH", "该任务不属于当前插件绑定账号，已阻止状态上报");
+    const accountMatch = evaluateAccountIdentityMatch({
+      expectedAccountId: task.project.accountProfile.platformAccountId,
+      expectedAccountName: task.project.accountProfile.accountName,
+      sourceUrl: parsed.data.currentUrl,
+      detectedAccountId: parsed.data.detectedAccountId,
+      detectedAccountName: parsed.data.detectedAccountName,
+      evidence: parsed.data.accountMatchEvidence
+    });
     recordExtensionPresence({
       credentialId: extensionUser.extensionCredentialId,
       accountProfileId: extensionUser.extensionAccountProfileId,
-      heartbeat: parsed.data
+      heartbeat: {
+        ...parsed.data,
+        accountMatchStatus: accountMatch.status,
+        lastError: lastErrorInput.value
+      }
     });
     return sendSuccess(res, { receivedAt: new Date().toISOString() });
   });

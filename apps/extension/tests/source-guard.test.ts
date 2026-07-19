@@ -26,11 +26,11 @@ describe("extension source safety guard", () => {
       /chrome\.cookies/,
       /chrome\.history/,
       /chrome\.bookmarks/,
-      /chrome\.downloads/
-      ,/chrome\.tabs\.(create|update|remove)/
-      ,/window\.location\s*=/
-      ,/\bprompt\s*\(/
-      ,/chrome\.storage\.session/
+      /chrome\.downloads/,
+      /chrome\.tabs\.(create|update|remove)/,
+      /window\.location\s*=/,
+      /\bprompt\s*\(/,
+      /chrome\.storage\.session/
     ];
 
     for (const file of guardedFiles) {
@@ -72,6 +72,9 @@ describe("extension source safety guard", () => {
     expect(html).toContain("确认本次采集路线");
     expect(html).toContain("确认插件配对");
     expect(popup).toContain("CONFIRM_PAIRING");
+    expect(html).toContain('id="routeChoices"');
+    expect(html).not.toContain('id="routeMaterial"');
+    expect(html).not.toContain('id="routeTrend"');
     expect(html).toContain("高级设置");
   });
 
@@ -83,13 +86,33 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("/extension/pairing-codes/preview");
     expect(worker).toContain("isPopupSender");
     expect(worker).toContain("/extension/pairing-codes/exchange");
+    expect(worker).toContain("任务切换只能在插件 Popup 中完成。");
+    expect(worker).toContain("解除配对只能在插件 Popup 中完成。");
+    expect(worker).toContain("启动巡检只能在插件 Popup 中完成。");
   });
 
   it("keeps one-shot manual route confirmation scoped to the current task", () => {
     const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const popup = readFileSync(resolve(root, "src/popup.ts"), "utf8");
     expect(worker).toContain("currentTaskRouteKeys");
     expect(worker).toContain("本次人工路线选择无效");
     expect(worker).not.toContain("[\"LIVE_DATA_SCREEN\", \"LIVE_PRODUCT_TAB\", \"LIVE_TRAFFIC_TAB\"]");
+    expect(popup).toContain("const calibratedRoutes");
+    expect(popup).toContain("task?.routeSources");
+    expect(popup).not.toContain('"MATERIAL_LIBRARY"');
+    expect(popup).not.toContain('"HOURLY_TREND"');
+  });
+
+  it("coalesces only matching capture and patrol requests", () => {
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    expect(worker).toContain("SingleFlight");
+    expect(worker).toContain("captureSingleFlight.run");
+    expect(worker).toContain("patrolSingleFlight.run");
+    expect(worker).toContain("MESSAGE.GET_PAGE_CONTEXT");
+    expect(worker).toContain("taskId");
+    expect(worker).toContain("tabId");
+    expect(worker).toContain("routeKey");
+    expect(worker).toContain("collectionRunId");
   });
 
   it("removes all production network interception code", () => {
@@ -110,6 +133,15 @@ describe("extension source safety guard", () => {
     const rootPackage = JSON.parse(readFileSync(resolve(root, "../../package.json"), "utf8"));
     const releaseManifest = JSON.parse(readFileSync(resolve(root, "release/local-unpacked-test-extension/manifest.json"), "utf8"));
     expect(releaseManifest.version).toBe(rootPackage.version);
+    expect(releaseManifest.name).toContain("本地测试");
+    expect(releaseManifest.description).toContain("本地测试");
+    expect(releaseManifest.host_permissions).toContain("http://localhost/*");
+    expect(releaseManifest.host_permissions).toContain("http://127.0.0.1/*");
+    for (const iconName of Object.values(releaseManifest.icons) as string[]) {
+      const localTestIcon = readFileSync(resolve(root, "public/local-test-icons", iconName.replace("icons/", "")));
+      expect(readFileSync(resolve(root, "release/local-unpacked-test-extension", iconName))).toEqual(localTestIcon);
+      expect(localTestIcon).not.toEqual(readFileSync(resolve(root, "public", iconName)));
+    }
   });
 
   it("validates the current-version ZIP when that release artifact is present", () => {
@@ -120,8 +152,22 @@ describe("extension source safety guard", () => {
     expect(archives[0]).toMatch(new RegExp(`^collector-v${rootPackage.version}-[a-f0-9]{7,12}\\.zip$`));
     const files = unzipSync(readFileSync(resolve(root, "release", archives[0]!)));
     const manifest = JSON.parse(strFromU8(files["manifest.json"]!));
+    const metadata = JSON.parse(strFromU8(files["build-metadata.json"]!));
     expect(manifest.version).toBe(rootPackage.version);
+    expect(manifest.permissions).toEqual(["activeTab", "storage", "sidePanel"]);
+    expect(manifest.host_permissions).toEqual([
+      "https://eos.douyin.com/dp/liveScreen*",
+      "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
+      "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*",
+      "https://api.pxxis.cn/*",
+      "https://www.pxxis.cn/*"
+    ]);
+    expect(metadata.buildTarget).toBe("production");
+    expect(metadata.localTestOnly).toBe(false);
     expect(files["injected.js"]).toBeUndefined();
     expect(strFromU8(files["content.js"]!)).not.toMatch(/window\.fetch\s*=|XMLHttpRequest|PAGE_NETWORK_CAPTURED/);
+    for (const content of Object.values(files)) {
+      expect(strFromU8(content)).not.toMatch(/localhost|127\.0\.0\.1|本地测试/i);
+    }
   });
 });

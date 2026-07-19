@@ -1,6 +1,5 @@
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
-
-const isLocalBuild = typeof __PXXIS_EXTENSION_TARGET__ === "undefined" || __PXXIS_EXTENSION_TARGET__ === "local";
+import { developmentLoopbackHostnames, isLocalBuild } from "./build-target";
 
 export const extensionBridgeEvents = {
   READY: "PXXIS_EXTENSION_READY",
@@ -29,21 +28,21 @@ export type ExtensionBridgeResponse = {
   message: string;
 };
 
-export function isAllowedBridgeOrigin(origin: string) {
+export function isAllowedBridgeOrigin(origin: string, allowedLoopbackHostnames = developmentLoopbackHostnames) {
   try {
     const url = new URL(origin);
     if (url.protocol === "https:" && url.hostname === "www.pxxis.cn") return true;
-    return isLocalBuild && url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname);
+    return isLocalBuild && url.protocol === "http:" && allowedLoopbackHostnames.includes(url.hostname);
   } catch {
     return false;
   }
 }
 
-export function isAllowedBridgeApiBaseUrl(value: string) {
+export function isAllowedBridgeApiBaseUrl(value: string, allowedLoopbackHostnames = developmentLoopbackHostnames) {
   try {
     const url = new URL(value);
     if (url.protocol === "https:" && url.hostname === "api.pxxis.cn") return true;
-    return isLocalBuild && url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname);
+    return isLocalBuild && url.protocol === "http:" && allowedLoopbackHostnames.includes(url.hostname);
   } catch {
     return false;
   }

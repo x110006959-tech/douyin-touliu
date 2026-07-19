@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
+import { assertDirectoryArtifact, extensionSchemaVersion } from "./artifact-policy.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
@@ -17,17 +18,29 @@ const sourceFingerprint = await fingerprintBuildInputs([
   "apps/extension/popup.html",
   "apps/extension/sidepanel.html",
   "apps/extension/public/manifest.json",
+  ...[16, 32, 48, 128].flatMap((size) => [
+    `apps/extension/public/icons/icon${size}.png`,
+    `apps/extension/public/local-test-icons/icon${size}.png`
+  ]),
   ...entries.map((entry) => `apps/extension/src/${entry}.ts`),
   "apps/extension/src/bridge-protocol.ts",
+  "apps/extension/src/build-target.ts",
   "apps/extension/src/messages.ts",
   "apps/extension/src/page-adapters.ts",
   "apps/extension/src/safety.ts",
   "apps/extension/src/account-identity.ts",
+  "apps/extension/scripts/artifact-policy.mjs",
+  "packages/shared/src/account-evidence.ts",
   "packages/shared/src/index.ts",
   "packages/shared/src/collection-routes.ts",
   "packages/shared/src/safety.ts"
 ]);
 const buildTime = new Date().toISOString();
+const localDevelopmentHosts = isLocalBuild ? ["localhost", "127.0.0.1"] : [];
+const defaultApiBaseUrl = isLocalBuild ? "http://127.0.0.1:4300" : "https://api.pxxis.cn";
+const apiBaseUrlGuidance = isLocalBuild
+  ? "服务器地址必须使用 HTTPS，本地开发可以使用 localhost。"
+  : "服务器地址必须使用 HTTPS。";
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
@@ -43,13 +56,13 @@ if (isLocalBuild) {
   manifest.content_scripts[1].matches.push("http://localhost/*", "http://127.0.0.1/*");
 }
 await writeFile(resolve(dist, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-await cp(resolve(root, "public/icons"), resolve(dist, "icons"), { recursive: true });
+await cp(resolve(root, `public/${isLocalBuild ? "local-test-icons" : "icons"}`), resolve(dist, "icons"), { recursive: true });
 const popupHtml = await readFile(resolve(root, "popup.html"), "utf8");
 await writeFile(
   resolve(dist, "popup.html"),
   popupHtml
     .replace('/src/popup.ts', 'popup.js')
-    .replace("{{PXXIS_DEFAULT_API_BASE_URL}}", isLocalBuild ? "http://127.0.0.1:4300" : "https://api.pxxis.cn")
+    .replace("{{PXXIS_DEFAULT_API_BASE_URL}}", defaultApiBaseUrl)
 );
 const sidepanelHtml = await readFile(resolve(root, "sidepanel.html"), "utf8");
 await writeFile(resolve(dist, "sidepanel.html"), sidepanelHtml.replace('/src/sidepanel.ts', 'sidepanel.js'));
@@ -57,12 +70,13 @@ await writeFile(resolve(dist, "build-metadata.json"), `${JSON.stringify({
   productVersion: rootPackage.version,
   gitSha,
   buildTime,
-  schemaVersion: "20260717_v029_email_verification",
+  schemaVersion: extensionSchemaVersion,
   extensionVersion: rootPackage.version,
   sourceFingerprint,
   buildTarget: target,
   localTestOnly: isLocalBuild
 }, null, 2)}\n`);
+await assertDirectoryArtifact(dist, target);
 await rm(unpackedRelease, { recursive: true, force: true });
 await mkdir(unpackedRelease, { recursive: true });
 await cp(dist, unpackedRelease, { recursive: true });
@@ -83,7 +97,11 @@ async function buildEntry(entry) {
     logLevel: "silent",
     define: {
       __PXXIS_EXTENSION_BUILD__: JSON.stringify(sourceFingerprint),
-      __PXXIS_EXTENSION_TARGET__: JSON.stringify(target)
+      __PXXIS_EXTENSION_TARGET__: JSON.stringify(target),
+      __PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS__: JSON.stringify(localDevelopmentHosts),
+      __PXXIS_EXTENSION_DEFAULT_API_BASE_URL__: JSON.stringify(defaultApiBaseUrl),
+      __PXXIS_EXTENSION_LOCAL_WEB_PORT__: JSON.stringify(isLocalBuild ? 3300 : 0),
+      __PXXIS_EXTENSION_API_BASE_URL_GUIDANCE__: JSON.stringify(apiBaseUrlGuidance)
     }
   });
 }

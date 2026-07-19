@@ -1,5 +1,7 @@
 import type {
+  AccountMatchEvidence,
   AccountMatchStatus,
+  CollectionRouteFailureCode,
   CollectionRouteKey,
   CollectionSnapshotPayload,
   MetricPulse,
@@ -7,9 +9,11 @@ import type {
 } from "@douyin-local-life/shared";
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
 import { collectionFreshnessPolicy, defaultRequiredCollectionRoutes, normalizeCollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
+import { apiBaseUrlGuidance, defaultApiBaseUrl } from "./build-target";
 import { MESSAGE, STORAGE } from "./messages";
 import { isSupportedExtensionCollectionUrl, normalizeApiBaseUrl, sanitizeSnapshotPayload } from "./safety";
 import { compareAccountIdentity } from "./account-identity";
+import { createKeyedSingleFlight } from "./single-flight";
 
 type ExtensionConfig = {
   apiBaseUrl?: string;
@@ -53,6 +57,7 @@ type PageActivity = {
   tabState: "VISIBLE" | "HIDDEN" | "FROZEN" | "DISCARDED" | "UNKNOWN";
   detectedAccountId?: string | null;
   detectedAccountName?: string | null;
+  accountMatchEvidence?: AccountMatchEvidence | null;
   observedAt: string;
   lastError?: string | null;
 };
@@ -76,6 +81,8 @@ type PendingPairingConfirmation = {
   requestedAt: string;
 };
 let uploadQueue: Promise<unknown> = Promise.resolve();
+const captureSingleFlight = createKeyedSingleFlight();
+const patrolSingleFlight = createKeyedSingleFlight();
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
@@ -101,7 +108,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === MESSAGE.CAPTURE_AND_UPLOAD) {
-    void captureAndUpload(message.payload || {}).then(sendResponse);
+    void captureAndUploadSingleFlight(message.payload || {}).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.GET_STATE) {
@@ -133,10 +140,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === MESSAGE.SELECT_TASK) {
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "任务切换只能在插件 Popup 中完成。" });
+      return false;
+    }
     void selectTask(message.payload || {}).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.CLEAR_PAIRING) {
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "解除配对只能在插件 Popup 中完成。" });
+      return false;
+    }
     void clearPairing().then(sendResponse);
     return true;
   }
@@ -145,14 +160,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === MESSAGE.START_PATROL) {
-    void startPatrol(message.payload || {}).then(sendResponse);
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "启动巡检只能在插件 Popup 中完成。" });
+      return false;
+    }
+    void patrolActionSingleFlight("start", message.payload || {}).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.STOP_PATROL) {
-    void stopPatrol(message.payload || {}).then(sendResponse);
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "停止巡检只能在插件 Popup 中完成。" });
+      return false;
+    }
+    void patrolActionSingleFlight("stop", message.payload || {}).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "清空本地快照只能在插件 Popup 中完成。" });
+      return false;
+    }
     void chrome.storage.local.remove(STORAGE.LATEST_SNAPSHOT).then(() => sendResponse({ ok: true }));
     return true;
   }
@@ -181,8 +208,8 @@ async function saveSnapshot(snapshot: CollectionSnapshotPayload, tabId?: number,
 }
 
 async function requestPairingConfirmation(payload: { apiBaseUrl?: string; code?: string; label?: string }) {
-  const apiBaseUrl = normalizeApiBaseUrl(payload.apiBaseUrl || "http://localhost:4300");
-  if (!apiBaseUrl) return { ok: false, error: "服务器地址必须使用 HTTPS，本地开发可以使用 localhost。" };
+  const apiBaseUrl = normalizeApiBaseUrl(payload.apiBaseUrl || defaultApiBaseUrl);
+  if (!apiBaseUrl) return { ok: false, error: apiBaseUrlGuidance };
   const code = String(payload.code || "").trim();
   if (!/^\d{6}$/.test(code)) return { ok: false, error: "请输入网页生成的 6 位配对码。" };
   try {
@@ -366,7 +393,10 @@ async function getPatrolState() {
   };
 }
 
-async function captureAndUpload(payload: { tabId?: number; currentUrl?: string; routeOverride?: CollectionRouteKey }) {
+async function captureAndUpload(
+  payload: { tabId?: number; currentUrl?: string; routeOverride?: CollectionRouteKey },
+  routeHint: CollectionRouteKey = "UNKNOWN"
+) {
   const tabId = Number(payload.tabId);
   if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "无法识别当前标签页，请关闭插件弹窗后重试。" };
   if (!isSupportedExtensionCollectionUrl(payload.currentUrl || "")) return { ok: false, error: "当前页面不在已授权的精确采集路线中。" };
@@ -389,13 +419,21 @@ async function captureAndUpload(payload: { tabId?: number; currentUrl?: string; 
       }
     });
   } catch {
+    await reportCaptureFailure(session.session.collectionRunId, routeHint, "CONTENT_SCRIPT_UNAVAILABLE", "Content script unavailable");
     return { ok: false, error: "插件尚未注入当前页面，请刷新目标网页后重试。" };
   }
   if (!captureResponse?.ok || !captureResponse.snapshot) {
+    await reportCaptureFailure(
+      session.session.collectionRunId,
+      routeHint,
+      "PAGE_NOT_READY",
+      captureResponse?.error || "Page capture did not return a snapshot"
+    );
     return { ok: false, error: captureResponse?.error || "页面采集失败，请等待页面加载完成后重试。" };
   }
   const snapshot = { ...captureResponse.snapshot, collectionRunId: session.session.collectionRunId };
   if (!snapshot.routeKey || snapshot.routeKey === "UNKNOWN") {
+    await reportCaptureFailure(session.session.collectionRunId, routeHint, "ROUTE_UNVERIFIED", "Captured route was not verified");
     return { ok: false, error: "无法确认当前分栏，请在插件中为本次采集选择“概览、商品或流量”后重试。" };
   }
   await saveSnapshot(snapshot, tabId, { autoUpload: false });
@@ -409,6 +447,7 @@ async function captureAndUpload(payload: { tabId?: number; currentUrl?: string; 
       tabState: "VISIBLE",
       detectedAccountId: snapshot.detectedAccountId || null,
       detectedAccountName: snapshot.detectedAccountName || null,
+      accountMatchEvidence: snapshot.accountMatchEvidence || null,
       observedAt: new Date().toISOString(),
       lastError: upload.error || "快照上传失败"
     });
@@ -422,6 +461,7 @@ async function captureAndUpload(payload: { tabId?: number; currentUrl?: string; 
     tabState: "VISIBLE",
     detectedAccountId: snapshot.detectedAccountId || null,
     detectedAccountName: snapshot.detectedAccountName || null,
+    accountMatchEvidence: snapshot.accountMatchEvidence || null,
     observedAt: new Date().toISOString(),
     lastError: null
   }, tabId);
@@ -435,6 +475,25 @@ async function captureAndUpload(payload: { tabId?: number; currentUrl?: string; 
     accountMatchStatus: serverSnapshot?.accountMatchStatus || "UNVERIFIED",
     uploadedAt: new Date().toISOString()
   };
+}
+
+async function captureAndUploadSingleFlight(payload: { tabId?: number; currentUrl?: string; routeOverride?: CollectionRouteKey }) {
+  const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.ACTIVE_COLLECTION_SESSION]);
+  const config = (local[STORAGE.CONFIG] || {}) as ExtensionConfig;
+  const session = local[STORAGE.ACTIVE_COLLECTION_SESSION] as CollectionSessionState | undefined;
+  let routeKey = normalizeCollectionRouteKey(payload.routeOverride);
+  const tabId = Number(payload.tabId);
+  if (routeKey === "UNKNOWN" && Number.isInteger(tabId) && tabId > 0) {
+    const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
+    routeKey = normalizeCollectionRouteKey(pageContext?.routeKey);
+  }
+  const key = [
+    config.collectionTaskId || "unbound",
+    tabId || "unknown-tab",
+    routeKey,
+    session?.collectionRunId || "new-run"
+  ].join(":");
+  return captureSingleFlight.run(key, () => captureAndUpload(payload, routeKey));
 }
 
 async function ensureCollectionSession(): Promise<
@@ -504,6 +563,7 @@ async function reportExtensionHeartbeat(activity: PageActivity) {
         tabState: activity.tabState,
         detectedAccountId: activity.detectedAccountId || null,
         detectedAccountName: activity.detectedAccountName || null,
+        accountMatchEvidence: activity.accountMatchEvidence || null,
         accountMatchStatus,
         lastError: activity.lastError || null,
         observedAt: activity.observedAt
@@ -602,7 +662,9 @@ async function uploadSnapshot(snapshot: CollectionSnapshotPayload) {
     };
     await chrome.storage.local.set({ [STORAGE.ROUTE_UPLOAD_STATE]: routeState });
     await appendLog("snapshot.upload_failed", { routeKey, error: message });
-    if (snapshot.collectionRunId) await reportRouteFailure(apiBaseUrl, token, snapshot.collectionRunId, routeKey as CollectionRouteKey, message);
+    if (snapshot.collectionRunId) {
+      await reportRouteFailure(apiBaseUrl, token, snapshot.collectionRunId, routeKey as CollectionRouteKey, "UPLOAD_NETWORK_ERROR", message);
+    }
     return { ok: false, error: message };
   }
   const payload = await response.json();
@@ -614,7 +676,14 @@ async function uploadSnapshot(snapshot: CollectionSnapshotPayload) {
   };
   await chrome.storage.local.set({ [STORAGE.ROUTE_UPLOAD_STATE]: routeState });
   if (!response.ok && snapshot.collectionRunId) {
-    await reportRouteFailure(apiBaseUrl, token, snapshot.collectionRunId, routeKey as CollectionRouteKey, payload?.error?.message || `HTTP ${response.status}`);
+    await reportRouteFailure(
+      apiBaseUrl,
+      token,
+      snapshot.collectionRunId,
+      routeKey as CollectionRouteKey,
+      "UPLOAD_HTTP_ERROR",
+      payload?.error?.message || `HTTP ${response.status}`
+    );
   }
   return response.ok ? { ok: true, data: payload } : { ok: false, error: payload?.error?.message || "快照上传失败。" };
 }
@@ -623,7 +692,21 @@ async function uploadSnapshot(snapshot: CollectionSnapshotPayload) {
 async function startPatrol(payload: { requiredRoutes?: CollectionRouteKey[]; intervalMs?: number; tabId?: number }) {
   const context = await apiContext();
   if (!context.ok) return context;
-  const requiredRoutes = payload.requiredRoutes?.length ? payload.requiredRoutes : [...defaultRequiredCollectionRoutes];
+  const configuredRoutes = await currentTaskRouteKeys();
+  const calibratedRoutes = new Set<CollectionRouteKey>([
+    "LOCAL_PROMOTION_DASHBOARD",
+    "LIVE_DATA_SCREEN",
+    "LIVE_PRODUCT_TAB",
+    "LIVE_TRAFFIC_TAB",
+    "TASK_TABLE"
+  ]);
+  const requiredRoutes = [...new Set((payload.requiredRoutes?.length ? payload.requiredRoutes : defaultRequiredCollectionRoutes)
+    .map(normalizeCollectionRouteKey)
+    .filter((route): route is CollectionRouteKey => route !== "UNKNOWN"))];
+  if (!requiredRoutes.length
+    || requiredRoutes.some((route) => !configuredRoutes.includes(route) || !calibratedRoutes.has(route))) {
+    return { ok: false, error: "巡检路线必须来自当前任务已配置且已校准的页面。" };
+  }
   const response = await fetch(`${context.apiBaseUrl}/collection-tasks/${context.collectionTaskId}/collection-runs`, {
     method: "POST",
     headers: { "content-type": "application/json", Authorization: `Bearer ${context.token}` },
@@ -677,6 +760,17 @@ async function stopPatrol(payload: { tabId?: number } = {}) {
   return { ok: true, patrol: stopped };
 }
 
+async function patrolActionSingleFlight(
+  action: "start" | "stop",
+  payload: { requiredRoutes?: CollectionRouteKey[]; intervalMs?: number; tabId?: number }
+) {
+  const local = await chrome.storage.local.get([STORAGE.CONFIG]);
+  const config = (local[STORAGE.CONFIG] || {}) as ExtensionConfig;
+  const key = `${config.collectionTaskId || "unbound"}:${action}`;
+  if (action === "start") return patrolSingleFlight.run(key, () => startPatrol(payload));
+  return patrolSingleFlight.run(key, () => stopPatrol(payload));
+}
+
 async function syncPatrolToTab(tabId: unknown, patrol: PatrolState) {
   const normalizedTabId = Number(tabId);
   if (!Number.isInteger(normalizedTabId) || normalizedTabId <= 0) return;
@@ -714,12 +808,31 @@ async function apiContext(): Promise<
   return { ok: true, apiBaseUrl, collectionTaskId: config.collectionTaskId, token };
 }
 
-async function reportRouteFailure(apiBaseUrl: string, token: string, collectionRunId: string, routeKey: CollectionRouteKey, error: string) {
+async function reportRouteFailure(
+  apiBaseUrl: string,
+  token: string,
+  collectionRunId: string,
+  routeKey: CollectionRouteKey,
+  errorCode: CollectionRouteFailureCode,
+  error?: string
+) {
   await fetch(`${apiBaseUrl}/collection-runs/${collectionRunId}/failures`, {
     method: "POST",
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ routeKey, error: String(error).slice(0, 500) })
+    body: JSON.stringify({ routeKey, errorCode, error: error ? String(error).slice(0, 500) : undefined })
   }).catch(() => undefined);
+}
+
+async function reportCaptureFailure(
+  collectionRunId: string,
+  routeKey: CollectionRouteKey,
+  errorCode: CollectionRouteFailureCode,
+  error?: string
+) {
+  if (routeKey === "UNKNOWN") return;
+  const context = await apiContext();
+  if (!context.ok) return;
+  await reportRouteFailure(context.apiBaseUrl, context.token, collectionRunId, routeKey, errorCode, error);
 }
 
 function snapshotFingerprint(snapshot: CollectionSnapshotPayload) {

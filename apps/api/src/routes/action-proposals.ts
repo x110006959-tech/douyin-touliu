@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Response } from "express";
 import { createActionOutcomeInputSchema } from "@douyin-local-life/shared";
 import {
   approveActionProposal,
@@ -13,7 +13,7 @@ import { getOwnedActionProposal } from "../ownership.js";
 import { readPagination } from "../pagination.js";
 import { readSafeOptionalText } from "../persisted-input.js";
 import { prisma } from "../prisma.js";
-import { expireProposalIfNeeded } from "../proposal-lifecycle.js";
+import { toReadableActionProposal } from "../proposal-lifecycle.js";
 import { sendError, sendSuccess } from "../response.js";
 import { actionProposalAudit, currentUser } from "../server-utils.js";
 
@@ -23,13 +23,9 @@ export function createActionProposalRouter() {
   const router = Router();
 
   router.get("/action-proposals/:id", async (req, res) => {
-    let proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
+    const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
-    if (proposal.expiresAt && proposal.expiresAt <= new Date()) {
-      await expireActionProposalWithAudit(req, proposal);
-      proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
-    }
-    return sendSuccess(res, proposal);
+    return sendSuccess(res, toReadableActionProposal(proposal));
   });
 
   router.get("/action-proposals/:id/outcomes", async (req, res) => {
@@ -70,12 +66,27 @@ export function createActionProposalRouter() {
 
     const outcomeBody = { ...parsed.data, note: noteInput.value, conclusion: conclusionInput.value };
     try {
-      const outcome = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx) => {
+        if (idempotency.key) {
+          const replayed = await tx.actionOutcome.findUnique({
+            where: { actionProposalId_idempotencyKey: { actionProposalId: proposal.id, idempotencyKey: idempotency.key } }
+          });
+          if (replayed) return { outcome: replayed, replayed: true };
+        }
+        const currentProposal = await tx.actionProposal.findFirst({
+          where: {
+            id: proposal.id,
+            status: "MANUAL_EXECUTED",
+            project: { workspace: { ownerId: user.id } }
+          },
+          include: { project: true }
+        });
+        if (!currentProposal) return { outcome: null, replayed: false };
         const created = await createActionOutcome(
           {
-            actionProposalId: proposal.id,
-            projectId: proposal.projectId,
-            collectionTaskId: proposal.collectionTaskId,
+            actionProposalId: currentProposal.id,
+            projectId: currentProposal.projectId,
+            collectionTaskId: currentProposal.collectionTaskId,
             userId: user.id,
             body: outcomeBody,
             idempotencyKey: idempotency.key
@@ -86,12 +97,12 @@ export function createActionProposalRouter() {
           req,
           "CREATE_ACTION_OUTCOME",
           {
-            workspaceId: proposal.project.workspaceId,
-            projectId: proposal.projectId,
-            taskId: proposal.collectionTaskId,
+            workspaceId: currentProposal.project.workspaceId,
+            projectId: currentProposal.projectId,
+            taskId: currentProposal.collectionTaskId,
             detailJson: {
-              actionProposalId: proposal.id,
-              actionType: proposal.actionType,
+              actionProposalId: currentProposal.id,
+              actionType: currentProposal.actionType,
               outcomeId: created.id,
               result: created.result,
               observationWindow: outcomeBody.observationWindow,
@@ -101,9 +112,14 @@ export function createActionProposalRouter() {
           },
           tx
         );
-        return created;
+        return { outcome: created, replayed: false };
       });
-      return sendSuccess(res, toActionOutcomeDTO(outcome), 201);
+      if (!result.outcome) return sendError(res, 409, "ACTION_NOT_MANUAL_EXECUTED", "动作建议状态已变化，请刷新后重试");
+      if (result.replayed) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return sendSuccess(res, toActionOutcomeDTO(result.outcome));
+      }
+      return sendSuccess(res, toActionOutcomeDTO(result.outcome), 201);
     } catch (error) {
       if (idempotency.key && isUniqueConstraintError(error)) {
         const replayed = await prisma.actionOutcome.findUnique({
@@ -140,7 +156,7 @@ export function createActionProposalRouter() {
   router.post("/action-proposals/:id/mark-manual-executed", async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
-    if (await rejectIfProposalExpired(req, res, proposal)) return;
+    if (rejectIfProposalExpired(res, proposal)) return;
     if (proposal.status !== "APPROVED") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", "只有已审批动作建议可以标记人工已执行");
     }
@@ -181,7 +197,7 @@ function registerApprovalTransition(router: Router, route: "approve" | "reject" 
   router.post(`/action-proposals/:id/${route}`, async (req, res) => {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
-    if (await rejectIfProposalExpired(req, res, proposal)) return;
+    if (rejectIfProposalExpired(res, proposal)) return;
     if (proposal.status !== "PENDING_APPROVAL") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", config.invalidStatusMessage);
     }
@@ -205,34 +221,11 @@ function registerApprovalTransition(router: Router, route: "approve" | "reject" 
   });
 }
 
-async function rejectIfProposalExpired(
-  req: Request,
-  res: Parameters<Router["post"]>[1] extends (req: Request, res: infer Response) => unknown ? Response : never,
+function rejectIfProposalExpired(
+  res: Response,
   proposal: Parameters<typeof actionProposalAudit>[1] & { id: string; expiresAt: Date | null }
 ) {
   if (!proposal.expiresAt || proposal.expiresAt > new Date()) return false;
-  await expireActionProposalWithAudit(req, proposal);
   sendError(res, 409, "ACTION_EXPIRED", "动作建议已过期，请重新采集并生成决策");
   return true;
-}
-
-async function expireActionProposalWithAudit(
-  req: Request,
-  proposal: Parameters<typeof actionProposalAudit>[1] & { id: string }
-) {
-  return prisma.$transaction(async (tx) => {
-    const expired = await expireProposalIfNeeded(tx, proposal.id);
-    if (expired) {
-      await writeAuditLog(
-        req,
-        "action_proposal.expired",
-        actionProposalAudit(req, proposal, "ACTION_PROPOSAL_EXPIRED", {
-          actionProposalId: proposal.id,
-          source: "proposal_access"
-        }),
-        tx
-      );
-    }
-    return expired;
-  });
 }

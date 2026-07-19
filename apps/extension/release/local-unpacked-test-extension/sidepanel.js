@@ -1,5 +1,13 @@
 "use strict";
 (() => {
+  // <define:__PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS__>
+  var define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default = ["localhost", "127.0.0.1"];
+
+  // src/build-target.ts
+  var isLocalBuild = true;
+  var developmentLoopbackHostnames = typeof define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default === "undefined" ? [] : define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default;
+  var localWebPort = false ? 0 : 3300;
+
   // src/messages.ts
   var STORAGE = {
     CONFIG: "douyinLocalLifeDiagnosisConfig",
@@ -104,7 +112,7 @@
   function webBaseUrl(apiBaseUrl) {
     try {
       const url = new URL(apiBaseUrl);
-      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return `${url.protocol}//${url.hostname}:3300`;
+      if (isLocalBuild && developmentLoopbackHostnames.includes(url.hostname)) return `${url.protocol}//${url.hostname}:${localWebPort}`;
       return "https://www.pxxis.cn";
     } catch {
       return "https://www.pxxis.cn";

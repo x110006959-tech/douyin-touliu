@@ -140,6 +140,7 @@
     routeOverridePanel: document.getElementById("routeOverridePanel"),
     routeOverride: document.getElementById("routeOverride"),
     nextRoute: document.getElementById("nextRoute"),
+    routeChoices: document.getElementById("routeChoices"),
     startPatrolBtn: document.getElementById("startPatrolBtn"),
     stopPatrolBtn: document.getElementById("stopPatrolBtn"),
     refreshBtn: document.getElementById("refreshBtn"),
@@ -189,7 +190,7 @@
     els.projectName.textContent = state?.config?.projectName || "\u672A\u7ED1\u5B9A";
     els.patrolStatus.textContent = state?.patrol?.enabled ? "\u8FD0\u884C\u4E2D\uFF0C\u4EC5\u91C7\u96C6\u5DF2\u6253\u5F00\u9875\u9762" : "\u672A\u5F00\u542F";
     els.collectionRunId.textContent = state?.patrol?.collectionRunId || state?.activeCollectionSession?.collectionRunId || "-";
-    els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${"14f5cd868c56"}`;
+    els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${"0d6a167e1cb6"}`;
     els.snapshot.textContent = state?.latestSnapshot ? JSON.stringify({
       pageType: state.latestSnapshot.pageType,
       routeKey: state.latestSnapshot.routeKey,
@@ -199,6 +200,7 @@
     }, null, 2) : "\u6682\u65E0\u672C\u5730\u5FEB\u7167";
     renderTaskOptions(state?.context, state?.config?.collectionTaskId);
     const boundTask = currentTask(state);
+    renderPatrolRouteChoices(boundTask, state?.patrol?.requiredRoutes || []);
     const hasToken = Boolean(state?.hasToken);
     const pendingPairing = state?.pendingPairingConfirmation;
     const hasTask = Boolean(state?.config?.collectionTaskId);
@@ -387,16 +389,29 @@
     await render();
   }
   function selectedRoutes() {
-    const choices = [
-      ["routeDashboard", "LOCAL_PROMOTION_DASHBOARD"],
-      ["routeLive", "LIVE_DATA_SCREEN"],
-      ["routeProduct", "LIVE_PRODUCT_TAB"],
-      ["routeTraffic", "LIVE_TRAFFIC_TAB"],
-      ["routeTask", "TASK_TABLE"],
-      ["routeMaterial", "MATERIAL_LIBRARY"],
-      ["routeTrend", "HOURLY_TREND"]
-    ];
-    return choices.filter(([id]) => document.getElementById(id)?.checked).map(([, route]) => route);
+    return [...els.routeChoices.querySelectorAll("input[data-route-key]:checked")].map((input) => normalizeCollectionRouteKey(input.dataset.routeKey)).filter((route) => route !== "UNKNOWN");
+  }
+  function renderPatrolRouteChoices(task, activeRoutes) {
+    const calibratedRoutes = /* @__PURE__ */ new Set([
+      "LOCAL_PROMOTION_DASHBOARD",
+      "LIVE_DATA_SCREEN",
+      "LIVE_PRODUCT_TAB",
+      "LIVE_TRAFFIC_TAB",
+      "TASK_TABLE"
+    ]);
+    const selected = new Set((activeRoutes || []).map(normalizeCollectionRouteKey));
+    const labels = (task?.routeSources || []).flatMap((route) => {
+      const routeKey = normalizeCollectionRouteKey(route.routeKey);
+      if (routeKey === "UNKNOWN" || !calibratedRoutes.has(routeKey)) return [];
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.routeKey = routeKey;
+      input.checked = selected.size ? selected.has(routeKey) : Boolean(route.required);
+      const label = document.createElement("label");
+      label.append(input, document.createTextNode(routeLabel(routeKey)));
+      return [label];
+    });
+    els.routeChoices.replaceChildren(...labels);
   }
   async function openSidePanel() {
     await chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });

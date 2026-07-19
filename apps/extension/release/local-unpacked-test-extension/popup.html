@@ -119,15 +119,7 @@
             <div class="row"><span class="muted">巡检</span><span id="patrolStatus" class="value">未开启</span></div>
             <div class="row"><span class="muted">批次</span><span id="collectionRunId" class="value">-</span></div>
             <div class="row"><span class="muted">插件构建</span><span id="extensionBuild" class="value">读取中</span></div>
-            <div class="route-grid">
-              <label><input id="routeDashboard" type="checkbox" checked />投放总览</label>
-              <label><input id="routeLive" type="checkbox" checked />直播大屏</label>
-              <label><input id="routeTask" type="checkbox" checked />任务列表</label>
-              <label><input id="routeProduct" type="checkbox" />商品页</label>
-              <label><input id="routeTraffic" type="checkbox" />流量页</label>
-              <label><input id="routeMaterial" type="checkbox" />素材库</label>
-              <label><input id="routeTrend" type="checkbox" />小时趋势</label>
-            </div>
+            <div id="routeChoices" class="route-grid"></div>
             <div class="button-row"><button id="startPatrolBtn">开启巡检</button><button id="stopPatrolBtn">停止巡检</button></div>
             <div class="button-row"><button id="sidePanelBtn">实时侧边栏</button><button id="uploadBtn">重传上次快照</button></div>
             <button id="refreshBtn">刷新插件状态</button>

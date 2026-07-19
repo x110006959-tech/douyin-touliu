@@ -1,6 +1,6 @@
 import type { ActionProposal, ApprovalDecision, Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
-import { sanitizePersistedJson } from "./persisted-input.js";
+import { sanitizeDerivedPersistedJson, sanitizePersistedJson } from "./persisted-input.js";
 
 export type ActionProposalAuditInput = {
   action: string;
@@ -10,6 +10,7 @@ export type ActionProposalAuditInput = {
   detailJson?: unknown;
   ip?: string | null;
   userAgent?: string | null;
+  actorSnapshotJson?: unknown;
 };
 
 type ApprovalTransitionInput = {
@@ -101,6 +102,7 @@ async function createAuditLog(tx: Prisma.TransactionClient, userId: string, audi
   await tx.auditLog.create({
     data: {
       userId,
+      actorSnapshotJson: toJson(sanitizeDerivedPersistedJson(audit.actorSnapshotJson || { userId })),
       workspaceId: audit.workspaceId || null,
       projectId: audit.projectId || null,
       taskId: audit.taskId || null,

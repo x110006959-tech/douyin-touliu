@@ -41,6 +41,7 @@ const els = {
   routeOverridePanel: document.getElementById("routeOverridePanel")!,
   routeOverride: document.getElementById("routeOverride") as HTMLSelectElement,
   nextRoute: document.getElementById("nextRoute")!,
+  routeChoices: document.getElementById("routeChoices")!,
   startPatrolBtn: document.getElementById("startPatrolBtn") as HTMLButtonElement,
   stopPatrolBtn: document.getElementById("stopPatrolBtn") as HTMLButtonElement,
   refreshBtn: document.getElementById("refreshBtn") as HTMLButtonElement,
@@ -108,6 +109,7 @@ async function render() {
     : "暂无本地快照";
   renderTaskOptions(state?.context, state?.config?.collectionTaskId);
   const boundTask = currentTask(state);
+  renderPatrolRouteChoices(boundTask, state?.patrol?.requiredRoutes || []);
 
   const hasToken = Boolean(state?.hasToken);
   const pendingPairing = state?.pendingPairingConfirmation;
@@ -315,12 +317,32 @@ async function stopPatrol() {
 }
 
 function selectedRoutes(): CollectionRouteKey[] {
-  const choices: Array<[string, CollectionRouteKey]> = [
-    ["routeDashboard", "LOCAL_PROMOTION_DASHBOARD"], ["routeLive", "LIVE_DATA_SCREEN"],
-    ["routeProduct", "LIVE_PRODUCT_TAB"], ["routeTraffic", "LIVE_TRAFFIC_TAB"],
-    ["routeTask", "TASK_TABLE"], ["routeMaterial", "MATERIAL_LIBRARY"], ["routeTrend", "HOURLY_TREND"]
-  ];
-  return choices.filter(([id]) => (document.getElementById(id) as HTMLInputElement | null)?.checked).map(([, route]) => route);
+  return [...els.routeChoices.querySelectorAll<HTMLInputElement>("input[data-route-key]:checked")]
+    .map((input) => normalizeCollectionRouteKey(input.dataset.routeKey))
+    .filter((route): route is CollectionRouteKey => route !== "UNKNOWN");
+}
+
+function renderPatrolRouteChoices(task: any, activeRoutes: unknown[]) {
+  const calibratedRoutes = new Set<CollectionRouteKey>([
+    "LOCAL_PROMOTION_DASHBOARD",
+    "LIVE_DATA_SCREEN",
+    "LIVE_PRODUCT_TAB",
+    "LIVE_TRAFFIC_TAB",
+    "TASK_TABLE"
+  ]);
+  const selected = new Set((activeRoutes || []).map(normalizeCollectionRouteKey));
+  const labels = (task?.routeSources || []).flatMap((route: any) => {
+    const routeKey = normalizeCollectionRouteKey(route.routeKey);
+    if (routeKey === "UNKNOWN" || !calibratedRoutes.has(routeKey)) return [];
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.routeKey = routeKey;
+    input.checked = selected.size ? selected.has(routeKey) : Boolean(route.required);
+    const label = document.createElement("label");
+    label.append(input, document.createTextNode(routeLabel(routeKey)));
+    return [label];
+  });
+  els.routeChoices.replaceChildren(...labels);
 }
 
 async function openSidePanel() {

@@ -8,16 +8,36 @@ import {
   type RiskLevel,
   standardizeMetricKey
 } from "@douyin-local-life/shared";
+import {
+  buildDecisionReferenceBundle,
+  type DecisionReferenceBundle
+} from "./reference-playbooks.js";
 
 export type LlmProvider = {
   name: string;
   model: string;
-  analyze(input: AnalyzeInput): Promise<AnalyzeOutput>;
+  analyze(input: AnalyzeInput): Promise<ExplanationOutput>;
 };
 
 export type LlmProviderName = "mock" | "openai" | "deepseek";
+export type ExplanationOutput = AnalyzeOutput & {
+  decisionReference: DecisionReferenceBundle;
+};
 
-export async function mockAnalyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
+export const EXPLANATION_PROMPT_VERSION = "explanation-only-agency-reference-v0.2.0";
+
+export {
+  AGENCY_AGENTS_REVISION,
+  DECISION_REFERENCE_POLICY_VERSION,
+  agencyAgentSources,
+  buildDecisionReferenceBundle,
+  buildDecisionReferenceInstructions,
+  type DecisionReferenceBundle,
+  type DecisionReferenceInsight,
+  type DecisionReferenceSource
+} from "./reference-playbooks.js";
+
+export async function mockAnalyze(input: AnalyzeInput): Promise<ExplanationOutput> {
   const problems: AnalysisProblem[] = [];
   const suggestions: AnalysisSuggestion[] = [];
   const manualCheckItems: ManualCheckItem[] = [];
@@ -77,7 +97,8 @@ export async function mockAnalyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
     problems,
     suggestions,
     manualCheckItems,
-    confidence: Math.min(input.subject.confidence, missingSubjectFields.length > 0 ? 0.55 : 0.7)
+    confidence: Math.min(input.subject.confidence, missingSubjectFields.length > 0 ? 0.55 : 0.7),
+    decisionReference: buildDecisionReferenceBundle(input)
   };
 }
 
@@ -118,7 +139,7 @@ export function createLlmProvider(name: LlmProviderName = "mock"): LlmProvider {
   if (name !== "mock") {
     return {
       name,
-      model: `${name}-explanation-placeholder`,
+      model: `${name}-${EXPLANATION_PROMPT_VERSION}-placeholder`,
       analyze: async () => {
         throw new Error(`${name} provider 尚未配置，当前 MVP 请使用 mock provider`);
       }
@@ -127,7 +148,7 @@ export function createLlmProvider(name: LlmProviderName = "mock"): LlmProvider {
 
   return {
     name: "mock",
-    model: "explanation-only-v0.1.2",
+    model: EXPLANATION_PROMPT_VERSION,
     analyze: mockAnalyze
   };
 }

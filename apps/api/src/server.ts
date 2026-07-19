@@ -9,6 +9,7 @@ import {
   collectionRouteTemplates,
   collectionSnapshotSchema,
   collectionFreshnessPolicy,
+  evaluateAccountIdentityMatch,
   evaluateFormalDecisionReadiness,
   inferCollectionRoute,
   identifyMetricKey,
@@ -17,6 +18,7 @@ import {
   metricKeyLabels,
   metricPulseSchema,
   normalizeCollectionRouteKey,
+  projectRawTableData,
   type CollectionSnapshotPayload,
   createCollectionTaskSchema,
   createProjectSchema,
@@ -30,7 +32,12 @@ import {
   type DecisionEngineOutput,
   type VisibleMetric
 } from "@douyin-local-life/shared";
-import { createLlmProvider } from "@douyin-local-life/llm";
+import { structureTaskCollectionTables } from "@douyin-local-life/decision-engine";
+import {
+  EXPLANATION_PROMPT_VERSION,
+  buildDecisionReferenceBundle,
+  createLlmProvider
+} from "@douyin-local-life/llm";
 import { authMiddleware, ensureSecurityConfiguration, extensionScopeGuard, type AuthenticatedRequest } from "./auth.js";
 import { csrfProtection } from "./csrf.js";
 import { writeAuditLog, writeAuditLogs } from "./audit.js";
@@ -40,16 +47,18 @@ import { normalizeMetrics } from "./normalize.js";
 import { getProjectOutcomeSummary } from "./outcomes.js";
 import { isUniqueConstraintError, readIdempotencyKey } from "./idempotency.js";
 import { assignRequestId, corsOrigin, getRequestId, requireConfiguredWebOrigins, sanitizeErrorForLog, sanitizeErrorMessage } from "./http-security.js";
-import { getOwnedProject, getOwnedReviewedMetric, getOwnedTask, getOwnedTaskAccess } from "./ownership.js";
+import { getOwnedProject, getOwnedTask, getOwnedTaskAccess } from "./ownership.js";
 import { cursorArgs, readPagination } from "./pagination.js";
 import { prisma } from "./prisma.js";
 import { sendError, sendSuccess, validationErrorOptions } from "./response.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createActionProposalRouter } from "./routes/action-proposals.js";
-import { accountIdentity, createAccountRouter, normalizeAccountValue } from "./routes/accounts.js";
+import { accountIdentity, createAccountRouter } from "./routes/accounts.js";
 import { createExtensionProtectedRouter, createExtensionPublicRouter } from "./routes/extension-pairing.js";
 import { createSnapshotAccountRouter } from "./routes/snapshot-accounts.js";
-import { prepareActionProposals, proposalLifecyclePolicy } from "./proposal-lifecycle.js";
+import { createSystemHealthRouter } from "./routes/system-health.js";
+import { createWorkspaceRouter } from "./routes/workspaces.js";
+import { actionProposalStatusFilter, prepareActionProposals, proposalLifecyclePolicy, toReadableActionProposal } from "./proposal-lifecycle.js";
 import {
   createCollectionRunSchema,
   getOwnedCollectionRun,
@@ -57,17 +66,21 @@ import {
   refreshCollectionRunStatus,
   reportCollectionRouteFailureSchema,
   requiredRoutesFromJson,
+  sameCollectionRouteSet,
   toCollectionRunDTO
 } from "./collection-runs.js";
 import { currentUser, readOptionalText, toJson } from "./server-utils.js";
+import { readSafeOptionalText, sanitizeDerivedPersistedJson } from "./persisted-input.js";
 import { getBuildMetadata } from "./version.js";
 import { getCaptureSummary } from "./capture-summary.js";
 import { latestRealtimeSignals, recordMetricPulse, subscribeRealtimeSignals } from "./realtime-signals.js";
 import { metricAliasOverrideInputSchema, metricDriftStatusSchema, normalizeAlias, recordMetricDriftEvents } from "./metric-drift.js";
-import { AiCircuitOpenError, executeWithAiCircuit, getAiCircuitStatus } from "./ai-circuit.js";
+import { AiCircuitOpenError, executeWithAiCircuit } from "./ai-circuit.js";
 import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 import { isSerializableConflict, runSerializableTransaction } from "./transactions.js";
-import { registerSseConnectionCloser, reserveSseConnection } from "./sse-limits.js";
+import { getSseConnectionMetrics, registerSseConnectionCloser, reserveSseConnection } from "./sse-limits.js";
+import { createLatestSseWriter } from "./sse-writer.js";
+import { observeSecurityMetricResponse, queueSecurityMetrics } from "./security-metrics.js";
 import {
   checkAiExplanationRateLimit,
   checkDecisionRateLimit,
@@ -76,6 +89,7 @@ import {
   checkWriteRateLimit
 } from "./rate-limit.js";
 import {
+  currentReviewedMetrics,
   ensureReviewMetricsForTask,
   normalizedMetricsToVisibleMetrics,
   normalizeReviewPatch,
@@ -97,6 +111,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) app.set("trust proxy", trustProxyHops);
   app.disable("x-powered-by");
   app.use(assignRequestId);
+  app.use(observeSecurityMetricResponse);
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
@@ -144,58 +159,8 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.use(createActionProposalRouter());
   app.use(createExtensionProtectedRouter());
   app.use(createSnapshotAccountRouter());
-
-  app.get("/system-health", async (req, res) => {
-    const user = currentUser(req);
-    const aiProvider = createLlmProvider("mock");
-    const [rawRuns, aiCircuit] = await Promise.all([
-      prisma.collectionRun.findMany({
-        where: { task: { project: { workspace: { ownerId: user.id } } } },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-        include: {
-          routeHealth: true
-        }
-      }),
-      getAiCircuitStatus(aiProvider.name, aiProvider.model)
-    ]);
-    const runs = await hydrateCurrentRunSnapshots(prisma, rawRuns);
-    const latestByTask = [...new Map(runs.map((run) => [run.taskId, run])).values()];
-    const collectionRuns = latestByTask.map(toCollectionRunDTO);
-    const degradedRuns = collectionRuns.filter((run) => run.status === "DEGRADED" || run.quality.blocksStrongActions).length;
-    const aiCircuitOpen = aiCircuit.state !== "CLOSED";
-    return sendSuccess(res, {
-      status: degradedRuns > 0 || aiCircuitOpen ? "DEGRADED" : "HEALTHY",
-      database: "READY",
-      collection: {
-        activeRuns: collectionRuns.filter((run) => run.status === "ACTIVE" || run.status === "COMPLETED").length,
-        degradedRuns,
-        runs: collectionRuns
-      },
-      ai: {
-        status: aiCircuit.state,
-        cooldownEndsAt: aiCircuit.cooldownEndsAt,
-        recentFailures: aiCircuit.consecutiveFailures,
-        backoffLevel: aiCircuit.backoffLevel
-      },
-      checkedAt: new Date().toISOString()
-    });
-  });
-
-  app.get("/workspaces", async (req, res) => {
-    const user = currentUser(req);
-    const workspaces = await prisma.workspace.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" } });
-    return sendSuccess(res, workspaces);
-  });
-
-  app.post("/workspaces", async (req, res) => {
-    const user = currentUser(req);
-    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-    if (!name) return sendError(res, 400, "VALIDATION_ERROR", "工作区名称必填");
-    const workspace = await prisma.workspace.create({ data: { name, ownerId: user.id } });
-    await writeAuditLog(req, "workspace.created", { workspaceId: workspace.id, detailJson: { name } });
-    return sendSuccess(res, workspace, 201);
-  });
+  app.use(createSystemHealthRouter());
+  app.use(createWorkspaceRouter());
 
   app.get("/projects", async (req, res) => {
     const user = currentUser(req);
@@ -231,6 +196,14 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     const user = currentUser(req);
     const parsed = createProjectSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "参数错误", validationErrorOptions(parsed.error));
+    const projectNameInput = readSafeOptionalText(parsed.data.name, 100);
+    const serviceProviderNameInput = readSafeOptionalText(parsed.data.serviceProviderName, 100);
+    const serviceModeInput = readSafeOptionalText(parsed.data.serviceMode, 100);
+    if (projectNameInput.error || serviceProviderNameInput.error || serviceModeInput.error) {
+      return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", projectNameInput.error || serviceProviderNameInput.error || serviceModeInput.error || "输入包含敏感认证信息，已拒绝保存");
+    }
+    const projectName = projectNameInput.value;
+    if (!projectName) return sendError(res, 400, "VALIDATION_ERROR", "请填写项目名称");
 
     const workspace = parsed.data.workspaceId
       ? await prisma.workspace.findFirst({ where: { id: parsed.data.workspaceId, ownerId: user.id } })
@@ -245,14 +218,14 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     const project = await prisma.$transaction(async (tx) => {
       let accountProfileId = selectedAccount?.id;
       if (!accountProfileId) {
-        const identity = accountIdentity(parsed.data.name, null);
+        const identity = accountIdentity(projectName, null);
         const account = await tx.accountProfile.upsert({
           where: { workspaceId_platform_identityKey: { workspaceId: workspace.id, platform: "DOUYIN_LOCAL_LIFE", identityKey: identity.identityKey } },
           create: {
             workspaceId: workspace.id,
             platform: "DOUYIN_LOCAL_LIFE",
             identityKey: identity.identityKey,
-            accountName: parsed.data.name,
+            accountName: projectName,
             normalizedName: identity.normalizedName,
             identityStatus: "PENDING_ID"
           },
@@ -264,15 +237,15 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         data: {
           workspaceId: workspace.id,
           accountProfileId,
-          name: parsed.data.name,
+          name: projectName,
           businessType: parsed.data.businessType,
           subjectType: parsed.data.subjectType,
           operatorType: parsed.data.operatorType,
           cooperationType: parsed.data.cooperationType,
           controlLevel: parsed.data.controlLevel,
           subjectConfidence: parsed.data.subjectConfidence || (parsed.data.subjectType !== "SUBJECT_PENDING" ? 1 : 0),
-          serviceProviderName: parsed.data.serviceProviderName || null,
-          serviceMode: parsed.data.operatorType === "SERVICE_PROVIDER_LIVE" ? "代播" : parsed.data.operatorType === "SERVICE_PROVIDER_OPERATION" ? "代运营" : parsed.data.serviceMode || null,
+          serviceProviderName: serviceProviderNameInput.value || null,
+          serviceMode: parsed.data.operatorType === "SERVICE_PROVIDER_LIVE" ? "代播" : parsed.data.operatorType === "SERVICE_PROVIDER_OPERATION" ? "代运营" : serviceModeInput.value || null,
           serviceFee: parsed.data.serviceFee ?? null
         }
       });
@@ -301,17 +274,17 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.get("/projects/:id/action-proposals", async (req, res) => {
     const project = await getOwnedProject(currentUser(req).id, req.params.id);
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
-    await expireProjectProposalsWithAudit(req, project);
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
     if (status && !actionProposalStatuses.includes(status as (typeof actionProposalStatuses)[number])) {
       return sendError(res, 400, "VALIDATION_ERROR", "动作建议状态不合法");
     }
     const pagination = readPagination(req, 100);
     if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
+    const now = new Date();
     const proposals = await prisma.actionProposal.findMany({
       where: {
         projectId: project.id,
-        ...(status ? { status: status as (typeof actionProposalStatuses)[number] } : {})
+        ...actionProposalStatusFilter(status as (typeof actionProposalStatuses)[number] | undefined, now)
       },
       select: {
         id: true,
@@ -339,7 +312,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       take: pagination.take,
       ...cursorArgs(pagination.cursor)
     });
-    return sendSuccess(res, proposals);
+    return sendSuccess(res, proposals.map((proposal) => toReadableActionProposal(proposal, now)));
   });
 
   app.get("/action-proposals", async (req, res) => {
@@ -357,6 +330,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     }
     const pagination = readPagination(req, 100);
     if (pagination.cursorError) return sendError(res, 400, "INVALID_CURSOR", "分页游标不合法");
+    const now = new Date();
     const proposals = await prisma.actionProposal.findMany({
       where: {
         project: {
@@ -364,7 +338,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
           ...(accountProfileId ? { accountProfileId } : {}),
           ...(projectId ? { id: projectId } : {})
         },
-        ...(status ? { status: status as (typeof actionProposalStatuses)[number] } : {}),
+        ...actionProposalStatusFilter(status as (typeof actionProposalStatuses)[number] | undefined, now),
         ...((from || to) ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {})
       },
       include: {
@@ -375,7 +349,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       take: pagination.take,
       ...cursorArgs(pagination.cursor)
     });
-    return sendSuccess(res, proposals);
+    return sendSuccess(res, proposals.map((proposal) => toReadableActionProposal(proposal, now)));
   });
 
   app.get("/projects/:id/outcome-summary", async (req, res) => {
@@ -399,6 +373,8 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
     const parsed = metricAliasOverrideInputSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "指标映射参数错误");
+    const noteInput = readSafeOptionalText(parsed.data.note, 500);
+    if (noteInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", noteInput.error);
     const aliasNormalized = normalizeAlias(req.params.alias);
     if (!aliasNormalized) return sendError(res, 400, "VALIDATION_ERROR", "指标别名不能为空");
     const alias = await prisma.$transaction(async (tx) => {
@@ -414,7 +390,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       await writeAuditLog(req, "METRIC_ALIAS_OVERRIDE_UPSERTED", {
         workspaceId: project.workspaceId,
         projectId: project.id,
-        detailJson: { aliasNormalized, pageType: parsed.data.pageType, metricKey: parsed.data.metricKey, note: parsed.data.note || null }
+        detailJson: { aliasNormalized, pageType: parsed.data.pageType, metricKey: parsed.data.metricKey, note: noteInput.value }
       }, tx);
       return saved;
     });
@@ -440,6 +416,8 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     const user = currentUser(req);
     const parsed = createCollectionTaskSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "参数错误", validationErrorOptions(parsed.error));
+    const pageTitleInput = readSafeOptionalText(parsed.data.pageTitle, 100);
+    if (pageTitleInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", pageTitleInput.error);
 
     const project = await getOwnedProject(user.id, parsed.data.projectId);
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
@@ -461,7 +439,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       return sendError(res, 400, "UNSUPPORTED_SOURCE_URL", "该网址不在支持的抖音生活服务或巨量本地推页面范围内");
     }
     const suppliedRoutes = new Map((parsed.data.routeSources || []).map((route) => [route.routeKey, route.sourceUrl ? sanitizeCaptureUrl(route.sourceUrl) : null]));
-    if (safeSourceUrl) suppliedRoutes.set(inferCollectionRoute({ sourceUrl: safeSourceUrl, pageTitle: parsed.data.pageTitle }), safeSourceUrl);
+    if (safeSourceUrl) suppliedRoutes.set(inferCollectionRoute({ sourceUrl: safeSourceUrl, pageTitle: pageTitleInput.value || undefined }), safeSourceUrl);
     try {
       const task = await prisma.$transaction(async (tx) => {
         const created = await tx.collectionTask.create({
@@ -470,7 +448,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             userId: user.id,
             idempotencyKey: idempotency.key,
             sourceUrl: safeSourceUrl,
-            pageTitle: parsed.data.pageTitle || `采集任务 ${new Date().toLocaleDateString("zh-CN")}`,
+            pageTitle: pageTitleInput.value || `采集任务 ${new Date().toLocaleDateString("zh-CN")}`,
             status: "PENDING",
             routeSources: {
               create: collectionRouteTemplates.map((template) => ({
@@ -659,19 +637,17 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       res.setHeader("Retry-After", String(reservation.retryAfterSeconds));
       return sendError(res, 429, "RATE_LIMITED", "实时连接数已达上限，请关闭闲置页面后重试");
     }
+    queueSecurityMetrics([{ key: "sse_active_connections", value: getSseConnectionMetrics().totalConnections }]);
     res.status(200);
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
-    const push = (signals: ReturnType<typeof latestRealtimeSignals>) => {
-      if (res.destroyed || res.writableEnded || res.writableLength > 256 * 1024) return;
-      res.write(`event: signals\ndata: ${JSON.stringify(signals)}\n\n`);
-    };
-    push(latestRealtimeSignals(task.id));
-    const unsubscribe = subscribeRealtimeSignals(task.id, push);
+    const signalWriter = createLatestSseWriter(res, (signals: ReturnType<typeof latestRealtimeSignals>) => `event: signals\ndata: ${JSON.stringify(signals)}\n\n`);
+    signalWriter.push(latestRealtimeSignals(task.id));
+    const unsubscribe = subscribeRealtimeSignals(task.id, (signals) => signalWriter.push(signals));
     const heartbeat = setInterval(() => {
-      if (!res.destroyed && !res.writableEnded && res.writableLength <= 256 * 1024) {
+      if (signalWriter.canWriteHeartbeat()) {
         res.write(`event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
       }
     }, 15_000);
@@ -684,7 +660,9 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       clearInterval(heartbeat);
       clearTimeout(maxLifetime);
       unsubscribe();
+      signalWriter.close();
       reservation.release();
+      queueSecurityMetrics([{ key: "sse_active_connections", value: getSseConnectionMetrics().totalConnections }]);
       unregister();
       if (!res.writableEnded) res.end();
     };
@@ -737,6 +715,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     const routeVerificationStatus = routeKey === "UNKNOWN" || !routeConfigured || routeConflictsWithEvidence || routeConflictsWithPageType || routeDetection?.manuallyConfirmed
       ? "MANUAL_PENDING" as const
       : "VERIFIED" as const;
+    if (routeVerificationStatus === "MANUAL_PENDING") queueSecurityMetrics([{ key: "account_route_mismatches" }]);
     if (routeKey === "UNKNOWN") {
       await writeAuditLog(req, "SNAPSHOT_ROUTE_UNVERIFIED", {
         workspaceId: task.project.workspaceId,
@@ -767,6 +746,17 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     });
     const normalized = normalizeMetrics(snapshotPayload, aliasOverrides as Parameters<typeof normalizeMetrics>[1]);
     const formalMetrics = accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED" ? normalized : [];
+    const structuredData = routeKey === "TASK_TABLE"
+      ? structureTaskCollectionTables(projectRawTableData(snapshotPayload.rawTableData, {
+          routeKey,
+          pageType: snapshotPayload.pageType
+        }), {
+          routeKey,
+          capturedAt: snapshotPayload.localCollectedAt,
+          adapterId: snapshotPayload.captureMeta?.adapterId,
+          adapterVersion: snapshotPayload.captureMeta?.adapterVersion
+        })
+      : null;
     try {
       const snapshot = await prisma.$transaction(async (tx) => {
         const created = await tx.dataSnapshot.create({
@@ -777,6 +767,8 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             rawDomText: snapshotPayload.rawDomText,
             rawNetworkJson: toJson([]),
             rawTableData: toJson(snapshotPayload.rawTableData),
+            structuredDataJson: structuredData ? toJson(structuredData) : undefined,
+            structuredDataVersion: structuredData?.schemaVersion || null,
             visibleMetricsJson: toJson(normalized),
             captureMetaJson: snapshotPayload.captureMeta ? toJson(snapshotPayload.captureMeta) : undefined,
             screenshotUrl: snapshotPayload.screenshotUrl || null,
@@ -820,6 +812,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
               consecutiveFailures: 0,
               lastAttemptAt: new Date(),
               lastSuccessAt: new Date(),
+              lastErrorCode: null,
               lastError: null
             }
           });
@@ -934,6 +927,8 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     }
     const parsed = manualMetricsInputSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "手工指标参数错误", validationErrorOptions(parsed.error));
+    const sourceLabelInput = readSafeOptionalText(parsed.data.sourceLabel, 100);
+    if (sourceLabelInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", sourceLabelInput.error);
     const sensitiveMetricIndex = parsed.data.metrics.findIndex((metric) => shouldRedactSensitiveKey(metric.key || metric.name));
     if (sensitiveMetricIndex >= 0) {
       return sendError(res, 400, "SENSITIVE_METRIC_FORBIDDEN", "手工指标中包含密码、Token 或认证信息字段，已拒绝导入", {
@@ -951,13 +946,13 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         source: "manual",
         metricSource: "MANUAL_INPUT",
         confidence: key === "unknown" ? 0.4 : 1,
-        rawEvidence: { sourceType: "MANUAL_INPUT", textSnippet: parsed.data.sourceLabel }
+        rawEvidence: { sourceType: "MANUAL_INPUT", textSnippet: sourceLabelInput.value || "网页手工录入" }
       };
     });
     const snapshotPayload: CollectionSnapshotPayload = {
       pageType: parsed.data.pageType,
       sourceUrl: "https://www.pxxis.cn/manual-entry",
-      pageTitle: parsed.data.sourceLabel,
+      pageTitle: sourceLabelInput.value || "网页手工录入",
       rawDomText: "",
       rawNetworkJson: [],
       rawTableData: parsed.data.metrics,
@@ -1038,7 +1033,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
           workspaceId: task.project.workspaceId,
           projectId: task.projectId,
           taskId: task.id,
-          detailJson: { snapshotId: created.id, metricCount: normalized.length, driftCount, sourceLabel: parsed.data.sourceLabel, idempotencyKey: idempotency.key }
+          detailJson: { snapshotId: created.id, metricCount: normalized.length, driftCount, sourceLabel: sourceLabelInput.value || "网页手工录入", idempotencyKey: idempotency.key }
         }, tx);
         return tx.dataSnapshot.findUniqueOrThrow({ where: { id: created.id }, include: { normalizedMetrics: true, reviewedMetrics: true } });
       });
@@ -1064,24 +1059,52 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const parsed = createCollectionRunSchema.safeParse(req.body || {});
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "采集路线配置错误");
-    const run = await prisma.$transaction(async (tx) => {
+    const requestedRoutes = [...new Set(parsed.data.requiredRoutes)].sort();
+    const configuredRoutes = new Set(task.routeSources.map((route) => normalizeCollectionRouteKey(route.routeKey)));
+    if (requestedRoutes.some((route) => !configuredRoutes.has(route))) {
+      return sendError(res, 400, "ROUTE_NOT_CONFIGURED", "采集路线必须属于当前任务已配置路线");
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${task.id}), hashtext(${"collection-run-start"}))`;
+      const currentTask = await tx.collectionTask.findUnique({
+        where: { id: task.id },
+        select: { routeSources: { select: { routeKey: true } } }
+      });
+      if (!currentTask) throw new Error("COLLECTION_TASK_NOT_FOUND");
+      const currentConfiguredRoutes = new Set(currentTask.routeSources.map((route) => normalizeCollectionRouteKey(route.routeKey)));
+      if (requestedRoutes.some((route) => !currentConfiguredRoutes.has(route))) {
+        throw Object.assign(new Error("ROUTE_NOT_CONFIGURED"), {
+          statusCode: 409,
+          code: "ROUTE_NOT_CONFIGURED",
+          publicMessage: "采集路线配置已变化，请刷新任务后重试"
+        });
+      }
+      const active = await tx.collectionRun.findFirst({
+        where: { taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } },
+        orderBy: { createdAt: "desc" },
+        include: { snapshots: true, routeHealth: true }
+      });
+      if (active && sameCollectionRouteSet(requiredRoutesFromJson(active.requiredRoutesJson), requestedRoutes)) {
+        return { run: active, replayed: true };
+      }
       await tx.collectionRun.updateMany({
         where: { taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } },
         data: { status: "STOPPED", stoppedAt: new Date() }
       });
       const created = await tx.collectionRun.create({
-        data: { taskId: task.id, requiredRoutesJson: toJson(parsed.data.requiredRoutes) },
+        data: { taskId: task.id, requiredRoutesJson: toJson(requestedRoutes) },
         include: { snapshots: true, routeHealth: true }
       });
       await writeAuditLog(req, "collection_run.started", {
         workspaceId: task.project.workspaceId,
         projectId: task.projectId,
         taskId: task.id,
-        detailJson: { collectionRunId: created.id, requiredRoutes: parsed.data.requiredRoutes }
+        detailJson: { collectionRunId: created.id, requiredRoutes: requestedRoutes }
       }, tx);
-      return created;
+      return { run: created, replayed: false };
     });
-    return sendSuccess(res, toCollectionRunDTO(run), 201);
+    if (result.replayed) res.setHeader("Idempotent-Replayed", "true");
+    return sendSuccess(res, toCollectionRunDTO(result.run), result.replayed ? 200 : 201);
   });
 
   app.get("/collection-tasks/:id/collection-runs/latest", async (req, res) => {
@@ -1117,6 +1140,11 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     if (run.status === "STOPPED") return sendError(res, 409, "COLLECTION_RUN_STOPPED", "采集巡检已停止");
     const parsed = reportCollectionRouteFailureSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "采集失败信息错误");
+    if (!requiredRoutesFromJson(run.requiredRoutesJson).includes(parsed.data.routeKey)) {
+      return sendError(res, 400, "ROUTE_NOT_REQUIRED", "只能上报当前采集运行要求的路线");
+    }
+    const safeError = readSafeOptionalText(parsed.data.error, 500);
+    if (safeError.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", safeError.error);
     const updated = await prisma.$transaction(async (tx) => {
       await tx.collectionRouteHeartbeat.upsert({
         where: { collectionRunId_routeKey: { collectionRunId: run.id, routeKey: parsed.data.routeKey } },
@@ -1125,12 +1153,14 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
           routeKey: parsed.data.routeKey,
           consecutiveFailures: 1,
           lastAttemptAt: new Date(),
-          lastError: parsed.data.error
+          lastErrorCode: parsed.data.errorCode,
+          lastError: safeError.value
         },
         update: {
           consecutiveFailures: { increment: 1 },
           lastAttemptAt: new Date(),
-          lastError: parsed.data.error
+          lastErrorCode: parsed.data.errorCode,
+          lastError: safeError.value
         }
       });
       const refreshed = await refreshCollectionRunStatus(tx, run.id);
@@ -1138,7 +1168,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         workspaceId: run.task.project.workspaceId,
         projectId: run.task.projectId,
         taskId: run.taskId,
-        detailJson: { collectionRunId: run.id, routeKey: parsed.data.routeKey, error: parsed.data.error }
+        detailJson: { collectionRunId: run.id, routeKey: parsed.data.routeKey, errorCode: parsed.data.errorCode }
       }, tx);
       return refreshed;
     });
@@ -1176,20 +1206,30 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.get("/collection-tasks/:id/review-metrics", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const initialized = await ensureReviewMetricsForTask(task);
-    if (initialized.createdCount > 0) {
-      await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: {
+    return sendSuccess(res, currentReviewedMetrics(task).map(toReviewedMetricDTO));
+  });
+
+  app.post("/collection-tasks/:id/review-metrics/initialize", async (req, res) => {
+    const initialized = await prisma.$transaction(async (tx) => {
+      const task = await getOwnedTask(currentUser(req).id, req.params.id, tx);
+      if (!task) return null;
+      const result = await ensureReviewMetricsForTask(task, tx);
+      if (result.createdCount > 0) {
+        await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
+          workspaceId: task.project.workspaceId,
+          projectId: task.projectId,
           taskId: task.id,
-          snapshotIds: initialized.snapshotIds,
-          metricCount: initialized.createdCount,
-          source: "NormalizedMetric"
-        }
-      });
-    }
+          detailJson: {
+            taskId: task.id,
+            snapshotIds: result.snapshotIds,
+            metricCount: result.createdCount,
+            source: "NormalizedMetric"
+          }
+        }, tx);
+      }
+      return result;
+    });
+    if (!initialized) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     return sendSuccess(res, initialized.metrics.map(toReviewedMetricDTO));
   });
 
@@ -1197,66 +1237,85 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     const user = currentUser(req);
     const parsed = reviewMetricInputSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "复核参数错误");
-    const metric = await getOwnedReviewedMetric(user.id, req.params.id);
-    if (!metric) return sendError(res, 404, "REVIEW_METRIC_NOT_FOUND", "复核指标不存在");
-
-    const patch = normalizeReviewPatch(metric, parsed.data);
-    const updated = await prisma.reviewedMetric.update({
-      where: { id: metric.id },
-      data: {
-        reviewedValue: patch.reviewedValue,
-        reviewStatus: patch.reviewStatus,
-        ...(patch.reviewStatus === "MODIFIED"
-          ? {
-              metricSource: "MANUAL_INPUT" as const,
-              rawEvidence: toJson({
-                sourceType: "MANUAL_INPUT",
-                path: "reviewedValue",
-                originalSource: metric.metricSource,
-                originalEvidence: metric.rawEvidence || null
-              })
-            }
-          : {}),
-        reviewerId: user.id,
-        reviewedAt: new Date(),
-        confidence: 1
-      }
-    });
-    await writeAuditLog(req, "REVIEW_METRIC_UPDATE", {
-      workspaceId: metric.task.project.workspaceId,
-      projectId: metric.task.projectId,
-      taskId: metric.taskId,
-      detailJson: {
+    const reviewedValueInput = readSafeOptionalText(parsed.data.reviewedValue, 1_000);
+    if (reviewedValueInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", reviewedValueInput.error);
+    const updated = await prisma.$transaction(async (tx) => {
+      const metric = await tx.reviewedMetric.findFirst({
+        where: { id: req.params.id, task: { project: { workspace: { ownerId: user.id } } } },
+        include: { task: { include: { project: true } } }
+      });
+      if (!metric) return null;
+      const patch = normalizeReviewPatch(metric, { ...parsed.data, reviewedValue: reviewedValueInput.value || undefined });
+      const current = await tx.reviewedMetric.update({
+        where: { id: metric.id },
+        data: {
+          reviewedValue: patch.reviewedValue,
+          reviewStatus: patch.reviewStatus,
+          ...(patch.reviewStatus === "MODIFIED"
+            ? {
+                metricSource: "MANUAL_INPUT" as const,
+                rawEvidence: toJson({
+                  sourceType: "MANUAL_INPUT",
+                  path: "reviewedValue",
+                  originalSource: metric.metricSource,
+                  originalEvidence: metric.rawEvidence || null
+                })
+              }
+            : {}),
+          reviewerId: user.id,
+          reviewedAt: new Date(),
+          confidence: 1
+        }
+      });
+      await writeAuditLog(req, "REVIEW_METRIC_UPDATE", {
+        workspaceId: metric.task.project.workspaceId,
+        projectId: metric.task.projectId,
         taskId: metric.taskId,
-        metricId: metric.id,
-        metricKey: metric.metricKey,
-        oldValue: metric.reviewedValue || metric.originalValue,
-        newValue: updated.reviewedValue,
-        reviewStatus: updated.reviewStatus,
-        source: updated.metricSource
-      }
+        detailJson: {
+          taskId: metric.taskId,
+          metricId: metric.id,
+          metricKey: metric.metricKey,
+          oldValue: metric.reviewedValue || metric.originalValue,
+          newValue: current.reviewedValue,
+          reviewStatus: current.reviewStatus,
+          source: current.metricSource
+        }
+      }, tx);
+      return current;
     });
+    if (!updated) return sendError(res, 404, "REVIEW_METRIC_NOT_FOUND", "复核指标不存在");
     return sendSuccess(res, toReviewedMetricDTO(updated));
   });
 
   app.post("/collection-tasks/:id/review-metrics/bulk", async (req, res) => {
     const user = currentUser(req);
-    const task = await getOwnedTask(user.id, req.params.id);
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const parsed = bulkReviewMetricInputSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "复核参数错误");
+    const reviewInputs = parsed.data.items.map((item) => ({
+      ...item,
+      reviewedValueInput: readSafeOptionalText(item.reviewedValue, 1_000)
+    }));
+    const invalidReviewInput = reviewInputs.find((item) => item.reviewedValueInput.error);
+    if (invalidReviewInput?.reviewedValueInput.error) {
+      return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", invalidReviewInput.reviewedValueInput.error);
+    }
 
-    const metricIds = parsed.data.items.map((item) => item.metricId);
-    const metrics = await prisma.reviewedMetric.findMany({ where: { id: { in: metricIds }, taskId: task.id } });
-    if (metrics.length !== metricIds.length) return sendError(res, 404, "REVIEW_METRIC_NOT_FOUND", "存在不属于该任务的复核指标");
-    const byId = new Map(metrics.map((metric) => [metric.id, metric]));
-    const now = new Date();
-    const updated = await prisma.$transaction(
-      parsed.data.items.map((item) => {
+    const metricIds = reviewInputs.map((item) => item.metricId);
+    const result = await prisma.$transaction(async (tx) => {
+      const task = await tx.collectionTask.findFirst({
+        where: { id: req.params.id, project: { workspace: { ownerId: user.id } } },
+        include: { project: true }
+      });
+      if (!task) return { error: "TASK_NOT_FOUND" as const };
+      const metrics = await tx.reviewedMetric.findMany({ where: { id: { in: metricIds }, taskId: task.id } });
+      if (metrics.length !== metricIds.length) return { error: "REVIEW_METRIC_NOT_FOUND" as const };
+      const byId = new Map(metrics.map((metric) => [metric.id, metric]));
+      const now = new Date();
+      const updated = await Promise.all(reviewInputs.map((item) => {
         const metric = byId.get(item.metricId);
         if (!metric) throw new Error("REVIEW_METRIC_NOT_FOUND");
-        const patch = normalizeReviewPatch(metric, item);
-        return prisma.reviewedMetric.update({
+        const patch = normalizeReviewPatch(metric, { ...item, reviewedValue: item.reviewedValueInput.value || undefined });
+        return tx.reviewedMetric.update({
           where: { id: metric.id },
           data: {
             reviewedValue: patch.reviewedValue,
@@ -1277,66 +1336,71 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             confidence: 1
           }
         });
-      })
-    );
-    await writeAuditLog(req, "REVIEW_METRICS_BULK_UPDATE", {
-      workspaceId: task.project.workspaceId,
-      projectId: task.projectId,
-      taskId: task.id,
-      detailJson: {
+      }));
+      await writeAuditLog(req, "REVIEW_METRICS_BULK_UPDATE", {
+        workspaceId: task.project.workspaceId,
+        projectId: task.projectId,
         taskId: task.id,
-        items: updated.map((metric) => ({
-          metricId: metric.id,
-          metricKey: metric.metricKey,
-          oldValue: byId.get(metric.id)?.reviewedValue || byId.get(metric.id)?.originalValue || null,
-          newValue: metric.reviewedValue,
-          reviewStatus: metric.reviewStatus,
-          source: metric.metricSource
-        }))
-      }
+        detailJson: {
+          taskId: task.id,
+          items: updated.map((metric) => ({
+            metricId: metric.id,
+            metricKey: metric.metricKey,
+            oldValue: byId.get(metric.id)?.reviewedValue || byId.get(metric.id)?.originalValue || null,
+            newValue: metric.reviewedValue,
+            reviewStatus: metric.reviewStatus,
+            source: metric.metricSource
+          }))
+        }
+      }, tx);
+      return { task, updated };
     });
-    return sendSuccess(res, updated.map(toReviewedMetricDTO));
+    if ("error" in result) {
+      if (result.error === "TASK_NOT_FOUND") {
+        return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+      }
+      return sendError(res, 404, "REVIEW_METRIC_NOT_FOUND", "存在不属于该任务的复核指标");
+    }
+    return sendSuccess(res, result.updated.map(toReviewedMetricDTO));
   });
 
   app.post("/collection-tasks/:id/review-metrics/confirm-all", async (req, res) => {
     const user = currentUser(req);
-    const task = await getOwnedTask(user.id, req.params.id);
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const initialized = await ensureReviewMetricsForTask(task);
-    const pending = initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING");
-    const now = new Date();
-    if (pending.length > 0) {
-      await prisma.$transaction(
-        pending.map((metric) =>
-          prisma.reviewedMetric.update({
-            where: { id: metric.id },
-            data: {
-              reviewStatus: "CONFIRMED",
-              reviewedValue: metric.originalValue || "",
-              reviewerId: user.id,
-              reviewedAt: now,
-              confidence: 1
-            }
-          })
-        )
-      );
-    }
-    const metrics = await prisma.reviewedMetric.findMany({
-      where: { taskId: task.id, snapshotId: { in: initialized.snapshotIds } },
-      orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
-    });
-    await writeAuditLog(req, "REVIEW_METRICS_CONFIRM_ALL", {
-      workspaceId: task.project.workspaceId,
-      projectId: task.projectId,
-      taskId: task.id,
-      detailJson: {
+    const result = await prisma.$transaction(async (tx) => {
+      const task = await getOwnedTask(user.id, req.params.id, tx);
+      if (!task) return null;
+      const initialized = await ensureReviewMetricsForTask(task, tx);
+      const pending = initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING");
+      const now = new Date();
+      const updates = await Promise.all(pending.map((metric) => tx.reviewedMetric.updateMany({
+        where: { id: metric.id, reviewStatus: "PENDING" },
+        data: {
+          reviewStatus: "CONFIRMED",
+          reviewedValue: metric.originalValue || "",
+          reviewerId: user.id,
+          reviewedAt: now,
+          confidence: 1
+        }
+      })));
+      const metrics = await tx.reviewedMetric.findMany({
+        where: { taskId: task.id, snapshotId: { in: initialized.snapshotIds } },
+        orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
+      });
+      await writeAuditLog(req, "REVIEW_METRICS_CONFIRM_ALL", {
+        workspaceId: task.project.workspaceId,
+        projectId: task.projectId,
         taskId: task.id,
-        snapshotIds: initialized.snapshotIds,
-        updatedCount: pending.length,
-        source: "ReviewedMetric"
-      }
+        detailJson: {
+          taskId: task.id,
+          snapshotIds: initialized.snapshotIds,
+          updatedCount: updates.reduce((count, update) => count + update.count, 0),
+          source: "ReviewedMetric"
+        }
+      }, tx);
+      return metrics;
     });
-    return sendSuccess(res, metrics.map(toReviewedMetricDTO));
+    if (!result) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    return sendSuccess(res, result.map(toReviewedMetricDTO));
   });
 
   app.post("/collection-tasks/:id/decision-preview", async (req, res) => {
@@ -1455,10 +1519,10 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             engineVersion: persistedOutput.engineVersion || "decision-engine-v0.1.0",
             ruleVersion: persistedOutput.ruleVersion || strategyVersion,
             strategyVersion: persistedOutput.strategyVersion || strategyVersion,
-            inputJson: toJson(input),
-            ruleResultJson: toJson(ruleOutput),
-            finalResultJson: toJson(persistedOutput),
-            manualCheckItemsJson: toJson(persistedOutput.manualCheckItems),
+            inputJson: toJson(sanitizeDerivedPersistedJson(input)),
+            ruleResultJson: toJson(sanitizeDerivedPersistedJson(ruleOutput)),
+            finalResultJson: toJson(sanitizeDerivedPersistedJson(persistedOutput)),
+            manualCheckItemsJson: toJson(sanitizeDerivedPersistedJson(persistedOutput.manualCheckItems)),
             riskLevel: persistedOutput.riskLevel,
             confidence: persistedOutput.confidence,
             diagnosis: persistedOutput.diagnosis
@@ -1613,9 +1677,9 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         collectionTaskId: task.id,
         provider: provider.name,
         model: provider.model,
-        promptVersion: "explanation-only-v0.1.2",
+        promptVersion: EXPLANATION_PROMPT_VERSION,
         status: "RUNNING",
-        requestPayload: toJson(input)
+        requestPayload: toJson(sanitizeDerivedPersistedJson(input))
       }
     });
 
@@ -1625,14 +1689,15 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         where: { id: analysisTask.id },
         data: {
           status: "SUCCEEDED",
-          responsePayload: toJson({
+          responsePayload: toJson(sanitizeDerivedPersistedJson({
             summary: output.summary,
             problems: output.problems,
             suggestions: output.suggestions,
             manualCheckItems: output.manualCheckItems,
             confidence: output.confidence,
+            decisionReference: output.decisionReference,
             finalActionsSource: "decision-engine"
-          })
+          }))
         }
       });
       await writeAuditLog(req, "ai_explanation.succeeded", {
@@ -1650,13 +1715,14 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             status: "SUCCEEDED",
             provider: "deterministic-fallback",
             model: "rule-template",
-            responsePayload: toJson({
+            responsePayload: toJson(sanitizeDerivedPersistedJson({
               summary: "AI解释服务正在渐进退避，当前请以确定性决策诊断、证据和人工复核项为准。",
               manualCheckItems: [{ title: "AI解释降级", reason: error.retryAt ? `预计 ${error.retryAt.toISOString()} 后进行半开探测。` : "等待下一次半开探测。" }],
               confidence: 1,
+              decisionReference: buildDecisionReferenceBundle(input),
               finalActionsSource: "decision-engine",
               fallback: true
-            })
+            }))
           }
         });
         await writeAuditLog(req, "ai_explanation.fallback", {
@@ -1667,7 +1733,8 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         });
         return sendSuccess(res, fallback, 201);
       }
-      const message = error instanceof Error ? error.message : "AI 分析失败";
+      const safeError = readSafeOptionalText(error instanceof Error ? error.message : "", 1_000);
+      const message = safeError.value || "AI 解释服务失败";
       const failed = await prisma.aiAnalysisTask.update({
         where: { id: analysisTask.id },
         data: { status: "FAILED", errorMessage: message }
@@ -1696,6 +1763,27 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     return sendSuccess(res, analyses);
   });
 
+  app.get("/collection-tasks/:id/analysis/latest", async (req, res) => {
+    const task = await getOwnedTaskAccess(currentUser(req).id, req.params.id);
+    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const analysis = await prisma.aiAnalysisTask.findFirst({
+      where: { collectionTaskId: task.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        status: true,
+        provider: true,
+        model: true,
+        promptVersion: true,
+        responsePayload: true,
+        errorMessage: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+    return sendSuccess(res, analysis);
+  });
+
   app.get("/projects/:id/audit-logs", async (req, res) => {
     const project = await getOwnedProject(currentUser(req).id, req.params.id);
     if (!project) return sendError(res, 404, "PROJECT_NOT_FOUND", "项目不存在");
@@ -1714,6 +1802,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     const requestId = getRequestId(res);
     console.error(`[${requestId}]`, sanitizeErrorForLog(error));
+    if (isDatabaseError(error)) queueSecurityMetrics([{ key: "database_errors" }]);
     if (isPublicServiceError(error)) {
       return sendError(res, error.statusCode, error.code, error.publicMessage, { requestId });
     }
@@ -1724,44 +1813,6 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     return sendError(res, 500, "INTERNAL_ERROR", message, { requestId });
   });
   return app;
-}
-
-async function expireProjectProposalsWithAudit(
-  req: Request,
-  project: { id: string; workspaceId: string }
-) {
-  const now = new Date();
-  return prisma.$transaction(async (tx) => {
-    const candidates = await tx.actionProposal.findMany({
-      where: {
-        projectId: project.id,
-        status: { in: ["PENDING_APPROVAL", "APPROVED", "OBSERVING"] },
-        expiresAt: { lte: now }
-      },
-      select: { id: true }
-    });
-    if (!candidates.length) return 0;
-    const result = await tx.actionProposal.updateMany({
-      where: {
-        id: { in: candidates.map((proposal) => proposal.id) },
-        status: { in: ["PENDING_APPROVAL", "APPROVED", "OBSERVING"] },
-        expiresAt: { lte: now }
-      },
-      data: { status: "EXPIRED" }
-    });
-    if (result.count) {
-      await writeAuditLog(req, "action_proposals.expired", {
-        workspaceId: project.workspaceId,
-        projectId: project.id,
-        detailJson: {
-          actionProposalIds: candidates.map((proposal) => proposal.id),
-          expiredCount: result.count,
-          source: "project_proposal_list"
-        }
-      }, tx);
-    }
-    return result.count;
-  });
 }
 
 function decisionReadiness(
@@ -1806,26 +1857,21 @@ function decisionReadiness(
 
 function evaluateAccountMatch(
   account: { platformAccountId: string | null; accountName: string },
-  snapshot: Pick<CollectionSnapshotPayload, "detectedAccountId" | "detectedAccountName">
-): { status: "MATCHED" | "MISMATCHED" | "UNVERIFIED"; reason: string } {
-  const expectedId = normalizeAccountValue(account.platformAccountId);
-  const expectedName = normalizeAccountValue(account.accountName);
-  const detectedId = normalizeAccountValue(snapshot.detectedAccountId);
-  const detectedName = normalizeAccountValue(snapshot.detectedAccountName);
-  if (expectedId && detectedId) {
-    return expectedId === detectedId
-      ? { status: "MATCHED", reason: "平台账号 ID 完全一致" }
-      : { status: "MISMATCHED", reason: "平台账号 ID 不一致" };
+  snapshot: {
+    sourceUrl?: string | null;
+    detectedAccountId?: string | null;
+    detectedAccountName?: string | null;
+    accountMatchEvidence?: CollectionSnapshotPayload["accountMatchEvidence"];
   }
-  if (expectedId) {
-    return { status: "UNVERIFIED", reason: "账号档案已有平台账号 ID，但当前页面未识别到账号 ID" };
-  }
-  if (expectedName && detectedName) {
-    return expectedName === detectedName
-      ? { status: "MATCHED", reason: "平台账号名称完全一致" }
-      : { status: "MISMATCHED", reason: "平台账号名称不一致" };
-  }
-  return { status: "UNVERIFIED", reason: "当前页面未识别到可核对的账号 ID 或账号名称" };
+) {
+  return evaluateAccountIdentityMatch({
+    expectedAccountId: account.platformAccountId,
+    expectedAccountName: account.accountName,
+    sourceUrl: snapshot.sourceUrl,
+    detectedAccountId: snapshot.detectedAccountId,
+    detectedAccountName: snapshot.detectedAccountName,
+    evidence: snapshot.accountMatchEvidence
+  });
 }
 
 function isPublicServiceError(error: unknown): error is { statusCode: number; code: string; publicMessage: string } {
@@ -1849,6 +1895,13 @@ function requestBodyWithinLimit(req: Request, maxBytes: number) {
 function isBodyTooLargeError(error: unknown) {
   return Boolean(error && typeof error === "object" && (error as { type?: string; status?: number }).type === "entity.too.large")
     || Boolean(error && typeof error === "object" && (error as { status?: number }).status === 413);
+}
+
+function isDatabaseError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; name?: unknown };
+  return (typeof candidate.code === "string" && /^P\d{4}$/.test(candidate.code))
+    || (typeof candidate.name === "string" && candidate.name.startsWith("Prisma"));
 }
 
 function rateLimitSubject(req: Request) {

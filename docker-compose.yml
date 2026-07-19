@@ -28,7 +28,7 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-}
         BUILD_TIME: ${BUILD_TIME:-}
-        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260717_v029_email_verification}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260720_v032_audit_actor_snapshot}
     restart: "no"
     environment:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
@@ -56,7 +56,7 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-}
         BUILD_TIME: ${BUILD_TIME:-}
-        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260717_v029_email_verification}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260720_v032_audit_actor_snapshot}
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
@@ -94,6 +94,37 @@ services:
     pids_limit: 256
     mem_limit: 512m
     cpus: 1.00
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+
+  retention:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+        BUILD_TIME: ${BUILD_TIME:-}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260720_v032_audit_actor_snapshot}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["node", "apps/api/dist/retention-scheduler.js"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.50
     read_only: true
     tmpfs:
       - /tmp

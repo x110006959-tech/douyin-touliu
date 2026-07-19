@@ -2,7 +2,7 @@ FROM node:22-alpine AS build
 
 ARG GIT_SHA=""
 ARG BUILD_TIME=""
-ARG SCHEMA_VERSION="20260717_v029_email_verification"
+ARG SCHEMA_VERSION="20260720_v032_audit_actor_snapshot"
 
 ENV GIT_SHA=$GIT_SHA
 ENV BUILD_TIME=$BUILD_TIME
@@ -29,7 +29,7 @@ FROM node:22-alpine AS runtime
 
 ARG GIT_SHA=""
 ARG BUILD_TIME=""
-ARG SCHEMA_VERSION="20260717_v029_email_verification"
+ARG SCHEMA_VERSION="20260720_v032_audit_actor_snapshot"
 
 ENV NODE_ENV=production
 ENV GIT_SHA=$GIT_SHA

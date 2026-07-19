@@ -231,7 +231,7 @@ describe("auth security controls", () => {
     expect(accepted.status).toBe(201);
   });
 
-  it("rejects same-site writes from a sibling origin", async () => {
+  it("accepts a configured same-site web origin only with the issued CSRF token", async () => {
     const registered = await registerAndVerify({
       method: "POST",
       body: { email: `csrf-same-site-${unique()}@example.com`, password: "password123", name: "CSRF Same Site" }
@@ -244,6 +244,26 @@ describe("auth security controls", () => {
       cookie,
       csrfToken,
       origin: "http://localhost:3000",
+      fetchSite: "same-site",
+      body: { name: "configured-same-site" }
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("rejects same-site writes from an unconfigured sibling origin", async () => {
+    const registered = await registerAndVerify({
+      method: "POST",
+      body: { email: `csrf-sibling-${unique()}@example.com`, password: "password123", name: "CSRF Sibling" }
+    });
+    const cookie = (registered.headers.get("set-cookie") || "").split(";")[0] || "";
+    const csrfToken = registered.envelope.success ? (registered.envelope.data as { csrfToken: string }).csrfToken : "";
+
+    const response = await rawApi("/workspaces", {
+      method: "POST",
+      cookie,
+      csrfToken,
+      origin: "http://attacker.localhost:3000",
       fetchSite: "same-site",
       body: { name: "sibling-origin" }
     });

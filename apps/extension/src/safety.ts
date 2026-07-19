@@ -3,16 +3,16 @@ import {
   sanitizeSensitiveData,
   shouldRedactSensitiveKey
 } from "@douyin-local-life/shared/safety";
+import { developmentLoopbackHostnames, isLocalBuild } from "./build-target";
 
 export const sanitizeSnapshotPayload = sanitizeCollectionSnapshotPayload;
 export const sanitizeSensitiveFields = sanitizeSensitiveData;
 export const shouldRedactKey = shouldRedactSensitiveKey;
-const isLocalBuild = typeof __PXXIS_EXTENSION_TARGET__ === "undefined" || __PXXIS_EXTENSION_TARGET__ === "local";
 
-export function normalizeApiBaseUrl(value: string) {
+export function normalizeApiBaseUrl(value: string, allowedLoopbackHostnames = developmentLoopbackHostnames) {
   try {
     const url = new URL(value);
-    const isLocal = isLocalBuild && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+    const isLocal = isLocalBuild && allowedLoopbackHostnames.includes(url.hostname);
     if (url.username || url.password || (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal))) return null;
     return url.href.replace(/\/$/, "");
   } catch {

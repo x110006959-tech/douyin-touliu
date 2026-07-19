@@ -5,10 +5,10 @@ import { isAllowedBridgeApiBaseUrl, isAllowedBridgeOrigin, parseBridgeRequest, s
 describe("extension web bridge protocol", () => {
   it("accepts only the product site and local development origins", () => {
     expect(isAllowedBridgeOrigin("https://www.pxxis.cn")).toBe(true);
-    expect(isAllowedBridgeOrigin("http://127.0.0.1:3300")).toBe(true);
+    expect(isAllowedBridgeOrigin("http://127.0.0.1:3300", ["localhost", "127.0.0.1"])).toBe(true);
     expect(isAllowedBridgeOrigin("https://attacker.example.com")).toBe(false);
     expect(isAllowedBridgeApiBaseUrl("https://api.pxxis.cn")).toBe(true);
-    expect(isAllowedBridgeApiBaseUrl("http://localhost:4300")).toBe(true);
+    expect(isAllowedBridgeApiBaseUrl("http://localhost:4300", ["localhost", "127.0.0.1"])).toBe(true);
     expect(isAllowedBridgeApiBaseUrl("https://attacker.example.com")).toBe(false);
   });
 
@@ -36,4 +36,3 @@ describe("extension web bridge protocol", () => {
     expect(JSON.stringify(response)).not.toMatch(/secret-token|Bearer private|private-cookie|private-password/);
   });
 });
-

@@ -19,19 +19,12 @@ type AuthPayload = {
   };
 };
 
-type RegistrationPayload = {
-  email: string;
-  verificationRequired: true;
-};
-
 export default function LoginPage() {
   const router = useRouter();
   const { token, hydrated, setToken } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState("");
 
   useEffect(() => { if (hydrated && token) router.replace("/dashboard"); }, [hydrated, token, router]);
 
@@ -43,14 +36,8 @@ export default function LoginPage() {
     try {
       const body = {
         email: form.get("email"),
-        password: form.get("password"),
-        name: form.get("name")
+        password: form.get("password")
       };
-      if (mode === "register") {
-        const payload = await apiFetch<RegistrationPayload>("/auth/register", null, { method: "POST", body: JSON.stringify(body) });
-        setPendingEmail(payload.email);
-        return;
-      }
       const payload = await apiFetch<AuthPayload>("/auth/login", null, {
         method: "POST",
         body: JSON.stringify(body)
@@ -64,22 +51,6 @@ export default function LoginPage() {
   }
 
   if (!hydrated || token) return <main className="flex min-h-screen items-center justify-center bg-[#f3f6fa] text-sm text-muted">正在确认登录状态...</main>;
-
-  async function resendVerification() {
-    if (!pendingEmail || submitting) return;
-    setError("");
-    setSubmitting(true);
-    try {
-      await apiFetch<RegistrationPayload>("/auth/email-verifications/resend", null, {
-        method: "POST",
-        body: JSON.stringify({ email: pendingEmail })
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "验证邮件发送失败");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   return (
     <main className="min-h-screen bg-[#f3f6fa]">
@@ -108,29 +79,15 @@ export default function LoginPage() {
         </section>
 
         <Card className="border-[#d7dee7] p-6 shadow-[0_18px_50px_rgba(20,33,61,0.08)] sm:p-7">
-          {pendingEmail ? (
-            <div className="grid gap-4">
-              <p className="text-xs font-semibold text-primary">还差一步</p>
-              <CardTitle>请验证你的邮箱</CardTitle>
-              <p className="text-sm leading-6 text-muted">验证邮件已发送至 {pendingEmail}。请在 30 分钟内打开邮件中的链接；完成后将自动登录。</p>
-              {error ? <div className="rounded-md border border-danger bg-[#fff7f7] px-3 py-2 text-sm text-danger">{error}</div> : null}
-              <Button className="h-11" disabled={submitting} type="button" onClick={() => void resendVerification()}>{submitting ? "正在发送..." : "重新发送验证邮件"}</Button>
-              <button className="py-1 text-sm font-medium text-primary hover:underline" disabled={submitting} type="button" onClick={() => { setPendingEmail(""); setError(""); setMode("login"); }}>返回登录</button>
-            </div>
-          ) : <>
-          <p className="text-xs font-semibold text-primary">{mode === "login" ? "欢迎回来" : "首次使用"}</p>
-          <CardTitle className="mb-5 mt-2 text-xl">{mode === "login" ? "登录工作台" : "注册工作台账号"}</CardTitle>
+          <p className="text-xs font-semibold text-primary">欢迎回来</p>
+          <CardTitle className="mb-5 mt-2 text-xl">登录工作台</CardTitle>
+          <p className="mb-5 text-sm leading-6 text-muted">请使用管理员发放的账号登录；公开注册入口暂不展示。</p>
           <form className="grid gap-4" onSubmit={submit}>
-            {mode === "register" ? <label className="grid gap-1 text-sm">姓名（选填）<Input autoComplete="name" maxLength={100} name="name" placeholder="例如：张三" />{fieldErrors.name ? <span className="text-xs text-danger">{fieldErrors.name}</span> : null}</label> : null}
             <label className="grid gap-1 text-sm">邮箱<Input autoComplete="email" maxLength={128} name="email" type="email" placeholder="name@example.com" required />{fieldErrors.email ? <span className="text-xs text-danger">{fieldErrors.email}</span> : null}</label>
-            <label className="grid gap-1 text-sm">密码<Input autoComplete={mode === "login" ? "current-password" : "new-password"} name="password" type="password" minLength={6} maxLength={128} placeholder="至少 6 位" required />{fieldErrors.password ? <span className="text-xs text-danger">{fieldErrors.password}</span> : null}</label>
+            <label className="grid gap-1 text-sm">密码<Input autoComplete="current-password" name="password" type="password" minLength={6} maxLength={128} placeholder="至少 6 位" required />{fieldErrors.password ? <span className="text-xs text-danger">{fieldErrors.password}</span> : null}</label>
             {error ? <div className="rounded-md border border-danger bg-[#fff7f7] px-3 py-2 text-sm text-danger">{error}</div> : null}
-            <Button className="mt-1 h-11" disabled={submitting} type="submit">{submitting ? "正在提交..." : mode === "login" ? "登录并进入工作台" : "注册并进入工作台"}</Button>
-            <button className="py-1 text-sm font-medium text-primary hover:underline" disabled={submitting} type="button" onClick={() => { setError(""); setFieldErrors({}); setMode(mode === "login" ? "register" : "login"); }}>
-              {mode === "login" ? "第一次使用？创建账号" : "已有账号？返回登录"}
-            </button>
+            <Button className="mt-1 h-11" disabled={submitting} type="submit">{submitting ? "正在登录..." : "登录并进入工作台"}</Button>
           </form>
-          </>}
         </Card>
       </div>
     </main>

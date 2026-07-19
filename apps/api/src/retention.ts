@@ -32,7 +32,8 @@ type StructuredDataReport = Record<
   | "actionProposals"
   | "decisionRuns"
   | "aiAnalysisTasks"
-  | "auditLogs",
+  | "auditLogs"
+  | "securityMetrics",
   OperationReport
 >;
 
@@ -127,7 +128,11 @@ async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, b
     selectIds: () => selectRows(client, snapshotVisibleMetricsIdsQuery(cutoff, batchSize)),
     process: async (ids) => (await client.$transaction((tx) => tx.dataSnapshot.updateMany({
       where: { id: { in: ids } },
-      data: { visibleMetricsJson: Prisma.DbNull }
+      data: {
+        visibleMetricsJson: Prisma.DbNull,
+        structuredDataJson: Prisma.DbNull,
+        structuredDataVersion: null
+      }
     }))).count
   });
   const normalizedMetrics = await executeOperation({
@@ -226,6 +231,15 @@ async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, b
     })).map((row) => row.id),
     process: async (ids) => (await client.$transaction((tx) => tx.auditLog.deleteMany({ where: { id: { in: ids } } }))).count
   });
+  const securityMetrics = await executeOperation({
+    mode,
+    batchSize,
+    count: () => client.securityMetric.count({ where: { windowStartedAt: { lt: cutoff } } }),
+    selectIds: async () => (await client.securityMetric.findMany({
+      where: { windowStartedAt: { lt: cutoff } }, orderBy: [{ windowStartedAt: "asc" }, { id: "asc" }], take: batchSize, select: { id: true }
+    })).map((row) => row.id),
+    process: async (ids) => (await client.$transaction((tx) => tx.securityMetric.deleteMany({ where: { id: { in: ids } } }))).count
+  });
 
   return {
     snapshotVisibleMetrics,
@@ -238,7 +252,8 @@ async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, b
     actionProposals,
     decisionRuns,
     aiAnalysisTasks,
-    auditLogs
+    auditLogs,
+    securityMetrics
   };
 }
 
@@ -314,13 +329,19 @@ function rawSnapshotEvidenceIdsQuery(cutoff: Date, batchSize: number) {
 }
 
 function snapshotVisibleMetricsCountQuery(cutoff: Date) {
-  return Prisma.sql`SELECT COUNT(*) AS "count" FROM "DataSnapshot" WHERE "uploadedAt" < ${cutoff} AND "visibleMetricsJson" IS NOT NULL`;
+  return Prisma.sql`
+    SELECT COUNT(*) AS "count"
+    FROM "DataSnapshot"
+    WHERE "uploadedAt" < ${cutoff}
+      AND ("visibleMetricsJson" IS NOT NULL OR "structuredDataJson" IS NOT NULL)
+  `;
 }
 
 function snapshotVisibleMetricsIdsQuery(cutoff: Date, batchSize: number) {
   return Prisma.sql`
     SELECT "id" FROM "DataSnapshot"
-    WHERE "uploadedAt" < ${cutoff} AND "visibleMetricsJson" IS NOT NULL
+    WHERE "uploadedAt" < ${cutoff}
+      AND ("visibleMetricsJson" IS NOT NULL OR "structuredDataJson" IS NOT NULL)
     ORDER BY "uploadedAt" ASC, "id" ASC LIMIT ${batchSize}
   `;
 }

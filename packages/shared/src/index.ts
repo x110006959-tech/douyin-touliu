@@ -2,12 +2,16 @@ import { z } from "zod";
 import { snapshotSafetyLimits } from "./safety.js";
 import { collectionRouteKeys } from "./collection-routes.js";
 import { decisionTableInputSchema, type DecisionTableInput } from "./decision-tables.js";
+import { accountMatchEvidenceSchema, type AccountMatchEvidence } from "./account-evidence.js";
+import { collectionRouteDiagnosticSchema } from "./collection-diagnostics.js";
+import { structuredCollectionDataSchema } from "./collection-records.js";
 export { failure, success, type ApiResponse } from "./api-response.js";
-
+export * from "./account-evidence.js";
 export * from "./safety.js";
 export * from "./collection-routes.js";
+export * from "./collection-diagnostics.js";
+export * from "./collection-records.js";
 export * from "./decision-tables.js";
-
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
   "SUBJECT_PENDING",
@@ -149,7 +153,7 @@ export const extensionConnectionStates = [
   "ERROR"
 ] as const;
 export const extensionBridgeProtocolVersion = 2 as const;
-export const captureSummaryRouteStates = ["PENDING", "READY", "UPLOADED", "PARTIAL", "UNVERIFIED", "MANUAL_PENDING", "STALE", "FAILED"] as const;
+export const captureSummaryRouteStates = ["PENDING", "READY", "UPLOADED", "AGING", "PARTIAL", "UNVERIFIED", "MANUAL_PENDING", "STALE", "FAILED"] as const;
 export const realtimeSignalKinds = ["ROI_CHANGE", "SPEND_ACCELERATION", "ORDER_STALL", "TRAFFIC_CHANGE", "DATA_STALE", "PAGE_INACTIVE"] as const;
 export const realtimeSignalSeverities = ["INFO", "WARNING", "CRITICAL"] as const;
 export const extensionCredentialScopes = ["COLLECT", "READ_DIAGNOSIS"] as const;
@@ -672,12 +676,6 @@ export type CollectionSnapshotPayload = {
   detectedAccountName?: string | null;
   accountMatchEvidence?: AccountMatchEvidence | null;
 };
-
-export type AccountMatchEvidence = {
-  idSource: string | null;
-  nameSource: string | null;
-};
-
 export type ExtensionHeartbeatPayload = {
   collectionTaskId: string;
   extensionVersion: string;
@@ -690,6 +688,7 @@ export type ExtensionHeartbeatPayload = {
   tabState: CaptureTabState;
   detectedAccountId?: string | null;
   detectedAccountName?: string | null;
+  accountMatchEvidence?: AccountMatchEvidence | null;
   accountMatchStatus: AccountMatchStatus;
   lastError?: string | null;
   observedAt: string;
@@ -729,8 +728,8 @@ export type CaptureSummaryMetricDTO = {
   pageType: string | null;
   capturedAt: string;
   reviewStatus: MetricReviewStatus;
+  provenance: import("./collection-diagnostics.js").CollectionDataProvenance;
 };
-
 export type CaptureSummaryDTO = {
   snapshotCount: number;
   latestCapturedAt: string | null;
@@ -758,8 +757,10 @@ export type CaptureSummaryDTO = {
     metricCount: number;
     coverageRatio: number | null;
     lastError: string | null;
+    diagnostic: import("./collection-diagnostics.js").CollectionRouteDiagnostic;
   }>;
   metrics: CaptureSummaryMetricDTO[];
+  structuredData: import("./collection-records.js").StructuredCollectionData[];
   tables: Array<{
     routeKey: import("./collection-routes.js").CollectionRouteKey | null;
     pageType: string | null;
@@ -810,8 +811,10 @@ export type MetricPulse = {
   tabState: CaptureTabState;
   metrics: VisibleMetric[];
   captureMeta: CaptureMeta;
+  sourceUrl?: string | null;
   detectedAccountId?: string | null;
   detectedAccountName?: string | null;
+  accountMatchEvidence?: AccountMatchEvidence | null;
 };
 
 export type RealtimeSignal = {
@@ -888,7 +891,6 @@ export const decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"] as
 export type DiagnosticDimension = (typeof diagnosticDimensions)[number];
 export type RecommendationPriority = (typeof recommendationPriorities)[number];
 export type DecisionAnalysisMode = (typeof decisionAnalysisModes)[number];
-
 export type DiagnosticFinding = {
   dimension: DiagnosticDimension;
   title: string;
@@ -907,7 +909,6 @@ export type OptimizationRecommendation = {
   verifyMetrics: string[];
   ruleBoundary: string;
 };
-
 export type EvidenceBackedOptimizationRecommendation = OptimizationRecommendation & {
   evidence: string[];
 };
@@ -959,6 +960,7 @@ export type DecisionEngineInput = {
   sourceUrl: string;
   metrics: VisibleMetric[];
   tables: DecisionTableInput[];
+  structuredCollectionData?: import("./collection-records.js").StructuredCollectionData[];
   visibleText: string;
   networkJsonSummary: CapturedNetworkRecord[];
   targetRoi?: number | null;
@@ -1182,10 +1184,7 @@ export const collectionSnapshotSchema = z.object({
   captureMeta: captureMetaSchema.optional(),
   detectedAccountId: z.string().trim().max(200).nullable().optional(),
   detectedAccountName: z.string().trim().max(200).nullable().optional(),
-  accountMatchEvidence: z.object({
-    idSource: z.string().trim().max(100).nullable(),
-    nameSource: z.string().trim().max(100).nullable()
-  }).strict().nullable().optional()
+  accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
 });
 
 export const createExtensionPairingCodeSchema = z.object({
@@ -1215,6 +1214,7 @@ export const extensionHeartbeatSchema = z.object({
   tabState: z.enum(captureTabStates),
   detectedAccountId: z.string().trim().max(200).nullable().optional(),
   detectedAccountName: z.string().trim().max(200).nullable().optional(),
+  accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional(),
   accountMatchStatus: z.enum(accountMatchStatuses),
   lastError: z.string().trim().max(500).nullable().optional(),
   observedAt: z.string().datetime()
@@ -1243,8 +1243,10 @@ export const metricPulseSchema = z.object({
   tabState: z.enum(captureTabStates),
   metrics: z.array(visibleMetricSchema).max(32),
   captureMeta: captureMetaSchema,
+  sourceUrl: z.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
   detectedAccountId: z.string().trim().max(200).nullable().optional(),
-  detectedAccountName: z.string().trim().max(200).nullable().optional()
+  detectedAccountName: z.string().trim().max(200).nullable().optional(),
+  accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
 });
 
 export const manualCheckItemSchema = z.object({
@@ -1277,6 +1279,7 @@ export const decisionDataQualitySchema = z.object({
       lastCollectedAt: z.string().datetime().nullable(),
       ageMs: z.number().nonnegative().nullable()
     })),
+    diagnostics: z.array(collectionRouteDiagnosticSchema).optional(),
     completeness: z.number().min(0).max(1),
     missingRoutes: z.array(z.enum(collectionRouteKeys)),
     staleRoutes: z.array(z.enum(collectionRouteKeys)),
@@ -1392,6 +1395,7 @@ export const decisionEngineInputSchema = z.object({
   sourceUrl: z.string().default(""),
   metrics: z.array(visibleMetricSchema),
   tables: z.array(decisionTableInputSchema),
+  structuredCollectionData: z.array(structuredCollectionDataSchema).optional(),
   visibleText: z.string().default(""),
   networkJsonSummary: z.array(networkRecordSchema).max(50),
   targetRoi: z.number().nullable().optional(),
@@ -1408,6 +1412,7 @@ export const decisionEngineInputSchema = z.object({
       lastCollectedAt: z.string().datetime().nullable(),
       ageMs: z.number().nonnegative().nullable()
     })),
+    diagnostics: z.array(collectionRouteDiagnosticSchema).optional(),
     completeness: z.number().min(0).max(1),
     missingRoutes: z.array(z.enum(collectionRouteKeys)),
     staleRoutes: z.array(z.enum(collectionRouteKeys)),

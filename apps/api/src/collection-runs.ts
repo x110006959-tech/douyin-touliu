@@ -4,6 +4,8 @@ import {
   collectionFreshnessPolicy,
   collectionRouteKeys,
   defaultRequiredCollectionRoutes,
+  evaluateCollectionRouteDiagnostic,
+  normalizeCollectionRouteKey,
   type CollectionRouteKey
 } from "@douyin-local-life/shared";
 import { z } from "zod";
@@ -11,12 +13,25 @@ import { prisma } from "./prisma.js";
 import { findCurrentSnapshotIdsByRoute } from "./current-snapshots.js";
 
 export const createCollectionRunSchema = z.object({
-  requiredRoutes: z.array(z.enum(collectionRouteKeys)).min(1).max(collectionRouteKeys.length).default(defaultRequiredCollectionRoutes)
+  requiredRoutes: z.array(z.enum(collectionRouteKeys))
+    .min(1)
+    .max(collectionRouteKeys.length)
+    .refine((routes) => routes.every((route) => route !== "UNKNOWN"), "采集路线不能包含 UNKNOWN")
+    .default(defaultRequiredCollectionRoutes)
 });
 
 export const reportCollectionRouteFailureSchema = z.object({
-  routeKey: z.enum(collectionRouteKeys),
-  error: z.string().trim().min(1).max(500)
+  routeKey: z.enum(collectionRouteKeys).refine((route) => route !== "UNKNOWN", "失败路线不能为 UNKNOWN"),
+  errorCode: z.enum([
+    "CONTENT_SCRIPT_UNAVAILABLE",
+    "PAGE_NOT_READY",
+    "ROUTE_UNVERIFIED",
+    "ACCOUNT_UNVERIFIED",
+    "UPLOAD_NETWORK_ERROR",
+    "UPLOAD_HTTP_ERROR",
+    "UNKNOWN"
+  ]).default("UNKNOWN"),
+  error: z.string().trim().min(1).max(500).optional()
 });
 
 export function requiredRoutesFromJson(value: Prisma.JsonValue | null | undefined): CollectionRouteKey[] {
@@ -33,22 +48,80 @@ export function assessCollectionRunQuality(
     sourceUrl?: string | null;
     pageTitle?: string | null;
     localCollectedAt: Date | string;
+    id?: string;
+    accountMatchStatus?: string | null;
+    routeVerificationStatus?: string | null;
+    captureMetaJson?: Prisma.JsonValue | null;
   }>,
-  routeHealth: Array<{ routeKey: string; consecutiveFailures: number }> = []
+  routeHealth: Array<{
+    routeKey: string;
+    consecutiveFailures: number;
+    lastAttemptAt?: Date | string | null;
+    lastSuccessAt?: Date | string | null;
+    lastErrorCode?: string | null;
+    lastError?: string | null;
+  }> = [],
+  context: {
+    startedAt?: Date | string | null;
+    status?: CollectionRunStatus;
+    now?: Date;
+  } = {}
 ) {
-  const quality = assessCollectionQuality(requiredRoutesFromJson(requiredRoutesJson), snapshots);
-  const failedRoutes = routeHealth
-    .filter((route) => route.consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold)
-    .map((route) => route.routeKey as CollectionRouteKey)
-    .filter((route) => quality.requiredRoutes.includes(route));
-  if (!failedRoutes.length) return quality;
-
-  quality.staleRoutes = [...new Set([...quality.staleRoutes, ...failedRoutes])];
-  quality.blocksStrongActions = true;
+  const now = context.now || new Date();
+  const quality = assessCollectionQuality(requiredRoutesFromJson(requiredRoutesJson), snapshots, now);
+  const latestSnapshots = new Map<CollectionRouteKey, typeof snapshots[number]>();
+  for (const snapshot of snapshots) {
+    const routeKey = normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType);
+    const current = latestSnapshots.get(routeKey);
+    if (!current || new Date(snapshot.localCollectedAt) > new Date(current.localCollectedAt)) {
+      latestSnapshots.set(routeKey, snapshot);
+    }
+  }
+  const heartbeatByRoute = new Map(routeHealth.map((heartbeat) => [
+    normalizeCollectionRouteKey(heartbeat.routeKey),
+    heartbeat
+  ]));
+  quality.diagnostics = quality.requiredRoutes.map((routeKey) => {
+    const snapshot = latestSnapshots.get(routeKey);
+    return evaluateCollectionRouteDiagnostic({
+      routeKey,
+      required: true,
+      runActive: context.status === "ACTIVE" || context.status === "DEGRADED",
+      runStartedAt: context.startedAt,
+      snapshot: snapshot ? {
+        id: snapshot.id,
+        localCollectedAt: snapshot.localCollectedAt,
+        accountMatchStatus: snapshot.accountMatchStatus,
+        routeVerificationStatus: snapshot.routeVerificationStatus,
+        captureMeta: readCaptureMeta(snapshot.captureMetaJson)
+      } : null,
+      heartbeat: heartbeatByRoute.get(routeKey)
+    }, now.getTime());
+  });
+  const blockedRoutes = quality.diagnostics
+    .filter((diagnostic) => diagnostic.blocksStrongActions)
+    .map((diagnostic) => diagnostic.routeKey);
+  quality.staleRoutes = [...new Set([
+    ...quality.staleRoutes,
+    ...quality.diagnostics
+      .filter((diagnostic) => diagnostic.summaryStatus === "FAILED")
+      .map((diagnostic) => diagnostic.routeKey)
+  ])];
+  const failedRoutes = new Set(quality.diagnostics
+    .filter((diagnostic) => diagnostic.summaryStatus === "FAILED")
+    .map((diagnostic) => diagnostic.routeKey));
   quality.routes = quality.routes.map((route) =>
-    failedRoutes.includes(route.routeKey) && route.state !== "MISSING" ? { ...route, state: "STALE" } : route
+    failedRoutes.has(route.routeKey) && route.state !== "MISSING"
+      ? { ...route, state: "STALE" }
+      : route
   );
+  quality.blocksStrongActions = blockedRoutes.length > 0;
   return quality;
+}
+
+export function sameCollectionRouteSet(left: readonly CollectionRouteKey[], right: readonly CollectionRouteKey[]) {
+  const normalize = (routes: readonly CollectionRouteKey[]) => [...new Set(routes)].sort();
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
 }
 
 export async function hydrateCurrentRunSnapshots<T extends { id: string; taskId: string; requiredRoutesJson: Prisma.JsonValue }>(
@@ -65,7 +138,16 @@ export async function hydrateCurrentRunSnapshots<T extends { id: string; taskId:
   const snapshots = ids.length ? await client.dataSnapshot.findMany({
     where: { id: { in: ids } },
     orderBy: [{ localCollectedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-    select: { id: true, collectionRunId: true, routeKey: true, pageType: true, localCollectedAt: true }
+    select: {
+      id: true,
+      collectionRunId: true,
+      routeKey: true,
+      pageType: true,
+      localCollectedAt: true,
+      accountMatchStatus: true,
+      routeVerificationStatus: true,
+      captureMetaJson: true
+    }
   }) : [];
   const byId = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
   return runs.map((run) => ({
@@ -106,10 +188,14 @@ export function toCollectionRunDTO(run: {
     consecutiveFailures: number;
     lastAttemptAt: Date;
     lastSuccessAt: Date | null;
+    lastErrorCode?: string | null;
     lastError: string | null;
   }>;
 }) {
-  const quality = assessCollectionRunQuality(run.requiredRoutesJson, run.snapshots, run.routeHealth);
+  const quality = assessCollectionRunQuality(run.requiredRoutesJson, run.snapshots, run.routeHealth, {
+    startedAt: run.startedAt,
+    status: run.status
+  });
   const consecutiveFailureState = run.routeHealth?.some(
     (route) => route.consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold
   ) || run.status === "DEGRADED";
@@ -139,7 +225,10 @@ export async function refreshCollectionRunStatus(tx: Prisma.TransactionClient, c
   });
   if (!run || run.status === "STOPPED") return run;
   const snapshots = (await hydrateCurrentRunSnapshots(tx, [run]))[0]?.snapshots || [];
-  const quality = assessCollectionRunQuality(run.requiredRoutesJson, snapshots, run.routeHealth);
+  const quality = assessCollectionRunQuality(run.requiredRoutesJson, snapshots, run.routeHealth, {
+    startedAt: run.startedAt,
+    status: run.status
+  });
   const status: CollectionRunStatus = run.routeHealth.some((route) => route.consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold)
     ? "DEGRADED"
     : quality.blocksStrongActions
@@ -153,4 +242,25 @@ export async function refreshCollectionRunStatus(tx: Prisma.TransactionClient, c
       completedAt: status === "COMPLETED" ? run.completedAt || new Date() : null
     }
   });
+}
+
+function readCaptureMeta(value: Prisma.JsonValue | null | undefined) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  return {
+    completeness: typeof candidate.completeness === "string" ? candidate.completeness : null,
+    coverageRatio: typeof candidate.coverageRatio === "number" ? candidate.coverageRatio : null,
+    adapterId: typeof candidate.adapterId === "string" ? candidate.adapterId : null,
+    adapterVersion: typeof candidate.adapterVersion === "string" ? candidate.adapterVersion : null,
+    pageFingerprint: typeof candidate.pageFingerprint === "string" ? candidate.pageFingerprint : null,
+    expectedFields: Array.isArray(candidate.expectedFields)
+      ? candidate.expectedFields.filter((item): item is string => typeof item === "string")
+      : [],
+    extractedFields: Array.isArray(candidate.extractedFields)
+      ? candidate.extractedFields.filter((item): item is string => typeof item === "string")
+      : [],
+    truncationReasons: Array.isArray(candidate.truncationReasons)
+      ? candidate.truncationReasons.filter((item): item is string => typeof item === "string")
+      : []
+  };
 }

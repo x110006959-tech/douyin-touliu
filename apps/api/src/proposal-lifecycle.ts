@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import type { ActionProposalDTO, ActionType } from "@douyin-local-life/shared";
+import type { ActionProposalDTO, ActionProposalStatus, ActionType } from "@douyin-local-life/shared";
 
 export const proposalLifecyclePolicy = {
   expiresAfterMs: 30 * 60 * 1000,
@@ -31,8 +31,39 @@ const safeActionTypes = new Set<ActionType>([
   "REQUEST_MANUAL_REVIEW"
 ]);
 
+const expirableProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "OBSERVING"] as const;
+const expirableProposalStatusSet = new Set<ActionProposalStatus>(expirableProposalStatuses);
+
 export function isSafeActionType(actionType: ActionType) {
   return safeActionTypes.has(actionType);
+}
+
+export function readableActionProposalStatus(status: ActionProposalStatus, expiresAt: Date | null, now = new Date()) {
+  if (expiresAt && expiresAt <= now && expirableProposalStatusSet.has(status)) return "EXPIRED" as const;
+  return status;
+}
+
+export function toReadableActionProposal<T extends { status: ActionProposalStatus; expiresAt: Date | null }>(proposal: T, now = new Date()) {
+  return { ...proposal, status: readableActionProposalStatus(proposal.status, proposal.expiresAt, now) };
+}
+
+export function actionProposalStatusFilter(status: ActionProposalStatus | undefined, now = new Date()): Prisma.ActionProposalWhereInput {
+  if (!status) return {};
+  if (status === "EXPIRED") {
+    return {
+      OR: [
+        { status: "EXPIRED" },
+        { status: { in: [...expirableProposalStatuses] }, expiresAt: { lte: now } }
+      ]
+    };
+  }
+  if (expirableProposalStatusSet.has(status)) {
+    return {
+      status,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+    };
+  }
+  return { status };
 }
 
 export async function prepareActionProposals(
@@ -131,16 +162,4 @@ async function reserveStrongProposalQuota(tx: Prisma.TransactionClient, projectI
     RETURNING "strongCount"
   `);
   return rows.length > 0;
-}
-
-export async function expireProposalIfNeeded(tx: Prisma.TransactionClient, actionProposalId: string, now = new Date()) {
-  const result = await tx.actionProposal.updateMany({
-    where: {
-      id: actionProposalId,
-      status: { in: ["PENDING_APPROVAL", "APPROVED", "OBSERVING"] },
-      expiresAt: { lte: now }
-    },
-    data: { status: "EXPIRED" }
-  });
-  return result.count > 0;
 }

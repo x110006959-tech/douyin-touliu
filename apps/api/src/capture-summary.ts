@@ -1,8 +1,10 @@
 import {
-  collectionFreshnessPolicy,
+  collectionDataProvenance,
+  evaluateCollectionRouteDiagnostic,
   identifyMetricKey,
   metricKeyCategories,
   normalizeCollectionRouteKey,
+  structuredCollectionDataSchema,
   type CaptureMeta,
   type CaptureSummaryDTO,
   type CaptureSummaryMetricDTO,
@@ -19,7 +21,17 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
     where: { id: collectionTaskId, project: { workspace: { ownerId: userId } } },
     include: {
       routeSources: { orderBy: [{ required: "desc" }, { createdAt: "asc" }] },
-      collectionRuns: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, requiredRoutesJson: true } }
+      collectionRuns: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          requiredRoutesJson: true,
+          startedAt: true,
+          status: true,
+          routeHealth: true
+        }
+      }
     }
   });
   if (!task) return null;
@@ -44,16 +56,36 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
     normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
     snapshot
   ]));
+  const latestRun = task.collectionRuns[0] || null;
+  const heartbeatByRoute = new Map((latestRun?.routeHealth || []).map((heartbeat) => [
+    normalizeCollectionRouteKey(heartbeat.routeKey),
+    heartbeat
+  ]));
 
   const routes = task.routeSources.map((route) => {
     const routeKey = normalizeCollectionRouteKey(route.routeKey);
     const snapshot = latestByRoute.get(routeKey);
     const captureMeta = readCaptureMeta(snapshot?.captureMetaJson);
-    const state = routeState(route.lastError, route.sourceUrl, snapshot?.localCollectedAt, snapshot?.accountMatchStatus, snapshot?.routeVerificationStatus, captureMeta);
+    const required = activeRequiredRoutes ? activeRequiredRoutes.has(routeKey) : route.required;
+    const diagnostic = evaluateCollectionRouteDiagnostic({
+      routeKey,
+      required,
+      runActive: latestRun?.status === "ACTIVE" || latestRun?.status === "DEGRADED",
+      runStartedAt: latestRun?.startedAt || null,
+      snapshot: snapshot ? {
+        id: snapshot.id,
+        localCollectedAt: snapshot.localCollectedAt,
+        accountMatchStatus: snapshot.accountMatchStatus,
+        routeVerificationStatus: snapshot.routeVerificationStatus,
+        captureMeta
+      } : null,
+      heartbeat: heartbeatByRoute.get(routeKey) || null
+    });
+    const state = routeState(diagnostic.summaryStatus, route.sourceUrl);
     return {
       routeKey,
       label: route.label,
-      required: activeRequiredRoutes ? activeRequiredRoutes.has(routeKey) : route.required,
+      required,
       sourceUrl: route.sourceUrl,
       snapshotId: snapshot?.id || null,
       snapshotUpdatedAt: snapshot?.updatedAt.toISOString() || null,
@@ -63,12 +95,14 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
       detectedAccountId: snapshot?.detectedAccountId || null,
       detectedAccountName: snapshot?.detectedAccountName || null,
       completeness: captureMeta?.completeness || null,
-      lastCapturedAt: snapshot?.localCollectedAt.toISOString() || route.lastCapturedAt?.toISOString() || null,
+      lastCapturedAt: diagnostic.lastCapturedAt || route.lastCapturedAt?.toISOString() || null,
       metricCount: snapshot?.normalizedMetrics.length || 0,
       coverageRatio: captureMeta?.coverageRatio ?? null,
-      lastError: route.lastError
+      lastError: diagnostic.issues.find((issue) => issue.code === "UPLOAD_FAILED")?.message || null,
+      diagnostic
     };
   });
+  const diagnosticByRoute = new Map(routes.map((route) => [route.routeKey, route.diagnostic]));
 
   const metricByKey = new Map<string, CaptureSummaryMetricDTO>();
   for (const snapshot of selectedSnapshots) {
@@ -90,7 +124,21 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
         routeKey,
         pageType: snapshot.pageType,
         capturedAt: snapshot.localCollectedAt.toISOString(),
-        reviewStatus
+        reviewStatus,
+        provenance: collectionDataProvenance(
+          diagnosticByRoute.get(routeKey) || evaluateCollectionRouteDiagnostic({
+            routeKey,
+            required: false,
+            snapshot: {
+              id: snapshot.id,
+              localCollectedAt: snapshot.localCollectedAt,
+              accountMatchStatus: snapshot.accountMatchStatus,
+              routeVerificationStatus: snapshot.routeVerificationStatus,
+              captureMeta: readCaptureMeta(snapshot.captureMetaJson)
+            }
+          }),
+          snapshot.id
+        )
       });
     }
   }
@@ -120,6 +168,10 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
     pendingRouteConfirmationCount: routes.filter((route) => route.snapshotId && route.routeVerificationStatus === "MANUAL_PENDING").length,
     routes,
     metrics: [...metricByKey.values()],
+    structuredData: selectedSnapshots.flatMap((snapshot) => {
+      const parsed = structuredCollectionDataSchema.safeParse(snapshot.structuredDataJson);
+      return parsed.success ? [parsed.data] : [];
+    }),
     tables: selectedSnapshots.flatMap((snapshot) => projectTables(snapshot.rawTableData, {
       routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
       pageType: snapshot.pageType,
@@ -129,19 +181,11 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
 }
 
 function routeState(
-  lastError: string | null,
-  sourceUrl: string | null,
-  collectedAt: Date | undefined,
-  accountMatchStatus: string | undefined,
-  routeVerificationStatus: string | undefined,
-  captureMeta: CaptureMeta | null
+  status: import("@douyin-local-life/shared").CollectionRouteDiagnosticStatus,
+  sourceUrl: string | null
 ): CaptureSummaryRouteState {
-  if (!collectedAt) return lastError ? "FAILED" : sourceUrl ? "READY" : "PENDING";
-  if (Date.now() - collectedAt.getTime() > collectionFreshnessPolicy.staleAfterMs) return "STALE";
-  if (accountMatchStatus !== "MATCHED") return "UNVERIFIED";
-  if (routeVerificationStatus === "MANUAL_PENDING") return "MANUAL_PENDING";
-  if (captureMeta?.completeness === "PARTIAL" || captureMeta?.completeness === "UNKNOWN") return "PARTIAL";
-  return "UPLOADED";
+  if (status === "MISSING") return sourceUrl ? "READY" : "PENDING";
+  return status;
 }
 
 function readCaptureMeta(value: unknown): CaptureMeta | null {

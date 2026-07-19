@@ -4,12 +4,40 @@ import { runRetention } from "./retention.js";
 
 const now = new Date("2026-07-17T12:00:00.000Z");
 const userIds: string[] = [];
+const securityMetricIds: string[] = [];
+const auditLogIds: string[] = [];
 
 afterEach(async () => {
+  await prisma.auditLog.deleteMany({ where: { id: { in: auditLogIds.splice(0) } } });
+  await prisma.securityMetric.deleteMany({ where: { id: { in: securityMetricIds.splice(0) } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds.splice(0) } } });
 });
 
 describe("data retention", () => {
+  it("preserves the audit actor snapshot when its user is deleted", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `audit-actor-${Date.now()}@example.com`,
+        passwordHash: "fixture-password"
+      }
+    });
+    const audit = await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        actorSnapshotJson: { userId: user.id },
+        action: "audit.actor.fixture"
+      }
+    });
+    auditLogIds.push(audit.id);
+
+    await prisma.user.delete({ where: { id: user.id } });
+
+    await expect(prisma.auditLog.findUniqueOrThrow({ where: { id: audit.id } })).resolves.toMatchObject({
+      userId: null,
+      actorSnapshotJson: { userId: user.id }
+    });
+  });
+
   it("keeps metadata, honors 30/365-day cutoffs, and limits each batch to 500 records", async () => {
     const fixture = await createFixture();
 
@@ -17,6 +45,7 @@ describe("data retention", () => {
     expect(dryRun.rawEvidence.snapshots.candidateCount).toBeGreaterThanOrEqual(501);
     expect(dryRun.rawEvidence.snapshots.processedCount).toBe(0);
     expect(dryRun.structuredData.actionOutcomes.candidateCount).toBe(1);
+    expect(dryRun.structuredData.securityMetrics.candidateCount).toBe(1);
     expect(await prisma.dataSnapshot.findUniqueOrThrow({ where: { id: fixture.expiredSnapshotId } })).toMatchObject({ rawDomText: "expired DOM" });
 
     const report = await runRetention(prisma, { mode: "run", now });
@@ -53,6 +82,8 @@ describe("data retention", () => {
     expect(await prisma.decisionRun.findUnique({ where: { id: fixture.expiredDecisionRunId } })).toBeNull();
     expect(await prisma.aiAnalysisTask.findUnique({ where: { id: fixture.expiredAnalysisId } })).toBeNull();
     expect(await prisma.auditLog.findUnique({ where: { id: fixture.expiredAuditId } })).toBeNull();
+    expect(await prisma.securityMetric.findUnique({ where: { id: fixture.expiredSecurityMetricId } })).toBeNull();
+    expect(await prisma.securityMetric.findUnique({ where: { id: fixture.boundarySecurityMetricId } })).not.toBeNull();
     expect(await prisma.project.findUnique({ where: { id: fixture.projectId } })).not.toBeNull();
     expect(await prisma.accountProfile.findUnique({ where: { id: fixture.accountId } })).not.toBeNull();
   });
@@ -210,6 +241,13 @@ async function createFixture() {
   await prisma.approvalRecord.create({ data: { actionProposalId: expiredProposal.id, userId: created.id, decision: "APPROVE", createdAt: expiredAt } });
   await prisma.executionLog.create({ data: { actionProposalId: expiredProposal.id, projectId: project.id, collectionTaskId: task.id, userId: created.id, createdAt: expiredAt } });
   const expiredAudit = await prisma.auditLog.create({ data: { userId: created.id, workspaceId, projectId: project.id, taskId: task.id, action: "retention.fixture", createdAt: expiredAt } });
+  const expiredSecurityMetric = await prisma.securityMetric.create({
+    data: { metricKey: "retention_runs", windowStartedAt: expiredAt, occurrenceCount: 1, valueTotal: 1n, lastValue: 1n }
+  });
+  const boundarySecurityMetric = await prisma.securityMetric.create({
+    data: { metricKey: "retention_processed_records", windowStartedAt: structuredBoundaryAt, occurrenceCount: 1, valueTotal: 1n, lastValue: 1n }
+  });
+  securityMetricIds.push(expiredSecurityMetric.id, boundarySecurityMetric.id);
 
   return {
     accountId: account.id,
@@ -227,7 +265,9 @@ async function createFixture() {
     expiredProposalId: expiredProposal.id,
     expiredDecisionRunId: expiredDecisionRun.id,
     expiredAnalysisId: expiredAnalysis.id,
-    expiredAuditId: expiredAudit.id
+    expiredAuditId: expiredAudit.id,
+    expiredSecurityMetricId: expiredSecurityMetric.id,
+    boundarySecurityMetricId: boundarySecurityMetric.id
   };
 }
 

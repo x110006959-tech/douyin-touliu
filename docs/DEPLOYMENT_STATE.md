@@ -1,5 +1,36 @@
 # Deployment State
 
+## 2026-07-20 v032 审计操作者快照迁移准备
+
+- 新增加法式 migration `20260720110000_v032_audit_actor_snapshot`：为 `AuditLog` 增加 nullable `actorSnapshotJson`、回填现有 `userId`、将 `userId` 改为 nullable，并将用户外键替换为 `ON DELETE SET NULL`。不删除或重写既有审计记录。
+- API、Compose、API 镜像、环境示例和 Extension 构建元数据默认 Schema 版本均更新为 `20260720_v032_audit_actor_snapshot`。
+- 已在隔离 PostgreSQL 通过空库 13 个 migration 全量安装和 v031 升级到 v032；升级验证确认审计快照回填、删除用户后 `userId` 置空且快照仍在。带无敏感占位变量的 Compose 静态配置和 v032 正式 Extension 制品安全测试均通过。
+- 本轮未部署、未执行生产 migration、未进行服务器、DNS、SMTP、COS 或平台操作。生产应用前先离机备份，在 staging 执行 `prisma migrate deploy`，再核对 `/version` 返回 v032 Schema 版本。
+
+## 2026-07-19 v031 采集诊断迁移准备
+
+- 新增加法式 migration `20260719180000_v031_collection_diagnostics`：为 `CollectionRouteHeartbeat` 增加 nullable `lastErrorCode`，为 `DataSnapshot` 增加 nullable `structuredDataJson` 与 `structuredDataVersion`。
+- 运行时、Compose、API 镜像和 Extension 构建元数据的默认 Schema 版本已统一为 `20260719_v031_collection_diagnostics`。
+- 隔离空 PostgreSQL 已从 baseline 顺序应用全部 12 个 migration，v031 应用成功；Prisma validate/generate 均通过。
+- 迁移不回填、不重写历史快照；新字段为空时继续使用旧表格兼容路径。365 天留存清理会同时清除结构数据。
+- Extension production target 已通过精确权限、域名白名单、localhost/loopback/测试标记及网络拦截禁用检查。
+- 本轮未部署、未执行生产 migration、未生成正式发布 ZIP，也未进行服务器、DNS、SMTP、COS 或平台操作。部署前仍须备份数据库并在 staging 运行 `prisma migrate deploy`。
+
+## 2026-07-18 留存与安全观测部署增量
+
+- 新增 `20260718110000_v030_security_metrics` 加法式 migration。部署前仍先离机备份，随后由 `migrate` 服务应用；该迁移只新增按小时聚合的 `SecurityMetric` 表，不回填或改写既有业务数据。
+- Compose 新增 `retention` 服务：依赖 `migrate` 成功后启动，执行一次留存后每 24 小时重复；该服务无端口、非 root、只读根文件系统、`cap_drop: ALL`、256 MiB 内存、0.5 CPU、128 PID 上限。
+- API 在正常终止时刷写待提交的安全指标聚合。指标不包含请求体、用户、账号、IP、Cookie、Token 或其他凭证；保留策略为 365 天。备份脚本在 COS 上传后回读校验和与 dump、校验 SHA-256 并用 `pg_restore --list` 确认对象可读，再尽力记录聚合结果。
+- API 镜像、Compose 和 Extension 构建元数据的默认 Schema 已统一为 `20260718_v030_security_metrics`。正式 Extension ZIP 在生成后自动解压，精确校验权限并拒绝 localhost、loopback、泛域名和测试标识；本地包使用独立测试图标。
+- 备份与恢复演练的标准命令为 `corepack pnpm backup:run`、`corepack pnpm restore:verify`；`backup:postgres`、`backup:verify` 作为兼容别名保留。
+- 已完成本地静态验证、空库 11 migration 验证、正式 ZIP 验收与全仓 164 项测试；尚未把 `retention` 部署到服务器，未执行真实 COS 上传、恢复演练、SMTP、DNS 或平台操作。
+
+### 部署增量
+
+1. 部署前完成 COS 离机备份，再执行 `docker compose config --quiet` 和 `docker compose up -d --build --wait`；检查 `migrate` 为 `exited (0)`，并确认 `retention` 处于运行状态。
+2. 在 staging 观察 `retention` 首次日志，确认只输出聚合留存报告且不含敏感内容；24 小时后复核下一次运行。
+3. 正式 Extension ZIP 必须从 production 构建生成；发布脚本自动解压并执行制品硬校验，通过后才配置其 SHA256 并发布。
+
 ## 2026-07-17 邮箱验证与运行时限制增量
 
 - 生产 API 需要配置 `SECURITY_SECRET`（至少 32 字符）、`SMTP_HOST`、`SMTP_PORT`、`SMTP_SECURE=true`、`SMTP_USER`、`SMTP_PASS` 和 `SMTP_FROM`。运行时暂时兼容旧 `JWT_SECRET`，但新的部署文件应只使用 `SECURITY_SECRET`。
@@ -25,7 +56,7 @@
 ### 部署顺序
 
 1. 在部署主机 `/opt/pxxis` 创建权限为 `0600` 的 `.env`，设置 HTTPS `WEB_ORIGIN`、`NEXT_PUBLIC_API_URL`、至少 32 字节 `SECURITY_SECRET` 和数据库连接；生产环境不得设置 `SESSION_COOKIE_SECURE=false`。
-2. 部署前运行 `COS_PREFIX=cos://<bucket>/pxxis-backups corepack pnpm backup:postgres`；确认 COS 同时有 `.dump` 与 `.sha256`，并在隔离环境运行 `COS_OBJECT_URL=cos://<bucket>/...dump corepack pnpm backup:verify`。
+2. 部署前运行 `COS_PREFIX=cos://<bucket>/pxxis-backups corepack pnpm backup:run`；确认 COS 同时有 `.dump` 与 `.sha256`，并在隔离环境运行 `COS_OBJECT_URL=cos://<bucket>/...dump corepack pnpm restore:verify`。
 3. 运行 `docker compose config --quiet`，再执行 `docker compose up -d --build --wait`；检查 `migrate` 状态为 `exited (0)`，确认 `api` 和 `web` 为 healthy。
 4. 经 HTTPS 反向代理验证 `/ready`、`/version`、登录会话、跨源 API 请求及 SSE；反向代理必须保留 `Set-Cookie`、关闭 SSE 缓冲并设置 `TRUST_PROXY_HOPS`。
 5. 恢复操作仅允许在新建的隔离 PostgreSQL 实例上演练。任何生产恢复都需要维护窗口、经审批的恢复计划和人工复核，不能直接覆盖运行中的数据卷。

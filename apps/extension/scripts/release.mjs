@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { execFileSync, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { unzipSync } from "fflate";
+import { assertExtensionArtifact } from "./artifact-policy.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const releaseDir = resolve(root, "release");
@@ -40,7 +42,9 @@ const result =
 
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Extension archive command exited with status ${result.status}`);
-const sha256 = createHash("sha256").update(await readFile(archivePath)).digest("hex");
+const archive = await readFile(archivePath);
+assertExtensionArtifact(unzipSync(archive), "production");
+const sha256 = createHash("sha256").update(archive).digest("hex");
 await writeFile(resolve(releaseDir, "release-manifest.json"), `${JSON.stringify({ ...metadata, artifact: archiveName, sha256 }, null, 2)}\n`);
 await writeFile(`${archivePath}.sha256`, `${sha256}  ${archiveName}\n`);
 console.log(`Created ${archivePath}`);

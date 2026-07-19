@@ -1,5 +1,78 @@
 # Codex Handoff
 
+## 2026-07-20 v032 审计操作者快照与全仓收尾验证
+
+- 新增加法式 migration `20260720110000_v032_audit_actor_snapshot`：`AuditLog.userId` 改为可空并使用 `ON DELETE SET NULL`，新增最小 `actorSnapshotJson`；升级时仅回填已有 `userId`，不伪造其他身份信息。审计写入统一保存 `{ userId }` 快照，用户删除后审计仍保留操作者标识。
+- 复核初始化、单条/批量复核和全部确认已在事务内重新读取当前任务及指标，业务写入与审计同事务提交；执行结果复盘也在事务内重验 `MANUAL_EXECUTED` 状态和幂等记录。
+- CSRF 在精确允许 Origin 与正确 Token 前提下允许 `same-origin` 和生产 Web/API 同注册域的 `same-site` 请求；未配置兄弟域仍拒绝。
+- 所有 API、Compose、镜像和 Extension 构建的默认 Schema 版本已统一为 `20260720_v032_audit_actor_snapshot`。
+- 隔离 PostgreSQL 已实测空库顺序应用全部 13 个 migration，以及从 v031 升级至 v032；升级夹具确认旧审计记录回填快照、删除用户后外键置空而快照保留。
+- 全仓 `lint`、`typecheck`、`test`、`build`、Prisma validate/generate、生产依赖 audit、带无敏感占位变量的 Compose 静态配置和 `git diff --check` 通过；191 项测试（shared 36、extension 28、web 19、llm 6、decision-engine 34、API 68），audit 为 0 个已知漏洞。v032 正式 Extension unpacked 制品也已通过安全测试。未执行真实 SMTP、COS、部署、平台操作或生产数据操作。
+
+## 2026-07-20 持久化输入边界与 API 入口收口
+
+- 认证策略不变：登录页只隐藏公开注册与邮箱验证入口，管理员可发放账号密码；后端 `/auth/register`、`/auth/email-verifications/confirm`、`/auth/email-verifications/resend` 和验证页继续保留，不能误改为服务端邀请制。
+- `persisted-input.ts` 现区分两类数据：外部自由输入、审计详情使用 `sanitizePersistedJson()` 拒绝任何凭证形态；来自已清洗快照、规则引擎或 AI 的内部派生 JSON 使用 `sanitizeDerivedPersistedJson()` 再次脱敏后保存，避免 `[REDACTED]` 标记被误拒。
+- 工作区名、项目/服务商名、任务标题、账号资料（含 memo）、注册名、配对标签、心跳错误、手工录入来源、复核文本和账号确认备注均在写库前统一拒绝凭证形态；审计 `User-Agent` 改为截断脱敏后保存。不得恢复直接写入未经校验的自由文本。
+- 决策与 AI 的 `DecisionRun` / `AiAnalysisTask` JSON 在持久化前再次清洗；共享证据测试覆盖伪造心跳 `MATCHED` 声明无法绕过服务端可信 URL/账号 ID 校验。
+- 为符合架构门禁，`/workspaces` 和 `/system-health` 从 `server.ts` 拆到独立路由，路径、权限和响应保持兼容。
+- 全仓 `lint`、`typecheck`、`test`、`build`、Prisma validate/generate 和 `git diff --check` 均通过；共 187 项测试（shared 36、Extension 28、Web 19、LLM 6、decision-engine 34、API 64）。测试仅使用临时 PostgreSQL 容器，未执行真实 SMTP、COS、部署或生产数据操作。
+
+## 2026-07-19 采集诊断与标准化数据交接
+
+- 共享包新增 `collection-diagnostics.ts` 和 `collection-records.ts`。所有采集运行质量、任务摘要、决策输入和系统健康聚合应复用 `evaluateCollectionRouteDiagnostic()`，不要重新推导第二套状态。
+- 诊断阈值保持：5 分钟 `AGING`、10 分钟 `STALE`、连续失败 3 次降级；只有 `ACTIVE/DEGRADED` 运行会判定卡死。缺快照、账号未验证、路线未验证阻止正式决策；过期、卡死和连续失败阻止强动作；部分采集只告警。
+- 采集运行启动使用任务级 PostgreSQL advisory transaction lock。同路线集合重放现有运行且不重复审计；变化路线集合会在同一事务停止旧运行并创建新运行。请求路线必须是任务配置的非 `UNKNOWN` 子集。
+- Extension 的单飞键分别为手动采集 `taskId + tabId + routeKey + collectionRunId` 和巡检 `taskId + action`；原上传队列、指纹和幂等逻辑继续保留。小时趋势和素材路线未校准，不出现在巡检选择中。
+- `DataSnapshot.structuredDataJson` 只由 API 从经过安全清洗的可见表格生成，Extension 不能直接提交可信结构结果。当前实现 `TASK_ROWS`；空值和非法值保持缺失并写解析警告，不补默认数据。
+- 决策引擎优先使用有效的 `TASK_ROWS`，旧快照和旧 DecisionRun 继续走通用表格回退；历史快照不回填。留存任务会与原始表格同时清理结构数据。
+- 失败上报只接受稳定 `errorCode`；可选技术详情经服务端清洗和截断后保存。界面及审计只展示安全问题说明，不回显原始异常。
+- 验证已完成：lint/typecheck/build、183 项测试、Prisma validate/generate、空库 12 migration、Extension production target 制品安全检查。
+- 尚需真实脱敏页面样本才能进入第二阶段小时趋势和素材采集器开发；禁止为了“采全”引入自动点击、自动滚动、自动翻页或 fetch/XHR 拦截。
+
+## 2026-07-19 正式诊断与专家参考双栏
+
+- 任务页新增 `diagnosis-comparison.tsx`，桌面端并排展示正式诊断和专家参考分析，移动端保持纵向可读。
+- 正式栏继续使用既有 `DecisionRun`，恢复展示当前 `PENDING_APPROVAL` 动作及其详情入口；没有增加自动审批、自动执行或平台操作。
+- 专家栏独立调用现有解释接口并展示 `decisionReference` 的证据、补证、人工步骤、验证指标和停止条件。它仍为 `ADVISORY_ONLY`，不会生成 `ActionProposal`。
+- `useTaskData()` 会读取最新专家分析；新增的 `/collection-tasks/:id/analysis/latest` 只返回展示所需字段，刻意排除保存的 `requestPayload`。
+- 全仓 lint/typecheck/build、Web 18 项测试通过；全仓测试为 168 项通过、6 项失败，仍是 `decision-flow.test.ts` 中更早发生的账号证据、快照标准化和 Extension 状态回归。新增安全读取断言因此未执行到，不能宣称全仓测试通过。本轮没有 Prisma、采集字段、配置或部署变化。
+
+## 2026-07-19 Agency Agents 决策参考库
+
+- 新增 `packages/llm/src/reference-playbooks.ts`，把上游 `agency-agents` revision `459dce837db3bdfdc4763d3fefd1fd854e73c8f1` 的 5 个角色人工整理为结构化参考。没有运行上游安装脚本、桌面应用或角色原始指令，也没有把第三方工具权限引入项目。
+- 安全整理只保留指标口径、测量审计、漏斗定位、直播/商品的一次一变量验证和证据门禁；未公开算法、通用阈值、自动扩量/降量/暂停、固定出价与效果承诺均被排除。
+- `mockAnalyze()` 现在返回 `decisionReference`，解释 API 会持久化来源、证据、待补证据、人工步骤、验证指标、停止条件和安全边界；Prompt 版本为 `explanation-only-agency-reference-v0.2.0`。正式动作来源仍写为 `decision-engine`，规则引擎未修改。
+- 来源、筛选规则与 MIT 声明见 `docs/AGENCY_AGENTS_REFERENCE.md`；相关 LLM 测试覆盖固定 revision、许可、参考模式、证据必填、禁止动作字段以及通用算法阈值过滤。
+- lint、全仓 typecheck/build、LLM 6 项测试通过；全仓测试为 168 项通过、6 项失败。失败位于 `decision-flow.test.ts` 的快照标准化、账号匹配和 Extension 状态流程，并早于新增解释接口断言；当前不能宣称全仓测试通过，发布前须修复这些回归。
+- 本轮未新增 Prisma migration、环境变量、采集字段、部署变化或平台操作。
+
+## 2026-07-19 认证入口与账号证据回归
+
+- 认证策略保持为“前端暂时隐藏公开入口”：登录页仅保留管理员发放账号的密码登录；后端 `/auth/register`、邮箱确认/重发接口和 `/email-verification` 页面完整保留。当前不是服务端强制邀请制，恢复开放注册只需恢复前端入口。
+- 修复服务端账号证据映射：`evaluateAccountMatch()` 现在显式将快照的 `accountMatchEvidence` 映射为共享证据工具的 `evidence` 入参。可信 HTTPS 页面、精确白名单路径、声明 URL 参数与页面账号 ID 一致时才自动匹配；缺少、伪造或仅同名的证据均保持 `UNVERIFIED`，跨账号 ID 仍拒绝上传。
+- `decision-flow.test.ts` 的可信、伪造和跨账号夹具已与服务端规则对齐；同时移除 `getOwnedTask()` 中未被调用方使用的历史分析和审计预加载，缩短串行决策事务但不改变读取数据边界。
+- 已通过全仓 lint、typecheck、test（shared 32、Extension 25、Web 18、LLM 3、decision-engine 32、API 61，共 171 项）、build、Prisma validate/generate 和 `git diff --check`；未执行真实 SMTP、部署、生产数据或平台操作。
+
+## 2026-07-19 登录入口暂时隐藏
+
+- 用户澄清当前不是移除公开注册或邮箱验证，而是先隐藏入口并由管理员发放账号密码。`apps/web/src/app/login/page.tsx` 已只保留登录表单，并提示使用管理员发放的账号。
+- 后端 `/auth/register`、邮箱确认/重发接口及 `apps/web/src/app/email-verification/page.tsx` 均保留可用；`PendingRegistration`、`EmailVerificationToken` 和现有验证安全约束不变。
+- 这不是服务端强制邀请制：直接调用注册 API 仍遵循既有公开注册和邮箱验证流程。若未来要实施真正邀请制，需另行设计邀请码、发放审计、有效期与服务端注册门禁，不能把本次前端隐藏误当作安全控制。
+- 新增登录页源码回归测试，锁定仅调用登录接口、展示管理员发放提示且不再含公开注册/验证邮件重发入口；全仓 lint/typecheck/171 项 test/build、Prisma validate/generate 与 `git diff --check` 均通过。
+
+## 2026-07-18 生命周期读取边界、留存与制品安全收口
+
+- 动作建议和复核指标的 GET 接口现在严格只读：`GET /action-proposals/:id`、项目/全局建议列表只虚拟展示过期状态，不再更新建议状态或创建审计；`GET /collection-tasks/:id/review-metrics` 不再初始化数据。初始化已移至显式 `POST /collection-tasks/:id/review-metrics/initialize`，任务页刷新复核指标也改走该写接口。
+- `proposal-lifecycle.ts` 集中管理建议的展示状态与状态筛选；审批、观察和人工执行仍在原子条件更新中拒绝过期建议。`decision-flow.test.ts` 覆盖详情/列表读取不改写数据库、过期写操作返回 `ACTION_EXPIRED`。
+- Compose 新增独立 `retention` 维护服务：启动后执行一次留存、随后每 24 小时执行一次；不暴露端口，使用非 root、只读文件系统、最小能力和受限资源。留存任务现同时清理超过 365 天的安全指标聚合数据。
+- 新增加法式 migration `20260718110000_v030_security_metrics` 与 `SecurityMetric`：按 UTC 小时仅聚合安全事件类别和数值，不保存请求体、IP、用户、账号或凭证。当前覆盖 CSRF/限流/配对失败/账号路线不匹配/SSE 数量/快照字节/决策冲突/数据库错误/备份、恢复演练和留存结果；API 正常停机时会刷盘。
+- SSE 写缓冲满时保留最新待发送信号，连接恢复后发送最新状态而不是静默丢弃；独立单元测试覆盖回压合并与关闭边界。
+- `accountMatchEvidence` 已拆到共享账号证据契约，只接受四种已登记 URL 参数来源、可见名称标签或人工确认来源；任意字符串在 API 入参校验阶段被拒绝，历史快照 JSON 不改写。
+- Extension 构建目标配置集中至 `build-target.ts`，制品规则集中至 `artifact-policy.mjs`。正式构建只接受精确权限并拒绝 localhost、127.0.0.1、泛域名和“本地测试”；本地构建使用带红色 `T` 角标的独立图标资产。发布脚本生成 ZIP 后会重新解压并执行同一套硬校验。
+- 运行时和 Extension 构建元数据默认 Schema 已统一为 `20260718_v030_security_metrics`；备份/恢复维护入口新增 `backup:run` 与 `restore:verify`，旧命令保留兼容别名。
+- 已通过全仓 lint、typecheck、test（shared 28、Extension 25、Web 17、LLM 3、decision-engine 32、API 59，共 164 项）、build、Prisma validate/generate、生产依赖 audit、Compose 静态配置、正式 ZIP 解压验收与 `git diff --check`；隔离 PostgreSQL 从空库顺序应用全部 11 个 migration 成功。备份脚本会回读远端 dump、校验 SHA-256 并用 `pg_restore --list` 验证可读性。未执行真实 SMTP、COS、服务器部署、DNS 或平台操作。
+
 ## 2026-07-17 审查计划收口交接
 
 - 最新审查计划恢复“开放注册但强制邮箱验证”，覆盖此前仅为阶段性范围调整的“取消邮箱验证”记录。注册现在只创建 `PendingRegistration` 和哈希验证令牌；验证成功后才在同一事务中创建 `User`、默认工作区和可撤销会话。

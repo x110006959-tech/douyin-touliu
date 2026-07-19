@@ -20,7 +20,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   const csrfToken = req.header("x-csrf-token") || "";
   const csrfHash = (req as AuthenticatedRequest).session?.csrfTokenHash || "";
   const validOrigin = Boolean(origin && isAllowedWebOrigin(origin));
-  const validFetchSite = fetchSite === "same-origin";
+  const validFetchSite = fetchSite === "same-origin" || fetchSite === "same-site";
   const validToken = csrfToken.length > 0 && csrfHash.length > 0 && hashesEqual(hashCsrfToken(csrfToken), csrfHash);
   if (!validOrigin || !validFetchSite || !validToken) {
     return sendError(res, 403, "CSRF_INVALID", "请求安全校验失败，请刷新页面后重试");

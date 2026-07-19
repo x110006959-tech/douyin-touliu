@@ -16,6 +16,7 @@ import {
   type VisibleMetric
 } from "@douyin-local-life/shared";
 import { analyzeInvestmentUnitTables, analyzeProductTables, buildFunnelEvidence } from "./table-analysis.js";
+export { structureTaskCollectionTables } from "./table-analysis.js";
 
 export const decisionEngineVersion = "decision-engine-v0.2.2";
 export const decisionRuleVersion = "local-life-rules-v0.2.2";
@@ -942,7 +943,7 @@ function buildBusinessAnalysis(
     });
   }
 
-  const unitAnalysis = analyzeInvestmentUnitTables(input.tables, targetRoi);
+  const unitAnalysis = analyzeInvestmentUnitTables(input.tables, targetRoi, input.structuredCollectionData);
   if (targetRoi != null && accountRoi != null && unitAnalysis.status === "READY") {
     const accountBelowTarget = accountRoi < targetRoi;
     if (accountBelowTarget && unitAnalysis.candidates.length > 0) {

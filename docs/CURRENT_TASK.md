@@ -1,5 +1,159 @@
 # Current Task
 
+## 2026-07-20 对抗性审查收尾验证
+
+### 已完成
+
+- 审计留存改为最小操作者快照：v032 使用户删除只解除 `AuditLog.userId` 关联并保留 `{ userId }` 快照；关键复核、结果复盘和审计写入均完成事务收口。
+- 修复生产 Web/API 同注册域的 CSRF Fetch Metadata 兼容性：仅在精确允许 Origin 和正确 CSRF Token 已通过时接纳 `same-site`，未配置来源继续拒绝。
+- 运行时与制品默认 Schema 版本统一至 `20260720_v032_audit_actor_snapshot`。
+
+### 验证结果
+
+- 隔离 PostgreSQL 空库顺序应用 13 个 migration 通过；独立 v031 数据库升级至 v032 通过，并实测历史审计快照回填和用户删除后的审计保留。
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build`、`corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、`corepack pnpm audit --prod`、带无敏感占位变量的 `docker compose config --quiet`、v032 正式 Extension 制品安全测试和 `git diff --check` 通过。
+- 测试共 191 项：shared 36、extension 28、web 19、llm 6、decision-engine 34、API 68；生产依赖 audit 为 0 个已知漏洞。
+- 未执行真实 SMTP、COS、部署、平台操作或生产数据操作。
+
+## 2026-07-20 对抗性审查补充收口
+
+### 已完成
+
+- 完成剩余持久化输入边界审计：外部自由文本/JSON 改为拒绝敏感认证形态；决策、AI 等已清洗内部派生 JSON 改为二次脱敏后保存，兼容 `[REDACTED]` 标记。
+- 收口工作区、账号资料、项目、任务、注册名、手工指标来源、复核值、账号确认备注、配对标签、心跳错误和审计 `User-Agent` 的入库路径；超长自由文本不再静默截断为可保存内容。
+- 服务端继续重算插件心跳账号匹配，客户端声明 `MATCHED` 不具可信效力；回归测试覆盖该规则和 Popup 边界。
+- 为保持入口文件预算，将工作区和系统健康路由拆分到 `routes/`；不改变 API 路径、权限、数据库 schema、migration 或认证产品策略。
+- 明确公开注册与邮箱验证为“暂时隐藏入口”，而非移除、后端关闭或邀请制；管理员发放账号密码只是当前运营方式。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 全部通过。
+- 测试共 187 项通过：shared 36、extension 28、web 19、llm 6、decision-engine 34、API 64。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、`git diff --check` 通过。
+- 未执行真实 SMTP、COS、部署、平台操作或生产数据操作；无数据库结构、环境变量和兼容性变更。
+
+## 2026-07-19 采集完整性、健康诊断与标准化数据
+
+### 已完成
+
+- 修复快照和心跳的 `accountMatchEvidence -> evidence` 映射；心跳只接受安全枚举证据，`UNVERIFIED` 保持账号状态，不再伪装成普通采集异常。
+- 新增共享确定性采集诊断模型，统一输出新鲜度、完整度、连续失败、卡死、来源、问题码、人工恢复建议和决策阻断信息。
+- 扩展端增加手动采集与巡检启停单飞锁；服务端以任务级 PostgreSQL advisory transaction lock 保护采集运行启动，并校验路线属于当前任务且不含 `UNKNOWN`。
+- 新增 v031 加法式 migration，持久化稳定失败码和服务端生成的版本化结构数据；成功采集会清除旧失败信息。
+- 新增 `TASK_ROWS / HOURLY_ROWS / MATERIAL_ROWS` 数据契约；当前只从服务端可见任务表生成 `TASK_ROWS`，决策引擎优先读取标准任务行并兼容旧表格。
+- 任务页展示逐路线诊断，工作台展示健康聚合；人工建议仅包含刷新、切换可见页面、确认账号/路线和重新点击采集。
+- 小时趋势和素材只保留契约，未在插件巡检中启用，也没有新增自动点击、滚动、翻页或网络拦截。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 全部通过。
+- 测试共 183 项通过：shared 35、extension 28、web 19、llm 6、decision-engine 34、API 61。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate` 通过。
+- 隔离空 PostgreSQL 已按顺序应用全部 12 个 migration，`20260719180000_v031_collection_diagnostics` 成功。
+- Extension production target 构建和制品安全策略通过；未生成正式发布 ZIP，未提交、推送、部署或操作生产数据库。
+
+### 下一阶段
+
+1. 使用用户主动采集的真实页面脱敏样本校准小时趋势和素材表头、URL、分页及虚拟列表特征。
+2. 样本校准前保持两类路线禁用；依赖自动点击、自动滚动或自动翻页的页面只能标记 `PARTIAL`。
+3. 在真实任务页人工验收新鲜度、缺失字段、失败恢复建议和工作台聚合；确认旧快照仍能通过通用表格回退生成诊断。
+
+## 2026-07-19 正式诊断与专家参考双栏
+
+### 已完成
+
+- 任务第 5 步改为响应式双栏：桌面端并排展示“正式诊断”和“专家参考分析”，窄屏自动纵向排列。
+- 正式诊断继续调用 `decision-engine`，展示系统结论、经营方案和当前 `PENDING_APPROVAL` 动作；动作只提供详情入口，审批和平台执行边界不变。
+- 专家参考分析独立调用现有 `/collection-tasks/:id/explain`，展示 Agency 方法论视角、当前证据、待补证据、人工验证、观察指标和停止条件；明确标记为仅供参考，不创建正式动作。
+- 新增只读 `/collection-tasks/:id/analysis/latest`，任务页刷新后可恢复最近一次专家参考结果；响应不包含 `requestPayload`，避免将保存的页面原始分析输入再次下发到浏览器。
+- 两栏分别运行，任一分析失败都不会改变另一份结果；真实 OpenAI/DeepSeek Provider 仍未启用，当前专家参考由本地 mock Provider 生成。
+
+### 当前验证
+
+- 全仓 lint、typecheck 和 build 通过；Web 18 项测试全部通过。
+- 全仓测试为 168 项通过、6 项失败。失败仍集中在 `apps/api/src/decision-flow.test.ts` 的账号证据、快照标准化和 Extension 状态流程，与本次任务页双栏及最新解释读取接口无直接调用关系。
+- 新增 API 读取接口已通过 API typecheck/build；对应安全断言已加入决策流测试，但由于同一长流程在更早的既有快照断言处失败，当前不能宣称该新增断言已被完整执行。
+- 未新增采集字段、Prisma schema、migration、环境变量或部署变化。
+
+## 2026-07-19 第三方提示词决策参考库
+
+### 已完成
+
+- 将 `agency-agents` 的 Paid Media Auditor、Tracking & Measurement Specialist、Douyin Strategist、Livestream Commerce Coach 和 Reality Checker 固定到 revision `459dce837db3bdfdc4763d3fefd1fd854e73c8f1`，人工整理为可追溯参考库。
+- 新增 `packages/llm/src/reference-playbooks.ts`：只保留证据审计、口径核对、漏斗定位、一次一变量验证和证据门禁；明确排除未公开算法排序、通用阈值、自动扩量/降量/暂停和效果承诺。
+- LLM 解释结果新增 `decisionReference`，模式固定为 `ADVISORY_ONLY`，每条 insight 包含当前证据、待补证据、人工步骤、观察指标、停止条件、来源与安全边界。
+- `/collection-tasks/:id/explain` 将参考结果持久化到 `AiAnalysisTask.responsePayload`；Prompt 版本升级为 `explanation-only-agency-reference-v0.2.0`，`finalActionsSource` 继续固定为 `decision-engine`。
+- 新增来源、筛选规则和 MIT 声明文档 `docs/AGENCY_AGENTS_REFERENCE.md`；未修改 `packages/decision-engine`，未新增采集字段、数据库表或 migration。
+
+### 当前验证
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm build`：通过。
+- LLM 6 项测试通过；共享 32、Extension 25、Web 18、decision-engine 32、API 55 项通过。
+- `corepack pnpm test` 当前为 168 项通过、6 项失败。失败均在 `apps/api/src/decision-flow.test.ts` 的快照标准化、账号匹配和 Extension 状态流程中，并发生在本次新增解释接口断言之前；本轮没有修改这些业务分支，但当前工作树尚不能声称全仓测试通过。
+- 已实测 `decisionReference` 经过 `sanitizePersistedJson()` 后可安全持久化，返回 `ADVISORY_ONLY`、固定策略版本、5 个来源和按输入筛选的参考项。
+
+### 待处理
+
+1. 在发布前单独修复并复验当前 API 决策流的 6 项账号证据/快照回归失败。
+2. 真实 OpenAI/DeepSeek Provider 仍未配置；当前 mock Provider 返回结构化参考，未来接入真实模型时必须使用 `buildDecisionReferenceInstructions()` 并保持相同安全边界。
+
+## 2026-07-19 认证入口与账号证据回归
+
+### 已完成
+
+- 明确当前策略是隐藏公开注册和邮箱验证入口，而非删除后端注册、邮箱验证或数据模型；管理员可继续发放已验证账号供登录。
+- 修复可信账号证据在服务端的参数映射。只有精确白名单 HTTPS 页面、声明 URL 参数和检测到的账号 ID 三者一致时，快照才自动标记为 `MATCHED`；仅同名、缺少证据或伪造参数均需人工确认。
+- 决策回归夹具覆盖可信自动匹配、伪造 URL 证据不自动匹配及跨账号拒绝；去除任务读取中未使用的历史分析和审计预加载，保持串行决策写入在性能门槛内。
+
+### 当前验证
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build`：通过（shared 32、Extension 25、Web 18、LLM 3、decision-engine 32、API 61，共 171 项测试）。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate` 与 `git diff --check`：通过。
+
+### 待人工验收
+
+1. 使用管理员已发放且已完成邮箱验证的账号登录，确认可进入工作台。
+2. 在真实白名单平台页面采集同账号和跨账号快照，确认只有可信 ID 参数可自动匹配；名称或来源不足时必须走人工确认。
+
+## 2026-07-19 登录入口暂时收敛
+
+### 已完成
+
+- 登录页仅保留已发放账号的邮箱与密码登录，并明确提示公开注册入口暂不展示。
+- `/auth/register`、邮箱验证确认/重发接口与 `/email-verification` 页面保持可用，未删除用户、待验证注册或验证令牌数据模型；后续恢复入口不需要迁移或兼容改造。
+
+### 当前验证
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build`：通过（shared 32、Extension 25、Web 18、LLM 3、decision-engine 32、API 61，共 171 项测试）。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate` 与 `git diff --check`：通过。
+
+### 待人工验收
+
+1. 使用已发放且已完成邮箱验证的账号登录，确认可进入工作台。
+2. 确认登录页不再展示创建账号、注册、重发验证邮件等公开入口；需要恢复开放注册时，仅恢复前端入口，不修改后端验证流程。
+
+## 2026-07-18 审查计划最终代码收口
+
+### 已完成
+
+- 复核指标和动作建议读取路径改为纯读取；显式初始化接口、生命周期展示状态和回归测试已落地。
+- 新增独立日留存服务、安全指标按小时聚合，以及 `20260718110000_v030_security_metrics` 加法式迁移；留存策略同样覆盖安全指标。
+- SSE 回压改为合并旧状态并保留最新信号；账号匹配证据来源已收紧为共享枚举白名单。
+- 正式/本地 Extension 构建已字节级分包：正式产物不含 localhost、127.0.0.1、泛域名或本地测试标识，本地产物保留醒目名称、红色 `T` 图标、构建元数据和本地权限。
+- unpacked 与最终正式 ZIP 共用制品硬校验；Schema 元数据统一为 `20260718_v030_security_metrics`，维护脚本提供 `backup:run`、`restore:verify` 标准入口。
+
+### 当前验证
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build`：通过（共 164 项测试）。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、`corepack pnpm audit --prod`、生产变量下的 `docker compose config --quiet`、正式 ZIP 解压验收与 `git diff --check`：通过。
+- 隔离空 PostgreSQL 已顺序应用全部 11 个 migration，`20260718110000_v030_security_metrics` 应用成功并确认 schema 最新。
+
+### 待人工验收
+
+1. staging 部署后确认 `retention` 服务启动即完成一次留存、随后每 24 小时运行；检查其日志只包含聚合结果且不含业务数据或凭证。
+2. 在干净工作树执行正式发布并复核生成的 SHA256，再将其配置到 API；ZIP 内容安全检查已由发布脚本自动硬失败。
+3. 在隔离环境执行一次真实 COS 备份上传与恢复演练；生产环境仍须按维护窗口、审批和恢复计划执行，禁止覆盖运行中数据卷。
+
 ## 2026-07-17 审查计划收口：认证、并发与部署规范化
 
 ### 已完成

@@ -87,6 +87,7 @@ function startPageActivityHeartbeat() {
         tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
         detectedAccountId: context.detectedAccountId,
         detectedAccountName: context.detectedAccountName,
+        accountMatchEvidence: context.accountMatchEvidence,
         observedAt: new Date().toISOString()
       }
     }, () => void chrome.runtime.lastError);
@@ -103,14 +104,17 @@ function collectPageContext() {
   const baseAdapter = selectPageAdapter(baseInput);
   const routeDetection = rawDomText ? detectCurrentRoute(rawDomText, baseAdapter.pageType) : null;
   const adapter = selectPageAdapter({ ...baseInput, routeKey: routeDetection?.routeKey || "UNKNOWN" as const });
-  const accountIdentity = rawDomText ? detectAccountIdentity(rawDomText, window.location.href) : { accountId: null, accountName: null };
+  const accountIdentity = rawDomText
+    ? detectAccountIdentity(rawDomText, window.location.href)
+    : { accountId: null, accountName: null, evidence: null };
   return {
     currentUrl: window.location.href,
     pageType: adapter.pageType,
     routeKey: routeDetection?.routeKey || "UNKNOWN" as CollectionRouteKey,
     routeDetection,
     detectedAccountId: accountIdentity.accountId,
-    detectedAccountName: accountIdentity.accountName
+    detectedAccountName: accountIdentity.accountName,
+    accountMatchEvidence: accountIdentity.evidence
   };
 }
 
@@ -231,8 +235,10 @@ function emitPulse(patrol: PatrolState) {
     tabState: "VISIBLE",
     metrics: snapshot.visibleMetricsJson.slice(0, 32),
     captureMeta: snapshot.captureMeta!,
+    sourceUrl: snapshot.sourceUrl,
     detectedAccountId: snapshot.detectedAccountId || null,
-    detectedAccountName: snapshot.detectedAccountName || null
+    detectedAccountName: snapshot.detectedAccountName || null,
+    accountMatchEvidence: snapshot.accountMatchEvidence || null
   };
   chrome.runtime.sendMessage({ type: MESSAGE.METRIC_PULSE_CAPTURED, payload: pulse }, () => void chrome.runtime.lastError);
 }

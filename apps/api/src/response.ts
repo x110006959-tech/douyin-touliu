@@ -13,6 +13,7 @@ export function sendError(
   message: string,
   options: { requestId?: string; fieldErrors?: Record<string, string> } = {}
 ) {
+  res.locals.errorCode = code;
   return res.status(status).json(failure(code, message, options));
 }
 

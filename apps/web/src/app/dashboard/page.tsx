@@ -31,7 +31,12 @@ type AccountProfile = {
 type SystemHealth = {
   status: "HEALTHY" | "DEGRADED";
   database: string;
-  collection: { activeRuns: number; degradedRuns: number };
+  collection: {
+    activeRuns: number;
+    degradedRuns: number;
+    routeStatusCounts: Record<string, number>;
+    routeIssueCounts: Record<string, number>;
+  };
   ai: { status: "CLOSED" | "OPEN" | "HALF_OPEN" };
 };
 
@@ -94,7 +99,7 @@ export default function DashboardPage() {
             <p className="text-xs font-semibold text-primary">工作台入口</p>
             <h2 className="mt-3 text-xl font-bold text-[#14213d]">进入账号诊断工作台</h2>
             <Link className="mt-5 flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-white transition hover:bg-[#1d4ed8]" href="/login">
-              登录或注册
+              登录
             </Link>
             <p className="mt-4 text-sm leading-6 text-muted">登录后可继续上次项目、查看采集状态与处理待审批建议。</p>
             <div className="mt-5 border-t border-border pt-5">
@@ -160,9 +165,23 @@ export default function DashboardPage() {
         <p>{extensionSafetyNotice}</p><p>{aiDisclaimer}</p>
       </div>
 
-      <section className="mb-6 grid gap-3 md:grid-cols-4">
+      <section className="mb-6 grid gap-3 md:grid-cols-5">
         <Card><CardTitle>数据库</CardTitle><p className="text-sm font-semibold">{systemHealth?.database || "检查中"}</p></Card>
         <Card><CardTitle>巡检状态</CardTitle><p className="text-sm">运行 {systemHealth?.collection.activeRuns ?? "-"} / 降级 {systemHealth?.collection.degradedRuns ?? "-"}</p></Card>
+        <Card>
+          <CardTitle>采集健康</CardTitle>
+          <p className="text-xs leading-5 text-muted">
+            健康 {systemHealth?.collection.routeStatusCounts?.UPLOADED ?? "-"}
+            {" · "}老化 {systemHealth?.collection.routeStatusCounts?.AGING ?? "-"}
+            {" · "}部分 {systemHealth?.collection.routeStatusCounts?.PARTIAL ?? "-"}
+          </p>
+          <p className="text-xs leading-5 text-muted">
+            过期 {systemHealth?.collection.routeStatusCounts?.STALE ?? "-"}
+            {" · "}卡死 {systemHealth?.collection.routeIssueCounts?.COLLECTOR_STALLED ?? "-"}
+            {" · "}失败 {systemHealth?.collection.routeStatusCounts?.FAILED ?? "-"}
+            {" · "}未验证 {systemHealth?.collection.routeStatusCounts?.UNVERIFIED ?? "-"}
+          </p>
+        </Card>
         <Card><CardTitle>AI 解释</CardTitle><p className="text-sm">{systemHealth?.ai.status || "检查中"}</p></Card>
         <Card><CardTitle>版本</CardTitle><p className="text-sm">{buildMetadata ? `${buildMetadata.productVersion} / ${buildMetadata.gitSha.slice(0, 8)}` : "-"}</p></Card>
       </section>

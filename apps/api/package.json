@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node scripts/test.mjs",
     "retention:dry-run": "tsx src/retention-cli.ts --dry-run",
-    "retention:run": "tsx src/retention-cli.ts --run"
+    "retention:run": "tsx src/retention-cli.ts --run",
+    "retention:schedule": "node dist/retention-scheduler.js"
   },
   "dependencies": {
     "@douyin-local-life/decision-engine": "workspace:*",

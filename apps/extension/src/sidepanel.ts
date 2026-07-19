@@ -1,4 +1,5 @@
 import type { ActionProposalDTO, BuildMetadata, RealtimeSignal } from "@douyin-local-life/shared";
+import { developmentLoopbackHostnames, isLocalBuild, localWebPort } from "./build-target";
 import { STORAGE } from "./messages";
 
 const elements = {
@@ -97,7 +98,7 @@ async function apiContext() {
 function webBaseUrl(apiBaseUrl: string) {
   try {
     const url = new URL(apiBaseUrl);
-    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return `${url.protocol}//${url.hostname}:3300`;
+    if (isLocalBuild && developmentLoopbackHostnames.includes(url.hostname)) return `${url.protocol}//${url.hostname}:${localWebPort}`;
     return "https://www.pxxis.cn";
   } catch {
     return "https://www.pxxis.cn";

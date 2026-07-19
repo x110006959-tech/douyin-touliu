@@ -1,6 +1,8 @@
 import { createServer } from "./server.js";
 import { ensureEmailDeliveryConfigured } from "./email-verification.js";
+import { sanitizeErrorForLog } from "./http-security.js";
 import { prisma } from "./prisma.js";
+import { flushSecurityMetrics } from "./security-metrics.js";
 import { closeAllSseConnections } from "./sse-limits.js";
 
 ensureEmailDeliveryConfigured();
@@ -16,6 +18,7 @@ async function shutdown() {
   shuttingDown = true;
   closeAllSseConnections();
   await closeServerWithinGracePeriod();
+  await flushSecurityMetrics().catch((error: unknown) => console.error("Security metric flush failed", sanitizeErrorForLog(error)));
   await prisma.$disconnect();
 }
 

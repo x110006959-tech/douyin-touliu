@@ -117,7 +117,7 @@ function statusFromPresence(presence: ExtensionPresence, taskTitle: string, expe
     message = "当前页面可采集，但无法确认所处分栏；请在插件中为本次采集选择概览、商品或流量。";
   } else if (presence.accountMatchStatus === "UNVERIFIED") {
     state = "ACCOUNT_UNVERIFIED";
-    message = "插件已连接，但页面账号暂时无法确认；采集后需要人工核对。";
+    message = "插件已连接，但页面账号尚未通过服务端可信证据校验；采集后需要人工核对。";
   }
 
   return {

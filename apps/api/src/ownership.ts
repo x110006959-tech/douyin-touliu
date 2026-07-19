@@ -17,7 +17,10 @@ export function getOwnedProject(userId: string, projectId: string) {
 export function getOwnedTaskAccess(userId: string, taskId: string) {
   return prisma.collectionTask.findFirst({
     where: { id: taskId, project: { workspace: { ownerId: userId } } },
-    include: { project: { include: { accountProfile: true } } }
+    include: {
+      project: { include: { accountProfile: true } },
+      routeSources: true
+    }
   });
 }
 
@@ -37,8 +40,6 @@ export async function getOwnedTask(userId: string, taskId: string, client: TaskQ
         }
       },
       reviewedMetrics: { orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }] },
-      analyses: { orderBy: { createdAt: "desc" }, take: 20 },
-      auditLogs: { orderBy: { createdAt: "desc" }, take: 100 }
     }
   });
   if (!task) return null;
@@ -64,9 +65,13 @@ export async function getOwnedTask(userId: string, taskId: string, client: TaskQ
     collectionRuns: task.collectionRuns.map((run) => ({
       ...run,
       snapshots: snapshots.filter((snapshot) => snapshot.collectionRunId === run.id).map((snapshot) => ({
+        id: snapshot.id,
         routeKey: snapshot.routeKey,
         pageType: snapshot.pageType,
-        localCollectedAt: snapshot.localCollectedAt
+        localCollectedAt: snapshot.localCollectedAt,
+        accountMatchStatus: snapshot.accountMatchStatus,
+        routeVerificationStatus: snapshot.routeVerificationStatus,
+        captureMetaJson: snapshot.captureMetaJson
       }))
     }))
   };

@@ -67,10 +67,16 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(workspace.id).toBeTruthy();
 
+    const platformAccountId = `v01-account-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const account = await api<{ id: string }>("/account-profiles", token, {
+      method: "POST",
+      body: { workspaceId: workspace.id, accountName: "V0.1 service provider account", platformAccountId }
+    });
     const project = await api<{ id: string; subjectType: string; operatorType: string; cooperationType: string; controlLevel: string }>("/projects", token, {
       method: "POST",
       body: {
         workspaceId: workspace.id,
+        accountProfileId: account.id,
         name: "V0.1 service provider project",
         businessType: "DOUYIN_LOCAL_LIFE",
         subjectType: "SERVICE_PROVIDER",
@@ -100,15 +106,32 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(task.projectId).toBe(project.id);
 
-    const collectionRun = await api<{ id: string; status: string; quality: { completeness: number } }>(`/collection-tasks/${task.id}/collection-runs`, token, {
+    await apiError(`/collection-tasks/${task.id}/collection-runs`, token, {
       method: "POST",
-      body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
-    });
+      body: { requiredRoutes: ["MATERIAL_LIBRARY"] }
+    }, "ROUTE_NOT_CONFIGURED");
+    const [collectionRun, concurrentRun] = await Promise.all([
+      api<{ id: string; status: string; quality: { completeness: number } }>(`/collection-tasks/${task.id}/collection-runs`, token, {
+        method: "POST",
+        body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
+      }),
+      api<{ id: string; status: string; quality: { completeness: number } }>(`/collection-tasks/${task.id}/collection-runs`, token, {
+        method: "POST",
+        body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
+      })
+    ]);
+    expect(concurrentRun.id).toBe(collectionRun.id);
+    expect(await prisma.collectionRun.count({
+      where: { taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }
+    })).toBe(1);
+    expect(await prisma.auditLog.count({
+      where: { taskId: task.id, action: "collection_run.started" }
+    })).toBe(1);
     expect(collectionRun.status).toBe("ACTIVE");
 
     const snapshotBody = {
       pageType: "LIVE_DATA_SCREEN",
-      sourceUrl: "https://life.douyin.com/live-dashboard?access_token=must-not-persist",
+      sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${platformAccountId}&access_token=must-not-persist`,
       pageTitle: "V0.1 live dashboard smoke 13800138000",
       rawDomText: "service provider password=must-not-persist phone 13800138000 spend 1200 orders 0 impressions 50000 ctr 0.5% GPM 80",
       rawNetworkJson: [
@@ -141,7 +164,8 @@ describe("V0.1 API smoke flow", () => {
       localCollectedAt: new Date().toISOString(),
       collectionRunId: collectionRun.id,
       routeKey: "LIVE_DATA_SCREEN",
-      detectedAccountName: "V0.1 service provider project",
+      detectedAccountId: platformAccountId,
+      accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
       captureMeta: captureMeta("LIVE_DATA_SCREEN", ["verify_roi", "gross_profit_roi", "spend", "orders", "impressions", "ctr"])
     };
     const snapshotKey = `snapshot-${Date.now()}`;
@@ -180,7 +204,9 @@ describe("V0.1 API smoke flow", () => {
         pageType: "LIVE_DATA_SCREEN",
         localCapturedAt: new Date().toISOString(),
         tabState: "VISIBLE",
-        detectedAccountName: "V0.1 service provider project",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${platformAccountId}`,
+        detectedAccountId: platformAccountId,
+        accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
         metrics: [metric("verify_roi", "verify ROI", 0.8), metric("spend", "spend", 1200), metric("orders", "orders", 0)],
         captureMeta: captureMeta("LIVE_DATA_SCREEN", ["verify_roi", "spend", "orders"])
       }
@@ -198,6 +224,7 @@ describe("V0.1 API smoke flow", () => {
 
     const metrics = await api<Array<{ metricKey: string }>>(`/collection-tasks/${task.id}/metrics`, token);
     expect(metrics.length).toBeGreaterThan(0);
+    await api(`/collection-tasks/${task.id}/review-metrics/initialize`, token, { method: "POST", body: {} });
     await api(`/collection-tasks/${task.id}/review-metrics/confirm-all`, token, { method: "POST", body: {} });
 
     const decisionCountBeforePreview = await prisma.decisionRun.count({ where: { collectionTaskId: task.id } });
@@ -260,15 +287,36 @@ describe("V0.1 API smoke flow", () => {
 
     const explanationsBefore = await prisma.aiAnalysisTask.count({ where: { collectionTaskId: task.id } });
     const proposalsBeforeExplanation = await prisma.actionProposal.count({ where: { collectionTaskId: task.id } });
-    const explanationOnly = await api<{ responsePayload: { finalActionsSource: string; suggestions: Array<Record<string, unknown>> } }>(`/collection-tasks/${task.id}/explain`, token, {
+    const explanationOnly = await api<{
+      id: string;
+      promptVersion: string;
+      responsePayload: {
+        finalActionsSource: string;
+        suggestions: Array<Record<string, unknown>>;
+        decisionReference: {
+          mode: string;
+          policyVersion: string;
+          insights: Array<Record<string, unknown>>;
+          sources: Array<{ sourceRevision: string }>;
+        };
+      };
+    }>(`/collection-tasks/${task.id}/explain`, token, {
       method: "POST",
       body: {}
     });
     expect(explanationOnly.responsePayload.finalActionsSource).toBe("decision-engine");
     expect(explanationOnly.responsePayload.suggestions.length).toBeGreaterThan(0);
     expect(explanationOnly.responsePayload.suggestions.every((suggestion) => !("actionType" in suggestion) && !("requiresApproval" in suggestion))).toBe(true);
+    expect(explanationOnly.promptVersion).toContain("agency-reference");
+    expect(explanationOnly.responsePayload.decisionReference.mode).toBe("ADVISORY_ONLY");
+    expect(explanationOnly.responsePayload.decisionReference.policyVersion).toContain("agency-agents-curated");
+    expect(explanationOnly.responsePayload.decisionReference.insights.length).toBeGreaterThan(0);
+    expect(explanationOnly.responsePayload.decisionReference.sources.every((source) => /^[a-f0-9]{40}$/.test(source.sourceRevision))).toBe(true);
     expect(await prisma.actionProposal.count({ where: { collectionTaskId: task.id } })).toBe(proposalsBeforeExplanation);
     expect(await prisma.aiAnalysisTask.count({ where: { collectionTaskId: task.id } })).toBe(explanationsBefore + 1);
+    const latestExplanation = await api<Record<string, unknown> & { id: string }>(`/collection-tasks/${task.id}/analysis/latest`, token);
+    expect(latestExplanation.id).toBe(explanationOnly.id);
+    expect(latestExplanation).not.toHaveProperty("requestPayload");
 
     const [approveTarget, observeTarget] = projectProposals;
     if (!approveTarget || !observeTarget) throw new Error("Expected at least two deduplicated action proposals");
@@ -311,7 +359,19 @@ describe("V0.1 API smoke flow", () => {
     expect(observed.approvalRecords.length).toBeGreaterThan(0);
     await prisma.actionProposal.update({ where: { id: observeTarget.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     await apiError(`/action-proposals/${observeTarget.id}/approve`, token, { method: "POST", body: {} }, "ACTION_EXPIRED");
-    expect((await prisma.actionProposal.findUniqueOrThrow({ where: { id: observeTarget.id } })).status).toBe("EXPIRED");
+    expect(await api<{ id: string; status: string }>(`/action-proposals/${observeTarget.id}`, token)).toMatchObject({
+      id: observeTarget.id,
+      status: "EXPIRED"
+    });
+    expect((await api<Array<{ id: string; status: string }>>(`/projects/${project.id}/action-proposals`, token)).find((proposal) => proposal.id === observeTarget.id)).toMatchObject({
+      id: observeTarget.id,
+      status: "EXPIRED"
+    });
+    expect((await api<Array<{ id: string; status: string }>>(`/action-proposals?projectId=${project.id}`, token)).find((proposal) => proposal.id === observeTarget.id)).toMatchObject({
+      id: observeTarget.id,
+      status: "EXPIRED"
+    });
+    expect((await prisma.actionProposal.findUniqueOrThrow({ where: { id: observeTarget.id } })).status).toBe("OBSERVING");
 
     const rejected = await api<{ status: string; approvalRecords: unknown[] }>(`/action-proposals/${rejectTarget.id}/reject`, token, {
       method: "POST",
@@ -380,15 +440,39 @@ describe("V0.1 API smoke flow", () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await api(`/collection-runs/${collectionRun.id}/failures`, token, {
         method: "POST",
-        body: { routeKey: "LIVE_DATA_SCREEN", error: `collector timeout ${attempt + 1}` }
+        body: {
+          routeKey: "LIVE_DATA_SCREEN",
+          errorCode: "UPLOAD_NETWORK_ERROR",
+          error: `collector timeout ${attempt + 1}`
+        }
       });
     }
-    const degradedRun = await api<{ status: string; routeHealth: Array<{ consecutiveFailures: number }> }>(
+    const degradedRun = await api<{
+      status: string;
+      routeHealth: Array<{ consecutiveFailures: number; lastErrorCode: string | null }>;
+    }>(
       `/collection-tasks/${task.id}/collection-runs/latest`,
       token
     );
     expect(degradedRun.status).toBe("DEGRADED");
     expect(degradedRun.routeHealth[0]?.consecutiveFailures).toBe(3);
+    expect(degradedRun.routeHealth[0]?.lastErrorCode).toBe("UPLOAD_NETWORK_ERROR");
+
+    await api(`/collection-tasks/${task.id}/snapshots`, token, {
+      method: "POST",
+      headers: { "idempotency-key": `recovery-${Date.now()}` },
+      body: {
+        ...snapshotBody,
+        localCollectedAt: new Date().toISOString(),
+        visibleMetricsJson: [...snapshotBody.visibleMetricsJson, metric("recovery_probe", "recovery probe", 1)]
+      }
+    });
+    const recoveredRun = await api<{ status: string; routeHealth: Array<{ consecutiveFailures: number; lastErrorCode: string | null }> }>(
+      `/collection-tasks/${task.id}/collection-runs/latest`,
+      token
+    );
+    expect(recoveredRun.status).toBe("COMPLETED");
+    expect(recoveredRun.routeHealth[0]).toMatchObject({ consecutiveFailures: 0, lastErrorCode: null });
 
     const auditLogs = await api<Array<{ action: string }>>(`/projects/${project.id}/audit-logs`, token);
     expect(auditLogs.some((log) => log.action === "CREATE_DECISION_RUN")).toBe(true);
@@ -399,7 +483,44 @@ describe("V0.1 API smoke flow", () => {
     expect(auditLogs.some((log) => log.action === "MARK_ACTION_MANUAL_EXECUTED")).toBe(true);
     expect(auditLogs.some((log) => log.action === "CREATE_ACTION_OUTCOME")).toBe(true);
     expect(auditLogs.some((log) => log.action === "collection_route.failed")).toBe(true);
-    expect(auditLogs.some((log) => log.action === "action_proposal.expired")).toBe(true);
+    expect(auditLogs.some((log) => log.action === "action_proposal.expired")).toBe(false);
+
+    const taskTableSnapshot = await api<{ id: string; structuredDataVersion: string | null }>(
+      `/collection-tasks/${task.id}/snapshots`,
+      token,
+      {
+        method: "POST",
+        body: {
+          pageType: "TASK_TABLE",
+          routeKey: "TASK_TABLE",
+          sourceUrl: `https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2?advertiser_id=${platformAccountId}`,
+          pageTitle: "任务列表",
+          rawDomText: "任务名称 消耗 ROI 订单 曝光 点击率",
+          rawNetworkJson: [],
+          rawTableData: [[
+            ["任务ID", "任务名称", "状态", "日预算", "消耗", "ROI", "目标ROI", "订单", "曝光", "点击", "点击率"],
+            ["task-row-1", "标准任务行", "投放中", "1000", "300", "2.5", "2", "5", "2000", "100", "5%"]
+          ]],
+          visibleMetricsJson: [],
+          localCollectedAt: new Date().toISOString(),
+          collectionRunId: collectionRun.id,
+          detectedAccountId: platformAccountId,
+          accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
+          captureMeta: captureMeta("TASK_TABLE", ["spend", "roi", "orders"])
+        }
+      }
+    );
+    expect(taskTableSnapshot.structuredDataVersion).toBe("collection-records-v1");
+    const structuredSummary = await api<{
+      structuredData: Array<{ kind: string; acceptedRowCount: number; rows: Array<{ taskId: string }> }>;
+    }>(`/collection-tasks/${task.id}/capture-summary`, token);
+    expect(structuredSummary.structuredData).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "TASK_ROWS",
+        acceptedRowCount: 1,
+        rows: [expect.objectContaining({ taskId: "task-row-1" })]
+      })
+    ]));
   });
 
   it("keeps the V0.1.1 reviewed metric loop before decision runs", async () => {
@@ -414,10 +535,16 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: { name: "V0.1.1 Review Workspace" }
     });
+    const platformAccountId = `v011-account-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const account = await api<{ id: string }>("/account-profiles", token, {
+      method: "POST",
+      body: { workspaceId: workspace.id, accountName: "V0.1.1 reviewed metric account", platformAccountId }
+    });
     const project = await api<{ id: string }>("/projects", token, {
       method: "POST",
       body: {
         workspaceId: workspace.id,
+        accountProfileId: account.id,
         name: "V0.1.1 reviewed metric project",
         businessType: "DOUYIN_LOCAL_LIFE",
         subjectType: "SERVICE_PROVIDER",
@@ -450,7 +577,7 @@ describe("V0.1 API smoke flow", () => {
         method: "POST",
         body: {
           pageType: "LIVE_DATA_SCREEN",
-          sourceUrl: "https://life.douyin.com/review-dashboard",
+          sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${platformAccountId}`,
           pageTitle: "V0.1.1 reviewed metric dashboard",
           rawDomText: "review dashboard spend 1000 orders 3 impressions 20000 ctr 3% GPM 120",
           rawNetworkJson: [],
@@ -469,15 +596,22 @@ describe("V0.1 API smoke flow", () => {
           localCollectedAt: new Date().toISOString(),
           collectionRunId: reviewCollectionRun.id,
           routeKey: "LIVE_DATA_SCREEN",
-          detectedAccountName: "V0.1.1 reviewed metric project"
+          detectedAccountId: platformAccountId,
+          accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null }
         }
       }
     );
 
-    const initialReviewMetrics = await api<Array<ReviewMetricResponse>>(`/collection-tasks/${task.id}/review-metrics`, token);
+    await prisma.reviewedMetric.deleteMany({ where: { taskId: task.id } });
+    const initializedAuditCountBeforeRead = await prisma.auditLog.count({ where: { taskId: task.id, action: "REVIEW_METRICS_INITIALIZED" } });
+    expect(await api<Array<ReviewMetricResponse>>(`/collection-tasks/${task.id}/review-metrics`, token)).toHaveLength(0);
+    expect(await prisma.reviewedMetric.count({ where: { taskId: task.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { taskId: task.id, action: "REVIEW_METRICS_INITIALIZED" } })).toBe(initializedAuditCountBeforeRead);
+    const initialReviewMetrics = await api<Array<ReviewMetricResponse>>(`/collection-tasks/${task.id}/review-metrics/initialize`, token, { method: "POST", body: {} });
     expect(initialReviewMetrics.length).toBeGreaterThanOrEqual(6);
     expect(initialReviewMetrics.every((item) => item.reviewStatus === "PENDING")).toBe(true);
     expect(initialReviewMetrics.every((item) => item.metricSource !== undefined && typeof item.confidence === "number")).toBe(true);
+    expect(await prisma.auditLog.count({ where: { taskId: task.id, action: "REVIEW_METRICS_INITIALIZED" } })).toBe(initializedAuditCountBeforeRead + 1);
 
     const conservativePreview = await api<{
       mode: string;
@@ -591,7 +725,7 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: {
         pageType: "LIVE_DATA_SCREEN",
-        sourceUrl: "https://eos.douyin.com/dp/liveScreen?tab=trend&mode=main",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${accountIdValue}&tab=trend&mode=main`,
         pageTitle: "直播数据大屏",
         rawDomText: "整体支付ROI 59.41 消耗 6959.73 成交订单数 8308 曝光量 100000 点击率 5%",
         rawNetworkJson: [],
@@ -607,6 +741,7 @@ describe("V0.1 API smoke flow", () => {
         collectionRunId: run.id,
         routeKey: "LIVE_DATA_SCREEN",
         detectedAccountId: accountIdValue,
+        accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
         captureMeta: {
           ...captureMeta("LIVE_DATA_SCREEN", ["pay_roi", "spend", "orders", "impressions", "ctr"]),
           completeness: "PARTIAL",
@@ -615,6 +750,7 @@ describe("V0.1 API smoke flow", () => {
         }
       }
     });
+    await api(`/collection-tasks/${task.id}/review-metrics/initialize`, token, { method: "POST", body: {} });
     await api(`/collection-tasks/${task.id}/review-metrics/confirm-all`, token, { method: "POST", body: {} });
 
     const summary = await api<{
@@ -719,10 +855,11 @@ describe("V0.1 API smoke flow", () => {
     const newestLive = await upload({
       pageType: "LIVE_DATA_SCREEN",
       routeKey: "LIVE_DATA_SCREEN",
-      sourceUrl: "https://eos.douyin.com/dp/liveScreen?mode=main",
+      sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${platformAccountId}&mode=main`,
       rawDomText: "消耗 300 成交订单数 6",
       visibleMetricsJson: [metric("spend", "消耗", 300), metric("orders", "成交订单数", 6)],
       detectedAccountId: platformAccountId,
+      accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
       localCollectedAt: new Date(now - 11 * 60_000).toISOString(),
       captureMeta: { ...captureMeta("LIVE_DATA_SCREEN", ["spend", "orders"]), completeness: "PARTIAL", coverageRatio: 0.85 }
     });
@@ -747,16 +884,31 @@ describe("V0.1 API smoke flow", () => {
       requiredRoutesAccountMatched: boolean;
       requiredRoutesComplete: boolean;
       pendingAccountConfirmationCount: number;
-      routes: Array<{ routeKey: string; snapshotId: string | null; state: string }>;
+      routes: Array<{
+        routeKey: string;
+        snapshotId: string | null;
+        state: string;
+        diagnostic: { summaryStatus: string; blocksStrongActions: boolean; issues: Array<{ code: string }> };
+      }>;
       metrics: Array<{ metricKey: string; metricValue: string; routeKey: string | null }>;
     }>(`/collection-tasks/${task.id}/capture-summary`, token);
     expect(finalSummary.requiredRoutesAccountMatched).toBe(true);
     expect(finalSummary.requiredRoutesComplete).toBe(false);
     expect(finalSummary.pendingAccountConfirmationCount).toBe(0);
+    expect(finalSummary.routes.find((route) => route.routeKey === "LIVE_DATA_SCREEN")?.diagnostic).toMatchObject({
+      summaryStatus: "STALE",
+      blocksStrongActions: true,
+      issues: expect.arrayContaining([expect.objectContaining({ code: "SNAPSHOT_STALE" })])
+    });
+    expect(finalSummary.routes.find((route) => route.routeKey === "LOCAL_PROMOTION_DASHBOARD")?.diagnostic).toMatchObject({
+      summaryStatus: "PARTIAL",
+      blocksStrongActions: false
+    });
     expect(finalSummary.routes.find((route) => route.routeKey === "LIVE_DATA_SCREEN")).toMatchObject({ snapshotId: newestLive.id, state: "STALE" });
     expect(finalSummary.routes.find((route) => route.routeKey === "LOCAL_PROMOTION_DASHBOARD")?.snapshotId).toBe(localPromotion.id);
     expect(finalSummary.metrics.find((item) => item.metricKey === "spend" && item.routeKey === "LIVE_DATA_SCREEN")?.metricValue).toBe("300");
 
+    await api(`/collection-tasks/${task.id}/review-metrics/initialize`, token, { method: "POST", body: {} });
     await api(`/collection-tasks/${task.id}/review-metrics/confirm-all`, token, { method: "POST", body: {} });
     const decision = await api<DecisionRunResponse>(`/collection-tasks/${task.id}/decision-runs`, token, {
       method: "POST",
@@ -883,7 +1035,15 @@ describe("V0.1 API smoke flow", () => {
         renderModes: ["DOM", "CANVAS"]
       }
     };
-    await apiError(`/collection-tasks/${firstTask.id}/snapshots`, token, { method: "POST", body: { ...baseSnapshot, detectedAccountId: `advertiser-b-${suffix}` } }, "ACCOUNT_MISMATCH");
+    await apiError(`/collection-tasks/${firstTask.id}/snapshots`, token, {
+      method: "POST",
+      body: {
+        ...baseSnapshot,
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=advertiser-b-${suffix}`,
+        detectedAccountId: `advertiser-b-${suffix}`,
+        accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null }
+      }
+    }, "ACCOUNT_MISMATCH");
     const manualRouteSnapshot = await api<{
       id: string;
       updatedAt: string;
@@ -893,9 +1053,10 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: {
         ...baseSnapshot,
-        sourceUrl: "https://eos.douyin.com/dp/liveScreen",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=advertiser-a-${suffix}`,
         routeKey: "LIVE_PRODUCT_TAB",
         detectedAccountId: `advertiser-a-${suffix}`,
+        accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
         captureMeta: {
           ...captureMeta("LIVE_PRODUCT_TAB", ["spend", "orders"]),
           routeDetection: {
@@ -925,7 +1086,14 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(routeConfirmed.routeVerificationStatus).toBe("VERIFIED");
     expect(routeConfirmed.normalizedMetrics).toHaveLength(2);
-    const unverified = await api<{ id: string; accountMatchStatus: string; normalizedMetrics: unknown[] }>(`/collection-tasks/${firstTask.id}/snapshots`, token, { method: "POST", body: baseSnapshot });
+    const unverified = await api<{ id: string; accountMatchStatus: string; normalizedMetrics: unknown[] }>(`/collection-tasks/${firstTask.id}/snapshots`, token, {
+      method: "POST",
+      body: {
+        ...baseSnapshot,
+        detectedAccountId: `advertiser-a-${suffix}`,
+        accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null }
+      }
+    });
     expect(unverified.accountMatchStatus).toBe("UNVERIFIED");
     expect(unverified.normalizedMetrics).toHaveLength(0);
     const unverifiedSummary = await api<{
@@ -1126,12 +1294,13 @@ describe("V0.1 API smoke flow", () => {
         tabState: "VISIBLE",
         detectedAccountId: `pair-a-${suffix}`,
         detectedAccountName: "插件账号 A",
+        accountMatchEvidence: { idSource: null, nameSource: "VISIBLE_TEXT_LABEL" },
         accountMatchStatus: "MATCHED",
         observedAt: new Date().toISOString()
       }
     });
     const liveStatus = await api<{ state: string; boundTaskId: string; currentUrl: string }>(`/collection-tasks/${taskA.id}/extension-status`, token);
-    expect(liveStatus).toMatchObject({ state: "READY", boundTaskId: taskA.id, currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2" });
+    expect(liveStatus).toMatchObject({ state: "ACCOUNT_UNVERIFIED", boundTaskId: taskA.id, currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2" });
     await apiError("/extension/heartbeat", exchanged.token, {
       method: "POST",
       body: {
