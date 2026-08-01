@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { BuildMetadata } from "@douyin-local-life/shared";
+import { extensionCollectionProtocolVersion, type BuildMetadata } from "@douyin-local-life/shared";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const rootPackage = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")) as { version: string };
@@ -12,8 +12,9 @@ export function getBuildMetadata(): BuildMetadata {
     productVersion: rootPackage.version,
     gitSha: process.env.GIT_SHA || readGitSha(),
     buildTime: process.env.BUILD_TIME || processStartedAt,
-    schemaVersion: process.env.SCHEMA_VERSION || "20260720_v032_audit_actor_snapshot",
+    schemaVersion: process.env.SCHEMA_VERSION || "20260731_v035_ai_skill_diagnosis",
     extensionVersion: rootPackage.version,
+    collectionProtocolVersion: extensionCollectionProtocolVersion,
     artifactSha256: process.env.EXTENSION_ARTIFACT_SHA256 || null
   };
 }

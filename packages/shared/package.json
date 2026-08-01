@@ -1,6 +1,6 @@
 {
   "name": "@douyin-local-life/shared",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -18,6 +18,16 @@
       "types": "./src/safety.ts",
       "import": "./dist/safety.js",
       "default": "./dist/safety.js"
+    },
+    "./formal-decision-readiness": {
+      "types": "./src/formal-decision-readiness.ts",
+      "import": "./dist/formal-decision-readiness.js",
+      "default": "./dist/formal-decision-readiness.js"
+    },
+    "./diagnosis": {
+      "types": "./src/diagnosis.ts",
+      "import": "./dist/diagnosis.js",
+      "default": "./dist/diagnosis.js"
     }
   },
   "scripts": {

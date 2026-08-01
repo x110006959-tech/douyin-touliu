@@ -1,6 +1,6 @@
 {
   "name": "douyin-local-life-subject-diagnosis",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "scripts": {
@@ -16,6 +16,9 @@
     "extension:build": "corepack pnpm --filter @douyin-local-life/extension build",
     "db:push": "corepack pnpm exec prisma db push",
     "prisma:generate": "corepack pnpm exec prisma generate",
+    "diagnosis:eval:fake": "corepack pnpm --filter @douyin-local-life/api diagnosis:eval:fake",
+    "diagnosis:eval:live": "corepack pnpm --filter @douyin-local-life/api diagnosis:eval:live",
+    "diagnosis:eval:eligible": "corepack pnpm --filter @douyin-local-life/api diagnosis:eval:eligible",
     "retention:dry-run": "corepack pnpm --filter @douyin-local-life/api retention:dry-run",
     "retention:run": "corepack pnpm --filter @douyin-local-life/api retention:run",
     "backup:run": "sh tools/backup-postgres.sh",

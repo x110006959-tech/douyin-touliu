@@ -3,9 +3,7 @@ import {
   collectionSnapshotSchema,
   createProjectSchema,
   decisionEngineInputSchema,
-  evaluateAccountIdentityMatch,
   generatedOptimizationRecommendationSchema,
-  hasTrustedAccountIdEvidence,
   identifyMetricKey,
   standardizeMetricKey
 } from "./index";
@@ -71,49 +69,15 @@ describe("collection snapshot contracts", () => {
     localCollectedAt: "2026-07-18T08:00:00.000Z"
   };
 
-  it("accepts only registered account evidence sources", () => {
+  it("rejects account identity fields from the collection contract", () => {
     expect(collectionSnapshotSchema.safeParse({
       ...snapshot,
-      accountMatchEvidence: { idSource: "URL:advid", nameSource: "VISIBLE_TEXT_LABEL" }
+      detectedAccountId: "account-1001"
     }).success).toBe(true);
-    expect(collectionSnapshotSchema.safeParse({
+    expect(collectionSnapshotSchema.parse({
       ...snapshot,
-      accountMatchEvidence: { idSource: "UNTRUSTED_SOURCE", nameSource: null }
-    }).success).toBe(false);
-  });
-
-  it("requires the claimed URL source to contain the detected account id", () => {
-    expect(hasTrustedAccountIdEvidence({
-      sourceUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=account-1001",
-      detectedAccountId: "account-1001",
-      evidence: { idSource: "URL:advid", nameSource: null }
-    })).toBe(true);
-    expect(hasTrustedAccountIdEvidence({
-      sourceUrl: "https://attacker.example.com/?advid=account-1001",
-      detectedAccountId: "account-1001",
-      evidence: { idSource: "URL:advid", nameSource: null }
-    })).toBe(false);
-    expect(hasTrustedAccountIdEvidence({
-      sourceUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=account-1002",
-      detectedAccountId: "account-1001",
-      evidence: { idSource: "URL:advid", nameSource: null }
-    })).toBe(false);
-    expect(hasTrustedAccountIdEvidence({
-      sourceUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=account-1001",
-      detectedAccountId: "account-1001",
-      evidence: { idSource: "MANUAL_CONFIRMATION", nameSource: null }
-    })).toBe(false);
-  });
-
-  it("never trusts a client-declared account status without verifiable evidence", () => {
-    expect(evaluateAccountIdentityMatch({
-      expectedAccountId: "account-1001",
-      expectedAccountName: "账号 A",
-      sourceUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2",
-      detectedAccountId: "account-1001",
-      detectedAccountName: "账号 A",
-      evidence: { idSource: null, nameSource: "VISIBLE_TEXT_LABEL" }
-    })).toMatchObject({ status: "UNVERIFIED" });
+      detectedAccountId: "account-1001"
+    })).not.toHaveProperty("detectedAccountId");
   });
 });
 

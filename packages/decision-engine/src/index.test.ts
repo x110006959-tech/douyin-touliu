@@ -6,6 +6,22 @@ function metric(key: string, name: string, value: number | string | null): Visib
   return { key, name, value, source: "manual" };
 }
 
+describe("shared metric parsing", () => {
+  it("uses the shared Chinese unit and percentage contract", () => {
+    const result = runDecisionRules(input({
+      metrics: completeMetrics([
+        metric("spend", "消耗", "4万"),
+        metric("ctr", "点击率", "4%"),
+        metric("pay_roi", "整体支付 ROI", "4")
+      ])
+    }));
+    expect(result.businessAnalysis?.performanceSnapshot).toEqual(expect.arrayContaining([
+      expect.stringContaining("消耗=40000"),
+      expect.stringContaining("ROI=4")
+    ]));
+  });
+});
+
 function completeMetrics(overrides: VisibleMetric[] = []) {
   const base = [
     metric("gross_profit_roi", "毛利 ROI", 1.5),
@@ -204,7 +220,7 @@ describe("decision-engine", () => {
 
   it("lowers confidence and asks for manual check when data is unreviewed", () => {
     const reviewed = runDecisionRules(input({ dataReviewStatus: "REVIEWED", metricLayer: "REVIEWED_METRIC" }));
-    const unreviewed = runDecisionRules(input({ dataReviewStatus: "UNREVIEWED", metricLayer: "NORMALIZED_METRIC" }));
+    const unreviewed = runDecisionRules(input({ dataReviewStatus: "UNREVIEWED", metricLayer: "REVIEWED_METRIC" }));
 
     expect(unreviewed.confidence).toBeLessThan(reviewed.confidence);
     expect(unreviewed.manualCheckItems.some((item) => item.title.includes("人工复核") || item.reason.includes("人工复核"))).toBe(true);
@@ -255,7 +271,7 @@ describe("decision-engine", () => {
     const result = runDecisionRules(
       input({
         dataReviewStatus: "UNREVIEWED",
-        metricLayer: "NORMALIZED_METRIC",
+        metricLayer: "REVIEWED_METRIC",
         metrics: completeMetrics([metric("pay_roi", "整体支付 ROI", 0.5)])
       })
     );
@@ -506,6 +522,53 @@ describe("decision-engine", () => {
     expect(recommendation?.steps.join(" ")).toContain("停止扩流验证");
   });
 
+  it("parses table units by exact header semantics without mixing ROI and percentages", () => {
+    const valid = runDecisionRules(input({
+      targetRoi: 3,
+      metrics: completeMetrics([metric("pay_roi", "整体支付 ROI", 2), metric("target_roi", "目标 ROI", 3)]),
+      tables: [{
+        routeKey: "TASK_TABLE",
+        rows: [
+          ["投流单元", "消耗(元)", "ROI(倍)", "订单", "曝光", "点击率(%)"],
+          ["语义正确单元", "4万", "4", "20", "4千", "4"]
+        ]
+      }]
+    }));
+    const validEvidence = valid.businessAnalysis?.recommendations.find((item) => item.title.includes("总预算不增加"))?.evidence || [];
+    expect(validEvidence).toEqual(expect.arrayContaining([
+      expect.stringContaining("语义正确单元，消耗=40000元，ROI=4")
+    ]));
+
+    const invalidRoi = runDecisionRules(input({
+      targetRoi: 3,
+      metrics: completeMetrics([metric("pay_roi", "整体支付 ROI", 2), metric("target_roi", "目标 ROI", 3)]),
+      tables: [{
+        routeKey: "TASK_TABLE",
+        rows: [["投流单元", "消耗", "ROI", "订单", "曝光"], ["百分号误用单元", "4万", "4%", "20", "4千"]]
+      }]
+    }));
+    expect(invalidRoi.businessAnalysis?.recommendations.some((item) => item.title.includes("总预算不增加"))).toBe(false);
+    expect(invalidRoi.businessAnalysis?.recommendations.find((item) => item.title === "当前数据中没有可扩流候选")?.evidence).toEqual(
+      expect.arrayContaining([expect.stringContaining("ROI=缺失")])
+    );
+  });
+
+  it("never searches later rows for a more convenient table header", () => {
+    const result = runDecisionRules(input({
+      targetRoi: 3,
+      metrics: completeMetrics([metric("pay_roi", "整体支付 ROI", 2), metric("target_roi", "目标 ROI", 3)]),
+      tables: [{
+        routeKey: "TASK_TABLE",
+        rows: [["任务数据说明"], ["投流单元", "消耗", "ROI"], ["错位单元", "4000", "4"]]
+      }]
+    }));
+
+    expect(result.businessAnalysis?.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "投流单元表缺少目标 ROI 分析所需列" })
+    ]));
+    expect(result.businessAnalysis?.recommendations.some((item) => item.title.includes("总预算不增加"))).toBe(false);
+  });
+
   it("states that no scalable unit exists when every mature unit misses the target", () => {
     const result = runDecisionRules(input({
       targetRoi: 60,
@@ -551,7 +614,7 @@ describe("decision-engine", () => {
   it("does not generate an ROI allocation plan from an unreviewed target ROI", () => {
     const result = runDecisionRules(input({
       dataReviewStatus: "UNREVIEWED",
-      metricLayer: "NORMALIZED_METRIC",
+      metricLayer: "REVIEWED_METRIC",
       targetRoi: 60,
       metrics: completeMetrics([metric("pay_roi", "整体支付 ROI", 57.11), metric("target_roi", "目标 ROI", 60)]),
       tables: [{

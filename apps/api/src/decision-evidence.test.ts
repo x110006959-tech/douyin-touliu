@@ -14,7 +14,15 @@ const baseTask = {
     routeVerificationStatus: "VERIFIED",
     accountConfirmedAt: new Date("2026-07-16T12:00:00.000Z"),
     routeConfirmedAt: null,
-    updatedAt: new Date("2026-07-16T12:00:00.000Z")
+    updatedAt: new Date("2026-07-16T12:00:00.000Z"),
+    tableCellReviews: [{
+      tableIndex: 0,
+      rowIndex: 1,
+      columnIndex: 2,
+      reviewStatus: "CONFIRMED",
+      reviewedValue: "100",
+      updatedAt: new Date("2026-07-16T12:00:00.000Z")
+    }]
   }],
   reviewedMetrics: [{
     id: "review-1",
@@ -52,6 +60,13 @@ describe("decisionEvidenceFingerprint", () => {
     expect(decisionEvidenceFingerprint({
       ...baseTask,
       routeSources: [{ ...baseTask.routeSources[0], sourceUrl: "https://eos.douyin.com/dp/liveScreen?mode=product", updatedAt: new Date("2026-07-16T12:01:00.000Z") }]
+    })).not.toBe(baseline);
+    expect(decisionEvidenceFingerprint({
+      ...baseTask,
+      snapshots: [{
+        ...baseTask.snapshots[0],
+        tableCellReviews: [{ ...baseTask.snapshots[0].tableCellReviews[0], reviewedValue: "101", updatedAt: new Date("2026-07-16T12:01:00.000Z") }]
+      }]
     })).not.toBe(baseline);
   });
 });

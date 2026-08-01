@@ -9,7 +9,8 @@ const packageFiles = [
   "apps/extension/package.json",
   "packages/shared/package.json",
   "packages/llm/package.json",
-  "packages/decision-engine/package.json"
+  "packages/decision-engine/package.json",
+  "packages/diagnosis-skills/package.json"
 ];
 
 const mismatches = [];

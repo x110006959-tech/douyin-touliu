@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessCollectionQuality, detectActiveCollectionRoute, inferCollectionRoute, isSupportedCollectionUrl } from "./collection-routes";
+import { assessCollectionQuality, detectActiveCollectionRoute, inferCollectionRoute, isSupportedCollectionUrl, isTrustedExtensionCollectionUrl } from "./collection-routes";
 
 describe("collection routes", () => {
   it("prefers fixed target page semantics over a broad page type", () => {
@@ -13,6 +13,13 @@ describe("collection routes", () => {
     expect(isSupportedCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/liveboard2")).toBe(true);
     expect(isSupportedCollectionUrl("https://fake-localads.chengzijianzhan.cn/lamp/pc/liveboard2")).toBe(false);
     expect(isSupportedCollectionUrl("https://attacker.example.com")).toBe(false);
+  });
+
+  it("keeps extension collection hosts narrower than the legacy URL allowlist", () => {
+    expect(isTrustedExtensionCollectionUrl("https://eos.douyin.com/any/user-opened/page")).toBe(true);
+    expect(isTrustedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/liveboard2")).toBe(true);
+    expect(isTrustedExtensionCollectionUrl("https://sub.eos.douyin.com/dp/liveScreen")).toBe(false);
+    expect(isTrustedExtensionCollectionUrl("http://eos.douyin.com/dp/liveScreen")).toBe(false);
   });
 
   it("distinguishes live overview, product and traffic sections on the same page", () => {
@@ -48,6 +55,20 @@ describe("collection routes", () => {
       routeKey: "LIVE_DATA_SCREEN",
       source: "MANUAL",
       manuallyConfirmed: true
+    }));
+  });
+
+  it("requires a one-shot manual choice when URL and visible live-dashboard evidence disagree", () => {
+    const detected = detectActiveCollectionRoute({
+      sourceUrl: "https://eos.douyin.com/dp/liveScreen?mode=main",
+      selectedTabLabels: ["商品"],
+      visibleHeadings: ["商品列表"]
+    });
+
+    expect(detected).toEqual(expect.objectContaining({
+      routeKey: "UNKNOWN",
+      source: "UNKNOWN",
+      manuallyConfirmed: false
     }));
   });
 

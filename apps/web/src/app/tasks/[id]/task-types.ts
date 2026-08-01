@@ -1,14 +1,22 @@
 import type {
-  AccountMatchStatus,
   ActionProposalStatus,
   ActionType,
   CooperationType,
   CollectionRouteDiagnostic,
   DecisionBusinessAnalysis,
+  DecisionEngineOutput,
   OperatorType,
   RiskLevel,
   SubjectType
 } from "@douyin-local-life/shared";
+import type {
+  DiagnosisEvidence,
+  DiagnosisFinalResult,
+  DiagnosisRuleAdjudication,
+  DiagnosisSkillExecutionDTO,
+  DecisionRunMode,
+  DecisionRunStatus
+} from "@douyin-local-life/shared/diagnosis";
 
 export type TaskDetail = {
   id: string;
@@ -25,7 +33,7 @@ export type TaskDetail = {
     serviceProviderName: string | null;
     serviceMode: string | null;
     serviceFee: number | null;
-    accountProfile: { id: string; accountName: string; platformAccountId: string | null };
+    accountProfile: { id: string; accountName: string };
   };
   routeSources: Array<{ routeKey: string; label: string; status: string; required: boolean; sourceUrl: string | null }>;
   snapshots: Array<{
@@ -34,9 +42,6 @@ export type TaskDetail = {
     rawDomText: string | null;
     visibleMetricsJson: unknown;
     normalizedMetrics: Array<{ metricKey: string; metricName: string; metricValue: string; metricUnit: string | null }>;
-    accountMatchStatus: AccountMatchStatus;
-    detectedAccountId: string | null;
-    detectedAccountName: string | null;
   }>;
   analyses: Array<{
     id: string;
@@ -57,10 +62,22 @@ export type TaskDetail = {
 
 export type DecisionRun = {
   id: string;
-  diagnosis: string;
-  riskLevel: RiskLevel;
-  confidence: number;
+  mode: DecisionRunMode;
+  status: DecisionRunStatus;
+  diagnosis: string | null;
+  riskLevel: RiskLevel | null;
+  confidence: number | null;
   strategyVersion: string;
+  provider: string | null;
+  model: string | null;
+  currentStage: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  skillExecutions: DiagnosisSkillExecutionDTO[];
+  diagnosisCase?: { id: string; status: "DRAFT" | "ELIGIBLE" | "EXCLUDED" } | null;
+  feedback?: Array<{ mainProblemCorrect: boolean; usefulnessScore: number; correctionNote: string | null }>;
   createdAt: string;
   actionProposals: Array<{
     id: string;
@@ -84,6 +101,21 @@ export type DecisionRun = {
       evidence?: string[];
     };
   };
+  finalResult: (DiagnosisFinalResult & {
+    evidenceCatalog?: DiagnosisEvidence[];
+    ruleAdjudication?: DiagnosisRuleAdjudication & { lifecycleSuppressed?: unknown[] };
+  }) | null;
+};
+
+export type DecisionPreview = {
+  preview: true;
+  createsRecords: false;
+  mode: "FORMAL_READY" | "CONSERVATIVE_ONLY";
+  readiness: {
+    ready: boolean;
+    blockingReasons: string[];
+  };
+  finalOutput: DecisionEngineOutput;
 };
 
 export type DecisionReferenceInsight = {

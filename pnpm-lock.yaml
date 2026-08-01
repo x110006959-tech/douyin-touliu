@@ -27,6 +27,9 @@ importers:
       '@douyin-local-life/decision-engine':
         specifier: workspace:*
         version: link:../../packages/decision-engine
+      '@douyin-local-life/diagnosis-skills':
+        specifier: workspace:*
+        version: link:../../packages/diagnosis-skills
       '@douyin-local-life/llm':
         specifier: workspace:*
         version: link:../../packages/llm
@@ -165,6 +168,22 @@ importers:
       '@douyin-local-life/shared':
         specifier: workspace:*
         version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@22.20.0)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(tsx@4.23.0))
+
+  packages/diagnosis-skills:
+    dependencies:
+      '@douyin-local-life/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       typescript:
         specifier: ^5.7.2

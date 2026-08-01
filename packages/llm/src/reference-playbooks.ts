@@ -1,4 +1,6 @@
 import {
+  metricValueSemantic,
+  metricValueToRuleNumber,
   standardizeMetricKey,
   type AnalyzeInput,
   type DiagnosticDimension,
@@ -282,20 +284,10 @@ function readMetrics(input: AnalyzeInput) {
   const metrics = new Map<MetricKey, number>();
   for (const metric of input.metrics) {
     const key = standardizeMetricKey(metric);
-    const value = parseMetricNumber(metric.value);
+    const value = key === "unknown" ? null : metricValueToRuleNumber(metric, metricValueSemantic(key));
     if (key !== "unknown" && value != null && !metrics.has(key)) metrics.set(key, value);
   }
   return metrics;
-}
-
-function parseMetricNumber(value: AnalyzeInput["metrics"][number]["value"]) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value !== "string") return null;
-  const text = value.trim();
-  const multiplier = text.includes("万") ? 10_000 : text.includes("千") ? 1_000 : 1;
-  const parsed = Number(text.replace(/[¥￥,%\s,，]/g, "").replace(/[万千]/g, ""));
-  if (!Number.isFinite(parsed)) return null;
-  return text.includes("%") ? parsed / 100 : parsed * multiplier;
 }
 
 function formatNumber(value: number) {

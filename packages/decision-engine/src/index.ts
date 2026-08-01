@@ -1,6 +1,7 @@
 import {
   budgetActionTypes,
   decisionEngineActionTypes,
+  metricValueToRuleNumber,
   strongActionTypes,
   subjectLabel,
   standardizeMetricKey,
@@ -15,11 +16,14 @@ import {
   type RiskLevel,
   type VisibleMetric
 } from "@douyin-local-life/shared";
+import type { AiCandidateAction } from "@douyin-local-life/shared/diagnosis";
+import { guardAiCandidateActionsWithPolicy } from "./ai-policy.js";
 import { analyzeInvestmentUnitTables, analyzeProductTables, buildFunnelEvidence } from "./table-analysis.js";
 export { structureTaskCollectionTables } from "./table-analysis.js";
 
 export const decisionEngineVersion = "decision-engine-v0.2.2";
 export const decisionRuleVersion = "local-life-rules-v0.2.2";
+export const decisionPolicyVersion = "ai-candidate-policy-v1";
 
 const allowedActionTypes = new Set<ActionType>(decisionEngineActionTypes);
 const budgetActions = new Set<ActionType>(budgetActionTypes);
@@ -1220,14 +1224,35 @@ function metricConfidence(metric: VisibleMetric) {
 }
 
 function parseMetricNumber(value: VisibleMetric["value"]) {
-  if (value == null) return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const text = value.trim();
-  const multiplier = text.includes("万") ? 10_000 : text.includes("千") ? 1_000 : 1;
-  const cleaned = text.replace(/[¥￥,%\s,，]/g, "").replace(/[万千]/g, "");
-  const parsed = Number(cleaned);
-  if (!Number.isFinite(parsed)) return null;
-  return text.includes("%") ? parsed / 100 : parsed * multiplier;
+  return metricValueToRuleNumber({ value }, "UNKNOWN");
+}
+
+export function evaluateDecisionPolicy(input: DecisionEngineInput) {
+  const metrics = metricReader(input.metrics);
+  const managedLiveGrowth = isManagedLiveGrowth(input);
+  const serviceProviderFinancials = calculateServiceProviderFinancials(input, metrics);
+  const accountRoi = metrics.firstNumber(["verify_roi", "pay_roi"]);
+  const selectedRoi = managedLiveGrowth
+    ? accountRoi
+    : input.subject.subjectType === "SERVICE_PROVIDER"
+      ? serviceProviderFinancials.grossProfitRoi ?? metrics.number("gross_profit_roi")
+      : metrics.firstNumber(["verify_roi", "gross_profit_roi", "pay_roi"]);
+  return {
+    policyVersion: decisionPolicyVersion,
+    dataQuality: assessDataQuality(input, metrics, selectedRoi)
+  };
+}
+
+export function guardAiCandidateActions(input: {
+  decisionInput: DecisionEngineInput;
+  candidates: AiCandidateAction[];
+  validEvidenceIds: ReadonlySet<string>;
+}) {
+  return guardAiCandidateActionsWithPolicy({
+    policy: evaluateDecisionPolicy(input.decisionInput),
+    candidates: input.candidates,
+    validEvidenceIds: input.validEvidenceIds
+  });
 }
 
 function normalizeRate(value: number | null) {

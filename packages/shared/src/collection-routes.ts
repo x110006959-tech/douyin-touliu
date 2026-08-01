@@ -37,7 +37,7 @@ export const collectionRouteTemplates: CollectionRouteTemplate[] = [
     website: "抖音生活服务直播数据大屏",
     purpose: "采集成交、观看、曝光和直播间承接指标",
     required: true,
-    urlHint: "例如 localads.chengzijianzhan.cn/lamp/pc/liveboard2"
+    urlHint: "请在已登录的直播数据大屏打开概览页面"
   },
   {
     routeKey: "LIVE_PRODUCT_TAB",
@@ -45,7 +45,7 @@ export const collectionRouteTemplates: CollectionRouteTemplate[] = [
     website: "抖音生活服务直播数据大屏",
     purpose: "采集商品支付、订单、曝光和商品转化数据",
     required: false,
-    urlHint: "在直播大屏中切换到“商品”后采集"
+    urlHint: "请在已登录的直播数据大屏切换到“商品”"
   },
   {
     routeKey: "LIVE_TRAFFIC_TAB",
@@ -53,7 +53,7 @@ export const collectionRouteTemplates: CollectionRouteTemplate[] = [
     website: "抖音生活服务直播数据大屏",
     purpose: "采集自然流量、商业流量和流量趋势",
     required: false,
-    urlHint: "在直播大屏中切换到“流量”后采集"
+    urlHint: "请在已登录的直播数据大屏切换到“流量”"
   },
   {
     routeKey: "LOCAL_PROMOTION_DASHBOARD",
@@ -61,7 +61,7 @@ export const collectionRouteTemplates: CollectionRouteTemplate[] = [
     website: "巨量本地推",
     purpose: "采集消耗、预算、ROI、订单和成本指标",
     required: true,
-    urlHint: "请粘贴当前已登录的巨量本地推数据页面地址"
+    urlHint: "请在已登录的巨量本地推后台打开数据总览"
   },
   {
     routeKey: "TASK_TABLE",
@@ -69,7 +69,7 @@ export const collectionRouteTemplates: CollectionRouteTemplate[] = [
     website: "巨量本地推",
     purpose: "采集计划状态、预算、出价和任务层级数据",
     required: true,
-    urlHint: "请打开巨量本地推的任务或计划列表"
+    urlHint: "请在已登录的巨量本地推后台打开任务或计划列表"
   }
 ];
 
@@ -86,10 +86,25 @@ export const supportedCollectionHosts = [
   "localads.chengzijianzhan.cn"
 ] as const;
 
+// Extension host permissions are deliberately narrower than the legacy URL allowlist.
+export const trustedExtensionCollectionHosts = [
+  "eos.douyin.com",
+  "localads.chengzijianzhan.cn"
+] as const;
+
 export function isSupportedCollectionUrl(value: string) {
   try {
     const host = new URL(value).hostname.toLowerCase();
     return supportedCollectionHosts.some((allowed) => host === allowed || (allowed !== "localads.chengzijianzhan.cn" && host.endsWith(`.${allowed}`)));
+  } catch {
+    return false;
+  }
+}
+
+export function isTrustedExtensionCollectionUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && trustedExtensionCollectionHosts.includes(url.hostname.toLowerCase() as typeof trustedExtensionCollectionHosts[number]);
   } catch {
     return false;
   }
@@ -150,20 +165,7 @@ export function detectActiveCollectionRoute(input: {
   }
 
   const urlRoute = routeFromUrl(input.sourceUrl);
-  if (urlRoute) {
-    return { routeKey: urlRoute, source: "URL", confidence: 0.98, manuallyConfirmed: false, evidence: [`URL：${urlRoute}`] };
-  }
-
   const selectedRoutes = [...new Set((input.selectedTabLabels || []).map(routeFromSelectedLabel).filter((route): route is CollectionRouteKey => Boolean(route)))];
-  if (selectedRoutes.length === 1) {
-    return {
-      routeKey: selectedRoutes[0]!,
-      source: "ACTIVE_TAB",
-      confidence: 0.92,
-      manuallyConfirmed: false,
-      evidence: [`选中分栏：${(input.selectedTabLabels || []).join(" / ")}`]
-    };
-  }
   if (selectedRoutes.length > 1) {
     return {
       routeKey: "UNKNOWN",
@@ -177,15 +179,6 @@ export function detectActiveCollectionRoute(input: {
   const headingRoutes = [...new Set([input.pageTitle || "", ...(input.visibleHeadings || [])]
     .map(routeFromSpecificHeading)
     .filter((route): route is CollectionRouteKey => Boolean(route)))];
-  if (headingRoutes.length === 1) {
-    return {
-      routeKey: headingRoutes[0]!,
-      source: "VISIBLE_CONTENT",
-      confidence: 0.9,
-      manuallyConfirmed: false,
-      evidence: [`专属标题：${collectionRouteLabels[headingRoutes[0]!] || headingRoutes[0]}`]
-    };
-  }
   if (headingRoutes.length > 1) {
     return {
       routeKey: "UNKNOWN",
@@ -203,14 +196,33 @@ export function detectActiveCollectionRoute(input: {
     scoreRoute("LIVE_DATA_SCREEN", content, ["直播间成交金额", "趋势分析", "用户画像", "转化分析", "累计曝光次数", "商品转化率"])
   ].filter((item) => item.score >= 2);
   scores.sort((left, right) => right.score - left.score);
-  if (scores.length && (scores.length === 1 || scores[0]!.score > scores[1]!.score)) {
-    const winner = scores[0]!;
+  const contentWinner = scores.length && (scores.length === 1 || scores[0]!.score > scores[1]!.score)
+    ? scores[0]!
+    : null;
+  const candidates = [
+    urlRoute ? { routeKey: urlRoute, source: "URL" as const, confidence: 0.98, evidence: `URL：${urlRoute}` } : null,
+    selectedRoutes[0] ? { routeKey: selectedRoutes[0], source: "ACTIVE_TAB" as const, confidence: 0.92, evidence: `选中分栏：${(input.selectedTabLabels || []).join(" / ")}` } : null,
+    headingRoutes[0] ? { routeKey: headingRoutes[0], source: "VISIBLE_CONTENT" as const, confidence: 0.9, evidence: `专属标题：${collectionRouteLabels[headingRoutes[0]] || headingRoutes[0]}` } : null,
+    contentWinner ? { routeKey: contentWinner.routeKey, source: "VISIBLE_CONTENT" as const, confidence: Math.min(0.9, 0.68 + contentWinner.score * 0.05), evidence: contentWinner.markers.map((marker) => `可见内容：${marker}`).join("；") } : null
+  ].filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+  const distinctRoutes = [...new Set(candidates.map((candidate) => candidate.routeKey))];
+  if (distinctRoutes.length > 1) {
     return {
-      routeKey: winner.routeKey,
-      source: "VISIBLE_CONTENT",
-      confidence: Math.min(0.9, 0.68 + winner.score * 0.05),
+      routeKey: "UNKNOWN",
+      source: "UNKNOWN",
+      confidence: 0,
       manuallyConfirmed: false,
-      evidence: winner.markers.map((marker) => `可见内容：${marker}`)
+      evidence: candidates.map((candidate) => candidate.evidence)
+    };
+  }
+  const candidate = candidates[0];
+  if (candidate) {
+    return {
+      routeKey: candidate.routeKey,
+      source: candidate.source,
+      confidence: candidate.confidence,
+      manuallyConfirmed: false,
+      evidence: candidates.map((item) => item.evidence)
     };
   }
 

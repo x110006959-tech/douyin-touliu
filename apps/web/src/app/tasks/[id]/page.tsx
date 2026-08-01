@@ -1,34 +1,29 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Papa from "papaparse";
 import {
   aiDisclaimer,
   collectionRouteLabels,
   collectionRouteTemplates,
   cooperationTypeLabels,
-  evaluateFormalDecisionReadiness,
   operatorTypeLabels,
   subjectTypeLabels,
   type ActionProposalStatus,
   type ActionType,
-  type AccountMatchStatus,
-  type CaptureSummaryDTO,
   type CooperationType,
   type DecisionBusinessAnalysis,
   type ExtensionStatusDTO,
-  type MetricReviewStatus,
-  type MetricSource,
   type OperatorType,
   type ReviewedMetricDTO,
   type RiskLevel,
   type SubjectType
 } from "@douyin-local-life/shared";
+import { evaluateFormalDecisionReadiness } from "@douyin-local-life/shared/formal-decision-readiness";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input, Textarea } from "@/components/ui/input";
 import { apiBaseUrl, apiFetch, createIdempotencyKey } from "@/lib/api";
 import { pairExtensionTask } from "@/lib/extension-bridge";
@@ -36,7 +31,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-state";
 import { getTaskWizardProgress } from "@/lib/task-progress";
 import { DiagnosisComparison } from "./diagnosis-comparison";
-import type { DecisionRun, ExpertAnalysis } from "./task-types";
+import type { DecisionPreview, DecisionRun } from "./task-types";
 import { useExtensionTaskStatus, type WebBridgeUiState } from "./use-extension-task-status";
 import { useTaskData } from "./use-task-data";
 
@@ -49,18 +44,18 @@ type PairingCodeResponse = {
 
 export default function TaskDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { token, hydrated } = useAuth();
+  const openCollectionDashboardAfterCapture = useCallback(() => {
+    router.push(`/tasks/${params.id}/collection-dashboard`);
+  }, [params.id, router]);
   const {
     task,
     decisionRun,
     setDecisionRun,
-    expertAnalysis,
-    setExpertAnalysis,
     collectionRun,
     reviewMetrics,
-    reviewDrafts,
-    setReviewDrafts,
-    applyReviewMetrics,
     load,
     error,
     setError
@@ -69,23 +64,45 @@ export default function TaskDetailPage() {
     captureSummary,
     extensionDetected,
     extensionStatus,
-    refreshCaptureStatus,
+    refreshConnectionStatus,
     setExtensionDetected,
     setWebBridge,
     webBridge
-  } = useExtensionTaskStatus({ taskId: params.id, token, reloadTask: load });
+  } = useExtensionTaskStatus({
+    taskId: params.id,
+    token,
+    reloadTask: load,
+    onCaptureCompleted: openCollectionDashboardAfterCapture
+  });
   const [pairingCode, setPairingCode] = useState<PairingCodeResponse | null>(null);
   const [pairingMessage, setPairingMessage] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
+  const [decisionPreview, setDecisionPreview] = useState<DecisionPreview | null>(null);
   const [busy, setBusy] = useState("");
-  const [editingRouteKey, setEditingRouteKey] = useState<string | null>(null);
-  const [routeUrlDraft, setRouteUrlDraft] = useState("");
   const [manualCsv, setManualCsv] = useState("指标名称,值,单位\n核销 ROI,,\n消耗,,元\n成交订单数,,单");
   const [manualAccountConfirmed, setManualAccountConfirmed] = useState(false);
-  const [snapshotToConfirm, setSnapshotToConfirm] = useState<string | null>(null);
-  const [confirmAllAccountsOpen, setConfirmAllAccountsOpen] = useState(false);
   const decisionIdempotencyKey = useRef<string | null>(null);
   const manualIdempotencyKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!token || searchParams.get("preview") !== "1") return;
+    let active = true;
+    setBusy("decision-preview");
+    setError("");
+    void apiFetch<DecisionPreview>(`/collection-tasks/${params.id}/decision-preview`, token, {
+      method: "POST",
+      body: "{}"
+    }).then((preview) => {
+      if (active) setDecisionPreview(preview);
+    }).catch((previewError) => {
+      if (active) setError(previewError instanceof Error ? previewError.message : "生成保守诊断失败");
+    }).finally(() => {
+      if (active) setBusy("");
+    });
+    return () => {
+      active = false;
+    };
+  }, [params.id, searchParams, setError, token]);
 
   async function createTaskPairingCode(manualOnly = false) {
     if (!token || !task) return;
@@ -115,27 +132,13 @@ export default function TaskDetailPage() {
     }
   }
 
-  function startRouteUrlEdit(routeKey: string, sourceUrl: string | null | undefined) {
-    setEditingRouteKey(routeKey);
-    setRouteUrlDraft(sourceUrl || "");
-    setError("");
-  }
-
-  async function saveRouteUrl(routeKey: string) {
-    if (!token || !task) return;
-    setBusy(`route-url:${routeKey}`);
+  async function refreshExtensionConnection() {
+    setBusy("extension-status");
     setError("");
     try {
-      await apiFetch(`/collection-tasks/${task.id}/routes/${encodeURIComponent(routeKey)}`, token, {
-        method: "PUT",
-        body: JSON.stringify({ sourceUrl: routeUrlDraft.trim() || null })
-      });
-      setEditingRouteKey(null);
-      setRouteUrlDraft("");
-      load();
-      await refreshCaptureStatus();
+      await refreshConnectionStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存路线网址失败");
+      setError(err instanceof Error ? err.message : "暂时无法读取插件状态，请检查本地服务后重试");
     } finally {
       setBusy("");
     }
@@ -157,23 +160,6 @@ export default function TaskDetailPage() {
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "决策运行失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function runExpertAnalysis() {
-    if (!token) return;
-    setBusy("expert-analysis");
-    setError("");
-    try {
-      const nextExpertAnalysis = await apiFetch<ExpertAnalysis>(`/collection-tasks/${params.id}/explain`, token, {
-        method: "POST",
-        body: "{}"
-      });
-      setExpertAnalysis(nextExpertAnalysis);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "专家参考分析失败");
     } finally {
       setBusy("");
     }
@@ -213,135 +199,6 @@ export default function TaskDetailPage() {
     } catch (err) { setError(err instanceof Error ? err.message : "手工指标导入失败"); } finally { setBusy(""); }
   }
 
-  async function refreshReviewMetrics() {
-    if (!token) return;
-    setBusy("review-refresh");
-    setReviewMessage("");
-    try {
-      const nextReviewMetrics = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/initialize`, token, { method: "POST", body: "{}" });
-      applyReviewMetrics(nextReviewMetrics);
-      setReviewMessage("复核指标已刷新");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "刷新复核指标失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function updateReviewMetric(metric: ReviewedMetricDTO, reviewStatus: Exclude<MetricReviewStatus, "PENDING">) {
-    if (!token) return;
-    setBusy(`review-${metric.id}`);
-    setReviewMessage("");
-    try {
-      const reviewedValue = reviewStatus === "MODIFIED" ? reviewDrafts[metric.id] || "" : undefined;
-      const updated = await apiFetch<ReviewedMetricDTO>(`/review-metrics/${metric.id}`, token, {
-        method: "PATCH",
-        body: JSON.stringify({ reviewStatus, reviewedValue })
-      });
-      applyReviewMetrics(reviewMetrics.map((item) => (item.id === updated.id ? updated : item)));
-      setReviewMessage(reviewStatusLabel(reviewStatus));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存复核指标失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function saveModifiedDrafts() {
-    if (!token) return;
-    const items = reviewMetrics
-      .filter((metric) => (reviewDrafts[metric.id] || "") !== (metric.reviewedValue ?? metric.originalValue ?? ""))
-      .map((metric) => ({ metricId: metric.id, reviewedValue: reviewDrafts[metric.id] || "", reviewStatus: "MODIFIED" as const }));
-    if (!items.length) {
-      setReviewMessage("没有需要保存的修改");
-      return;
-    }
-    setBusy("review-save-all");
-    setReviewMessage("");
-    try {
-      const updated = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/bulk`, token, {
-        method: "POST",
-        body: JSON.stringify({ items })
-      });
-      const byId = new Map(updated.map((metric) => [metric.id, metric]));
-      applyReviewMetrics(reviewMetrics.map((metric) => byId.get(metric.id) || metric));
-      setReviewMessage("修改已保存");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "批量保存复核指标失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function confirmAllPending() {
-    if (!token) return;
-    setBusy("review-confirm-all");
-    setReviewMessage("");
-    try {
-      const updated = await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/confirm-all`, token, {
-        method: "POST",
-        body: "{}"
-      });
-      applyReviewMetrics(updated);
-      setReviewMessage("已确认全部待复核指标");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "一键确认失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function confirmSnapshotAccount(snapshotId: string) {
-    if (!token) return;
-    setBusy("confirm-account"); setError("");
-    try {
-      const expectedUpdatedAt = captureSummary?.routes.find((route) => route.snapshotId === snapshotId)?.snapshotUpdatedAt;
-      if (!expectedUpdatedAt) throw new Error("当前快照已更新，请刷新后重新确认");
-      await apiFetch(`/snapshots/${snapshotId}/confirm-account`, token, { method: "POST", body: JSON.stringify({ confirmed: true, expectedUpdatedAt, note: "用户核对当前账号档案与页面证据后确认" }) });
-      setSnapshotToConfirm(null);
-      await refreshAccountConfirmationState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "确认账号失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function confirmAllSnapshotAccounts() {
-    if (!token || !task) return;
-    const snapshots = unverifiedRoutes.flatMap((route) => route.snapshotId && route.snapshotUpdatedAt
-      ? [{ snapshotId: route.snapshotId, expectedUpdatedAt: route.snapshotUpdatedAt }]
-      : []);
-    if (!snapshots.length) {
-      setError("当前快照已更新，请刷新后重新确认");
-      return;
-    }
-    setBusy("confirm-accounts"); setError("");
-    try {
-      const result = await apiFetch<{ confirmedCount: number; skippedCount: number; reviewMetricCount: number }>(`/collection-tasks/${task.id}/snapshots/confirm-accounts`, token, {
-        method: "POST",
-        body: JSON.stringify({ confirmed: true, snapshots, note: "用户在任务页核对全部当前路线后一次确认" })
-      });
-      setConfirmAllAccountsOpen(false);
-      setReviewMessage(`已确认 ${result.confirmedCount} 条路线，跳过 ${result.skippedCount} 条已确认路线，生成 ${result.reviewMetricCount} 项复核指标`);
-      await refreshAccountConfirmationState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "批量确认账号失败");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function refreshAccountConfirmationState() {
-    if (!token) return;
-    const [, nextReviewMetrics] = await Promise.all([
-      refreshCaptureStatus(),
-      apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token)
-    ]);
-    applyReviewMetrics(nextReviewMetrics);
-    load();
-  }
-
   if (!hydrated) return <AuthLoadingState />;
   if (!token) return <AuthRequiredState />;
 
@@ -367,15 +224,13 @@ export default function TaskDetailPage() {
     && extensionStatus?.state !== "VERSION_OUTDATED"
   );
   const reviewComplete = reviewMetrics.length > 0 && reviewMetrics.every((metric) => metric.reviewStatus !== "PENDING");
-  const accountConfirmed = captureSummary?.requiredRoutesAccountMatched ?? latestSnapshot?.accountMatchStatus === "MATCHED";
   const missingRequiredRoutes = captureSummary?.routes.filter((route) => route.required && !route.snapshotId) || [];
-  const unverifiedRequiredRoutes = captureSummary?.routes.filter((route) => route.required && route.snapshotId && route.accountMatchStatus !== "MATCHED") || [];
-  const unverifiedRoutes = captureSummary?.routes.filter((route) => route.snapshotId && route.accountMatchStatus === "UNVERIFIED") || [];
-  const selectedRouteToConfirm = captureSummary?.routes.find((route) => route.snapshotId === snapshotToConfirm) || null;
+  const staleRequiredRoutes = captureSummary?.routes.filter((route) => route.required && route.state === "STALE") || [];
   const pendingReviewCount = reviewMetrics.filter((metric) => metric.reviewStatus === "PENDING").length;
   const formalReadiness = evaluateFormalDecisionReadiness({
     missingRequiredRouteLabels: missingRequiredRoutes.map((route) => route.label),
-    unverifiedRequiredRouteLabels: unverifiedRequiredRoutes.map((route) => route.label),
+    unverifiedRequiredRouteLabels: [],
+    staleRequiredRouteLabels: staleRequiredRoutes.map((route) => route.label),
     subjectReady: task.project.subjectType !== "SUBJECT_PENDING" && task.project.operatorType !== "OPERATOR_PENDING",
     reviewTotalCount: reviewMetrics.length,
     reviewPendingCount: pendingReviewCount
@@ -385,13 +240,19 @@ export default function TaskDetailPage() {
     extensionConnected,
     hasCapture,
     requiredRoutesCaptured,
-    requiredRoutesAccountMatched: Boolean(accountConfirmed),
     reviewComplete,
     decisionCreated: Boolean(decisionRun)
   });
   const evidenceAdvisories = captureSummary?.routes.filter((route) => route.required && (route.state === "PARTIAL" || route.state === "STALE")) || [];
-  const metricGroups = groupCaptureMetrics(captureSummary?.metrics || []);
-  const businessAnalysis = decisionRun?.finalResultJson?.businessAnalysis || null;
+  const diagnosticOutput = decisionRun?.mode === "LEGACY_RULE"
+    ? {
+        ...decisionRun.finalResultJson,
+        diagnosis: decisionRun.diagnosis || "旧版规则诊断",
+        riskLevel: decisionRun.riskLevel || "MEDIUM",
+        confidence: decisionRun.confidence ?? 0
+      }
+    : decisionPreview?.finalOutput || null;
+  const businessAnalysis = diagnosticOutput?.businessAnalysis || null;
   const managedLiveGrowthMode = businessAnalysis?.mode === "MANAGED_LIVE_GROWTH" || task.project.operatorType === "SERVICE_PROVIDER_LIVE";
   const displayedFindings = managedLiveGrowthMode ? businessAnalysis?.findings.filter((finding) => finding.dimension !== "PROFITABILITY") : businessAnalysis?.findings;
   const displayedRecommendations = managedLiveGrowthMode ? businessAnalysis?.recommendations.filter((recommendation) => recommendation.dimension !== "PROFITABILITY") : businessAnalysis?.recommendations;
@@ -425,21 +286,22 @@ export default function TaskDetailPage() {
 
       {error ? <div className="mb-4 rounded-md border border-danger bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
 
-      {!extensionConnected && !hasCapture ? (
+      {!extensionConnected ? (
         <Card className="mb-4 border-primary/40">
-          <p className="mb-1 text-xs font-semibold text-primary">第 1 步</p>
-          <CardTitle>连接采集插件</CardTitle>
-          <p className="mb-4 text-sm text-muted">网页会先确认插件与后台版本，再一键生成配对码并绑定当前任务。配对不会读取平台密码或 Cookie。</p>
+          <p className="mb-1 text-xs font-semibold text-primary">{hasCapture ? "连接状态" : "第 1 步"}</p>
+          <CardTitle>{hasCapture ? "恢复采集插件连接" : "连接采集插件"}</CardTitle>
+          <p className="mb-4 text-sm text-muted">{hasCapture ? "已有数据仍可复核；继续采集前，请恢复当前任务的插件连接。" : "网页会先确认插件与后台版本，再一键生成配对码并绑定当前任务。"} 配对不会读取平台密码或 Cookie。</p>
           <div className="grid gap-3 md:grid-cols-3">
             <Info label="网页桥接" value={webBridgeStateLabel(webBridge.state)} />
             <Info label="配对状态" value={webBridge.response?.paired || extensionStatus?.paired ? "已安全配对" : "尚未配对"} />
-            <Info label="任务绑定" value={extensionBoundToTask ? "已绑定当前任务" : "尚未绑定"} />
+            <Info label="任务绑定" value={extensionBoundToTask ? "已绑定当前任务" : extensionStatusLabel(extensionStatus?.state)} />
           </div>
           <div className={`mt-3 rounded-md border p-3 text-sm ${webBridge.state === "READY" ? "border-primary/30 bg-blue-50" : "border-amber-300 bg-amber-50"}`}>
             <strong>{webBridge.message}</strong>
             {webBridge.response ? <p className="mt-1 text-xs text-muted">插件 {webBridge.response.extensionVersion} · 协议 {webBridge.response.protocolVersion} · 构建 {webBridge.response.buildFingerprint}</p> : null}
             {webBridge.state !== "READY" ? <p className="mt-2 text-xs text-muted">本地插件代码更新后，请在 chrome://extensions 中点击一次“重新加载”，然后刷新本任务页和目标后台页面。</p> : null}
           </div>
+          {hasCapture ? <p className="mt-3 text-sm text-muted">请先在已登录的目标后台打开下方任一页面并刷新，再重新检测；若本地任务绑定已丢失，再重新配对。</p> : null}
           {pairingMessage ? <p className="mt-3 rounded-md border border-primary/30 bg-blue-50 p-3 text-sm text-primary">{pairingMessage}</p> : null}
           {pairingCode ? (
             <div className="mt-4 rounded-md border border-primary bg-blue-50 p-4 text-center">
@@ -449,7 +311,8 @@ export default function TaskDetailPage() {
             </div>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button disabled={busy === "pairing-code" || webBridge.state !== "READY"} onClick={() => createTaskPairingCode(false)} type="button">{busy === "pairing-code" ? "正在连接..." : "一键连接采集插件"}</Button>
+            <Button className="border border-border bg-white text-foreground" disabled={busy === "extension-status"} onClick={() => void refreshExtensionConnection()} type="button">{busy === "extension-status" ? "正在检测..." : "重新检测插件"}</Button>
+            <Button disabled={busy === "pairing-code" || webBridge.state !== "READY"} onClick={() => createTaskPairingCode(false)} type="button">{busy === "pairing-code" ? "正在连接..." : hasCapture ? "重新绑定当前任务" : "一键连接采集插件"}</Button>
             <Button className="border border-border bg-white text-foreground" disabled={busy === "pairing-code"} onClick={() => createTaskPairingCode(true)} type="button">生成手动配对码</Button>
             <Link className="inline-flex h-10 items-center rounded-md border border-border bg-white px-4 text-sm font-medium" href="/extension">查看插件安装说明</Link>
           </div>
@@ -482,38 +345,13 @@ export default function TaskDetailPage() {
               const state = diagnostic?.summaryStatus
                 || ("state" in route ? route.state : route.status === "CAPTURED" ? "UPLOADED" : route.sourceUrl ? "READY" : "PENDING");
               const isCurrentPage = extensionStatus?.routeKey === route.routeKey && extensionStatus.collectable;
-              const isEditingUrl = editingRouteKey === route.routeKey;
-              const routeUrlBusy = busy === `route-url:${route.routeKey}`;
               return (
                 <div className={`grid gap-3 rounded-md border p-4 md:grid-cols-[1fr_auto] ${isCurrentPage ? "border-primary bg-blue-50" : "border-border"}`} key={route.routeKey}>
                   <div>
                     <div className="flex flex-wrap items-center gap-2"><strong>{route.label}</strong>{route.required ? <span className="rounded bg-slate-100 px-2 py-0.5 text-xs">基础页面</span> : <span className="text-xs text-muted">补充页面</span>}</div>
                     <p className="mt-1 text-sm text-muted">{template?.purpose || "补充当前诊断所需数据"}</p>
-                    {isEditingUrl ? (
-                      <form className="mt-2 grid gap-2" onSubmit={(event) => { event.preventDefault(); void saveRouteUrl(route.routeKey); }}>
-                        <Input
-                          disabled={routeUrlBusy}
-                          onChange={(event) => setRouteUrlDraft(event.target.value)}
-                          placeholder={template?.urlHint || "请输入当前路线的网址"}
-                          type="url"
-                          value={routeUrlDraft}
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <Button disabled={routeUrlBusy} type="submit">{routeUrlBusy ? "保存中..." : "保存网址"}</Button>
-                          <Button
-                            className="border border-border bg-white text-foreground"
-                            disabled={routeUrlBusy}
-                            onClick={() => { setEditingRouteKey(null); setRouteUrlDraft(""); }}
-                            type="button"
-                          >
-                            取消
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted">网址只用于当前采集任务路线识别，不会自动打开或操作平台页面。</p>
-                      </form>
-                    ) : (
-                      <p className="mt-2 break-all text-xs text-muted">{route.sourceUrl || template?.urlHint || "请先在平台后台打开对应页面"}</p>
-                    )}
+                    <p className="mt-2 text-xs text-muted">{template?.urlHint || "请先在已登录的平台后台打开对应页面"}</p>
+                    {route.sourceUrl ? <p className="mt-1 break-all text-xs text-muted">旧任务保存网址：{route.sourceUrl}</p> : null}
                     {diagnostic ? (
                       <div className="mt-3 grid gap-1 text-xs text-muted">
                         <p>
@@ -542,16 +380,13 @@ export default function TaskDetailPage() {
                   <div className="flex min-w-32 flex-col items-end justify-center gap-2">
                     <strong className={state === "UPLOADED" ? "text-primary" : state === "FAILED" ? "text-danger" : ["AGING", "STALE", "UNVERIFIED", "MANUAL_PENDING", "PARTIAL"].includes(state) ? "text-amber-700" : ""}>{captureRouteStateLabel(state)}</strong>
                     {"metricCount" in route && route.metricCount > 0 ? <span className="text-xs text-muted">{route.metricCount} 项指标</span> : null}
-                    {"snapshotId" in route && route.state === "UNVERIFIED" && route.snapshotId ? <Button className="h-8 border border-amber-400 bg-amber-50 px-3 text-xs text-amber-900" disabled={busy === "confirm-account"} onClick={() => { if (route.snapshotId) setSnapshotToConfirm(route.snapshotId); }} type="button">确认当前账号</Button> : null}
-                    {!isEditingUrl ? <Button className="h-8 border border-border bg-white px-3 text-xs text-foreground" onClick={() => startRouteUrlEdit(route.routeKey, route.sourceUrl)} type="button">编辑网址</Button> : null}
-                    {route.sourceUrl ? <a className="text-sm text-primary hover:underline" href={route.sourceUrl} rel="noreferrer" target="_blank">打开目标页面</a> : null}
+                    {route.sourceUrl ? <a className="text-sm text-primary hover:underline" href={route.sourceUrl} rel="noreferrer" target="_blank">打开已保存页面</a> : null}
                     {isCurrentPage ? <span className="text-xs font-medium text-primary">当前页面可采集</span> : null}
                   </div>
                 </div>
               );
             })}
           </div>
-          {unverifiedRoutes.length ? <div className="mt-4 flex justify-end"><Button className="border border-amber-400 bg-amber-50 text-amber-900" disabled={busy === "confirm-account" || busy === "confirm-accounts"} onClick={() => setConfirmAllAccountsOpen(true)} type="button">一键确认全部待确认账号（{unverifiedRoutes.length}）</Button></div> : null}
           <p className="mt-4 text-sm text-muted">插件只会在您主动点击后读取当前可见指标和表格，不会点击或修改平台内容。上传成功后本页会自动更新。</p>
           <details className="mt-4 rounded-md border border-border bg-slate-50 p-3">
             <summary className="cursor-pointer text-sm font-medium">插件采集失败？改用 CSV 手工补充</summary>
@@ -570,21 +405,20 @@ export default function TaskDetailPage() {
         <section className="mb-4">
           <Card>
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div><p className="mb-1 text-xs font-semibold text-primary">第 3 步</p><CardTitle>账号与数据汇总</CardTitle><p className="text-sm text-muted">核对每条路线的账号归属和合并结果；每项指标仍保留来源。</p></div>
+              <div><p className="mb-1 text-xs font-semibold text-primary">第 3 步</p><CardTitle>数据汇总</CardTitle><p className="text-sm text-muted">查看各路线合并结果；每项指标仍保留来源与采集时间。</p></div>
+              <div className="flex flex-col gap-2 md:items-end">
               <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
                 <Info label="快照" value={`${captureSummary.snapshotCount} 份`} />
                 <Info label="指标" value={`${captureSummary.metrics.length} 项`} />
                 <Info label="覆盖率" value={captureSummary.coverageRatio == null ? "数据缺失" : `${Math.round(captureSummary.coverageRatio * 100)}%`} />
-                <Info label="账号匹配" value={accountMatchLabel(captureSummary.accountMatchStatus)} />
+                <Info label="任务绑定" value="服务端已验证" />
+              </div>
+              <Link className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white" href={`/tasks/${task.id}/collection-dashboard`}>打开校准大屏</Link>
               </div>
             </div>
-            <p className="mb-4 text-xs text-muted">最近采集：{captureSummary.latestCapturedAt ? new Date(captureSummary.latestCapturedAt).toLocaleString("zh-CN") : "数据缺失"}</p>
-            {captureSummary.pendingAccountConfirmationCount > 0 ? <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">已有原始快照，但其中 {captureSummary.pendingAccountConfirmationCount} 条路线尚未确认账号。确认前，这些数据不会进入正式指标和诊断。</p> : null}
+            <p className="mb-4 text-xs text-muted">最近采集：{captureSummary.latestCapturedAt ? new Date(captureSummary.latestCapturedAt).toLocaleString("zh-CN") : "数据缺失"}。所有指标、表格单元格的确认和修改请在校准大屏完成。</p>
             {!captureSummary.metrics.length ? <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">已收到快照，但未识别到标准指标。请确认页面已完整加载；该问题会阻断依赖相关字段的诊断。</p> : null}
-            {captureSummary.metrics.length || captureSummary.tables.length ? <details className="rounded-md border border-border p-3"><summary className="cursor-pointer font-medium">查看完整数据（{captureSummary.metrics.length} 项指标 / {captureSummary.tables.length} 张表）</summary><div className="mt-4 grid gap-4">
-              {captureSummary.metrics.length ? <div className="grid gap-4 lg:grid-cols-2">{Object.entries(metricGroups).map(([category, metrics]) => <div className="rounded-md border border-border p-4" key={category}><h3 className="mb-3 font-semibold">{metricCategoryLabel(category)}</h3><div className="grid gap-2 sm:grid-cols-2">{metrics.map((metric) => <div className="rounded-md bg-slate-50 p-3" key={`${metric.metricKey}-${metric.routeKey}`}><p className="text-xs text-muted">{metric.metricName}</p><p className="mt-1 text-xl font-semibold">{metric.metricValue}{metric.metricUnit || ""}</p><p className="mt-1 text-xs text-muted">{collectionRouteLabels[metric.routeKey || "UNKNOWN"] || metric.pageType || "未知页面"} · {Math.round(metric.confidence * 100)}%</p></div>)}</div></div>)}</div> : null}
-              {captureSummary.tables.map((table, tableIndex) => <div className="overflow-x-auto" key={`${table.routeKey}-${table.capturedAt}-${tableIndex}`}><p className="mb-2 text-xs text-muted">{collectionRouteLabels[table.routeKey || "UNKNOWN"] || table.pageType || "未知页面"}</p><table className="min-w-full text-left text-sm"><tbody>{table.rows.map((row, rowIndex) => <tr className="border-b border-border" key={rowIndex}>{row.map((cell, cellIndex) => <td className={`px-3 py-2 ${rowIndex === 0 ? "font-semibold" : ""}`} key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>)}
-            </div></details> : null}
+            <p className="rounded-md border border-border bg-slate-50 p-3 text-sm text-muted">采集值、来源路线、置信度、表格原值和校准记录统一在任务专属大屏中查看。</p>
           </Card>
         </section>
       ) : null}
@@ -594,18 +428,17 @@ export default function TaskDetailPage() {
           <Card>
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div><p className="mb-1 text-xs font-semibold text-primary">第 4 步</p><CardTitle>人工核对</CardTitle><p className="text-sm text-muted">确认、修改或忽略采集值。完成必要复核后才能运行完整诊断。</p></div>
-              <span className={`rounded-md border px-3 py-2 text-sm ${reviewComplete && accountConfirmed ? "border-primary bg-blue-50 text-primary" : "border-amber-300 bg-amber-50"}`}>{reviewState.label}</span>
+              <span className={`rounded-md border px-3 py-2 text-sm ${reviewComplete ? "border-primary bg-blue-50 text-primary" : "border-amber-300 bg-amber-50"}`}>{reviewState.label}</span>
             </div>
-            {unverifiedRoutes.length ? <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"><strong>账号待确认：</strong>请逐页核对，避免把其他账号的数据并入当前任务。<div className="mt-3 grid gap-2">{unverifiedRoutes.map((route) => <div className="flex flex-col gap-2 rounded-md border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between" key={route.routeKey}><div><strong>{route.label}</strong><p className="text-xs text-muted">页面识别：{route.detectedAccountId || route.detectedAccountName || "未识别"}</p></div><Button className="shrink-0" disabled={busy === "confirm-account"} onClick={() => route.snapshotId && setSnapshotToConfirm(route.snapshotId)} type="button">核对并确认</Button></div>)}</div></div> : null}
-            <div className="mb-3 flex flex-wrap gap-2"><Button className="border border-border bg-white text-foreground" type="button" onClick={refreshReviewMetrics} disabled={busy === "review-refresh"}>刷新复核指标</Button><Button className="border border-border bg-white text-foreground" type="button" onClick={saveModifiedDrafts} disabled={!reviewMetrics.length || busy === "review-save-all"}>保存修改</Button><Button type="button" onClick={confirmAllPending} disabled={!reviewMetrics.some((metric) => metric.reviewStatus === "PENDING") || busy === "review-confirm-all"}>一键确认可信字段</Button></div>
             {reviewMessage ? <p className="mb-3 rounded-md border border-border bg-slate-50 px-3 py-2 text-sm">{reviewMessage}</p> : null}
-            {reviewMetrics.length ? <details className="rounded-md border border-border p-3"><summary className="cursor-pointer font-medium">查看完整指标明细（待复核 {pendingReviewCount} / 总数 {reviewMetrics.length}）</summary><div className="mt-3 overflow-x-auto"><table className="min-w-[900px] text-left text-sm"><thead className="border-b border-border text-xs text-muted"><tr><th className="px-3 py-2">指标</th><th className="px-3 py-2">采集值</th><th className="px-3 py-2">确认值</th><th className="px-3 py-2">来源</th><th className="px-3 py-2">置信度</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">操作</th></tr></thead><tbody>{reviewMetrics.map((metric) => <tr className="border-b border-border" key={metric.id}><td className="px-3 py-3 font-medium">{metric.metricName}</td><td className="px-3 py-3">{metric.originalValue || "数据缺失"}{metric.metricUnit || ""}</td><td className="px-3 py-3"><Input className="w-32" value={reviewDrafts[metric.id] ?? ""} onChange={(event) => setReviewDrafts((drafts) => ({ ...drafts, [metric.id]: event.target.value }))} /></td><td className="px-3 py-3">{metricSourceLabel(metric.metricSource)}<p className="text-xs text-muted">{metric.pageType}</p></td><td className="px-3 py-3">{Math.round(metric.confidence * 100)}%</td><td className="px-3 py-3">{reviewStatusLabel(metric.reviewStatus)}</td><td className="px-3 py-3"><div className="flex gap-1"><Button className="h-8 border border-border bg-white px-2 text-xs text-foreground" onClick={() => updateReviewMetric(metric, "CONFIRMED")} type="button">确认</Button><Button className="h-8 border border-border bg-white px-2 text-xs text-foreground" onClick={() => updateReviewMetric(metric, "MODIFIED")} type="button">修改</Button><Button className="h-8 border border-border bg-white px-2 text-xs text-foreground" onClick={() => updateReviewMetric(metric, "IGNORED")} type="button">忽略</Button></div></td></tr>)}</tbody></table></div></details> : <p className="rounded-md border border-border bg-slate-50 p-3 text-sm text-muted">快照已上传，正在等待可复核指标。</p>}
+            <div className="grid gap-2 sm:grid-cols-3"><Info label="复核指标" value={`${reviewMetrics.length} 项`} /><Info label="待复核" value={`${pendingReviewCount} 项`} /><Info label="任务绑定" value="服务端已验证" /></div>
+            <div className="mt-4 flex justify-end"><Link className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white" href={`/tasks/${task.id}/collection-dashboard`}>进入校准大屏</Link></div>
           </Card>
         </section>
       ) : null}
 
-      {hasCapture && (reviewComplete || decisionRun) ? (
-        <section className="mb-4">
+      {hasCapture && (reviewComplete || decisionRun || decisionPreview) ? (
+        <section className="mb-4 scroll-mt-4" id="diagnosis">
           <Card>
             <div className="mb-4"><p className="mb-1 text-xs font-semibold text-primary">第 5 步</p><CardTitle>诊断与建议</CardTitle><p className="text-sm text-muted">{aiDisclaimer}</p></div>
             <div className="mb-4 grid gap-3 sm:grid-cols-4"><Info label="主体类型" value={subjectTypeLabels[task.project.subjectType]} /><Info label="操盘主体" value={operatorTypeLabels[task.project.operatorType]} /><Info label="合作关系" value={cooperationTypeLabels[task.project.cooperationType]} /><Info label="当前模式" value={managedLiveGrowthMode ? "代直播增长诊断" : task.project.subjectType === "SERVICE_PROVIDER" ? "服务商经营诊断" : "主体框架诊断"} /></div>
@@ -616,16 +449,16 @@ export default function TaskDetailPage() {
               evidenceAdvisory={formalReady && evidenceAdvisories.length
                 ? `${evidenceAdvisories.map((route) => `${route.label}${route.state === "STALE" ? "数据已过期" : "仅部分可见"}`).join("；")}。暂停、加预算或减预算等动作仍需满足各自证据门槛。`
                 : null}
-              expertAnalysis={expertAnalysis}
               formalBlockingReasons={formalReadiness.blockingReasons}
-              formalContent={decisionRun ? (
+              formalContent={diagnosticOutput ? (
                 <div className="grid gap-4">
+                {!decisionRun ? <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm lg:col-span-2"><strong>当前展示保守诊断：</strong>数据不满足正式决策时效或证据门槛，本次只展示事实、缺失项和补采建议，不创建动作建议。重新采集过期路线后可运行正式诊断。</div> : null}
                 <div className="rounded-md border border-border p-4 lg:col-span-2">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div><h3 className="font-semibold">本轮结论</h3><p className="mt-2 text-base font-medium">{businessAnalysis?.headline || decisionRun.diagnosis}</p></div>
+                    <div><h3 className="font-semibold">本轮结论</h3><p className="mt-2 text-base font-medium">{businessAnalysis?.headline || diagnosticOutput.diagnosis}</p></div>
                     <div className="flex shrink-0 gap-2 text-xs">
-                      <span className={`rounded-full px-3 py-1 font-semibold ${riskTone(decisionRun.riskLevel)}`}>风险 {riskLabel(decisionRun.riskLevel)}</span>
-                      <span className="rounded-full bg-slate-100 px-3 py-1">置信度 {Math.round(decisionRun.confidence * 100)}%</span>
+                      <span className={`rounded-full px-3 py-1 font-semibold ${riskTone(diagnosticOutput.riskLevel)}`}>风险 {riskLabel(diagnosticOutput.riskLevel)}</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1">置信度 {Math.round(diagnosticOutput.confidence * 100)}%</span>
                     </div>
                   </div>
                   {businessAnalysis?.performanceSnapshot.length ? <div className="mt-4 flex flex-wrap gap-2">{businessAnalysis.performanceSnapshot.map((fact) => <span className="rounded-md border border-border bg-slate-50 px-2 py-1 text-xs" key={fact}>{fact}</span>)}</div> : null}
@@ -646,15 +479,14 @@ export default function TaskDetailPage() {
                 </div>
               ) : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">尚未生成正式诊断。完成指标复核后运行正式诊断，系统会输出问题、证据、经营方案和验证指标。</p>}
               formalReady={formalReady}
-              onRunExpert={() => void runExpertAnalysis()}
               onRunFormal={() => void runDecision()}
+              token={token}
+              onRefresh={() => void load()}
             />
           </Card>
         </section>
       ) : null}
 
-      <ConfirmDialog open={Boolean(snapshotToConfirm)} title="确认页面所属账号" description={`请核对“${selectedRouteToConfirm?.label || "当前页面"}”确实属于账号“${task.project.accountProfile.accountName}”。确认后，这条路线的数据才会生成正式指标并参与诊断。`} confirmLabel="确认属于当前账号" isLoading={busy === "confirm-account"} onCancel={() => setSnapshotToConfirm(null)} onConfirm={() => { if (snapshotToConfirm) void confirmSnapshotAccount(snapshotToConfirm); }}><div className="mt-4 rounded-md border border-border bg-slate-50 p-3 text-sm"><p>任务绑定账号 ID：{task.project.accountProfile.platformAccountId || "待补"}</p><p>页面识别结果：{selectedRouteToConfirm?.detectedAccountId || selectedRouteToConfirm?.detectedAccountName || "未识别"}</p><p>采集路线：{selectedRouteToConfirm?.label || "待读取"}</p></div></ConfirmDialog>
-      <ConfirmDialog open={confirmAllAccountsOpen} title={`一键确认全部待确认账号（${unverifiedRoutes.length}）`} description={`请一次核对以下路线均属于账号“${task.project.accountProfile.accountName}”。本次只确认列表中的当前最新快照，不会自动确认以后新采集的数据。`} confirmLabel="确认全部当前路线" isLoading={busy === "confirm-accounts"} onCancel={() => setConfirmAllAccountsOpen(false)} onConfirm={() => void confirmAllSnapshotAccounts()}><div className="mt-4 grid gap-3 text-sm"><div className="rounded-md border border-border bg-slate-50 p-3"><p>任务绑定账号：{task.project.accountProfile.accountName}</p><p>账号 ID：{task.project.accountProfile.platformAccountId || "待补"}</p><p>本轮快照数量：{captureSummary?.snapshotCount || 0}</p></div>{unverifiedRoutes.map((route) => <div className="rounded-md border border-amber-200 bg-amber-50 p-3" key={route.routeKey}><strong>{route.label}</strong><p className="mt-1">页面识别：{route.detectedAccountId || route.detectedAccountName || "未识别"}</p><p className="mt-1 text-xs text-muted">待确认快照：{route.snapshotId}</p></div>)}</div></ConfirmDialog>
     </main>
   );
 }
@@ -669,28 +501,6 @@ function summarizeReviewState(metrics: ReviewedMetricDTO[]) {
     return { label: "已复核：可以正常运行", tone: "text-primary" };
   }
   return { label: "未完全复核：暂不能运行完整诊断，预算和暂停类动作会被阻断", tone: "text-danger" };
-}
-
-function metricSourceLabel(source: MetricSource) {
-  const labels: Record<MetricSource, string> = {
-    XHR_JSON: "XHR JSON",
-    TABLE: "表格",
-    DOM_TEXT: "页面文本",
-    SCREENSHOT: "截图",
-    MANUAL_INPUT: "人工输入",
-    UNKNOWN: "未知"
-  };
-  return labels[source] || source;
-}
-
-function reviewStatusLabel(status: MetricReviewStatus) {
-  const labels: Record<MetricReviewStatus, string> = {
-    PENDING: "待复核",
-    CONFIRMED: "已确认",
-    MODIFIED: "已修改",
-    IGNORED: "已忽略"
-  };
-  return labels[status] || status;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -742,8 +552,6 @@ function extensionStatusLabel(state: ExtensionStatusDTO["state"] | undefined) {
     BOUND_OTHER_TASK: "已绑定其他任务",
     READY: "连接正常",
     PAGE_UNSUPPORTED: "当前页面不支持",
-    ACCOUNT_UNVERIFIED: "账号待确认",
-    ACCOUNT_MISMATCH: "账号不一致",
     PAGE_INACTIVE: "页面未激活",
     ROUTE_UNVERIFIED: "当前分栏待确认",
     VERSION_OUTDATED: "插件版本过旧",
@@ -772,7 +580,6 @@ function captureRouteStateLabel(state: string) {
     UPLOADED: "已采集",
     AGING: "数据即将过期",
     PARTIAL: "已采集，部分可见",
-    UNVERIFIED: "已采集，账号待确认",
     MANUAL_PENDING: "已采集，路线待确认",
     STALE: "数据已过期",
     FAILED: "采集失败"
@@ -786,24 +593,4 @@ function formatDiagnosticAge(value: string) {
   if (ageMs < 60_000) return "刚刚";
   if (ageMs < 60 * 60_000) return `${Math.floor(ageMs / 60_000)} 分钟前`;
   return new Date(value).toLocaleString("zh-CN");
-}
-
-function accountMatchLabel(status: AccountMatchStatus | null) {
-  if (status === "MATCHED") return "已匹配";
-  if (status === "MISMATCHED") return "不一致";
-  if (status === "UNVERIFIED") return "待确认";
-  return "数据缺失";
-}
-
-function groupCaptureMetrics(metrics: CaptureSummaryDTO["metrics"]) {
-  return metrics.reduce<Record<string, CaptureSummaryDTO["metrics"]>>((groups, metric) => {
-    const category = metric.category || "UNKNOWN";
-    (groups[category] ||= []).push(metric);
-    return groups;
-  }, {});
-}
-
-function metricCategoryLabel(category: string) {
-  const labels: Record<string, string> = { ROI: "ROI 与目标", COST: "预算与成本", CONVERSION: "转化", TRAFFIC: "流量", LIVE_ROOM: "直播承接", FULL_DOMAIN: "全域溢出", SERVICE_PROVIDER: "服务商成本", RISK: "口碑与履约风险", ACTIVITY: "活动与补贴", TIMING: "时间窗口", UNKNOWN: "待校准指标" };
-  return labels[category] || category;
 }

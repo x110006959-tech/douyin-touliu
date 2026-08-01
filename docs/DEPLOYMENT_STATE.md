@@ -1,5 +1,51 @@
 # Deployment State
 
+## 2026-07-30 v034 可信度校准迁移准备
+
+- 新增加法式 migration `20260729120000_metric_binding_calibration`：创建 `CollectionBindingCalibration` 及其工作区、路线、页面指纹、绑定类型/签名唯一约束和外键；不回填、不删除或改写历史快照、指标和表格复核。
+- API、Compose、镜像、`.env.example` 与 Extension 制品元数据的默认 Schema 已统一为 `20260729_v034_metric_binding_calibration`。
+- v034 唯一索引与查询索引使用显式短名称，避免 PostgreSQL 63 字符截断碰撞；独立临时空库已成功执行全部 15 个 migration 并确认最新后销毁。
+- 本地原业务库与生产库仍未应用 v034；正式升级前继续要求备份、staging `prisma migrate deploy` 和迁移状态复核。
+- 尚未对用户原有本地业务数据库执行该 migration，也没有重建或部署容器。应用前必须完成可恢复备份，在隔离库验证 `prisma migrate deploy` 后再由用户决定是否迁移本地预上线环境。
+
+## 2026-07-28 本地 0.2.4 采集一致性环境
+
+- 本地 Compose 项目 `pxxis-prelaunch-20260713` 已使用当前 API/Web 镜像运行，继续复用原 PostgreSQL v033 数据卷；Web `http://127.0.0.1:3300`、API `http://127.0.0.1:4300` 和 PostgreSQL 均 healthy。
+- `/ready` 返回 database ready；`/version` 返回产品 `0.2.4`、Schema `20260722_v033_table_cell_reviews`、Extension `0.2.4`、采集协议 `1` 和本地制品 SHA256。
+- 本次没有新增或执行数据库 migration。仅对指定历史任务运行显式派生记录修复；修复后 dry-run 为 0 候选，原始快照及首条 `MANUAL_PENDING` 数据未改写。
+- 本地测试制品为 `collector-local-test-v0.2.4-b4de6606e3f5.zip`，SHA256 `89be2c0b283edce1c4b9136a1993259b6ed607d61eb539fd88c6d7850fb2059b`。2026-07-29 已确认用户 Chrome 加载 `0.2.4` / 桥接协议 `2` / 构建 `b4de6606e3f5`，下一步为真实五路线采集验收。
+- 生产候选制品为 `collector-production-candidate-v0.2.4-b4de6606e3f5.zip`，SHA256 `75b519e56f63fef211d6d6719b04cbc1bcab4d671dd1b081a1425716b2628ee3`。已通过 production target 制品校验，但尚未提交 Chrome 正式渠道，不属于线上发布。
+- Windows 中文路径的 BuildKit 会话头问题仍存在；本轮沿用直接构建镜像和 Compose 不重建数据卷的本地兼容方式。没有服务器、DNS、SMTP、COS、生产数据库、提交或平台操作。
+
+## 2026-07-27 本地预上线环境 v033 切换
+
+- 已将本地 Compose 项目 `pxxis-prelaunch-20260713` 的原数据卷从 v032 升级至 v033。升级前已生成 SHA-256 校验的自定义格式备份，并在独立临时 PostgreSQL 恢复验证；备份仅保留在被 Git 忽略的本机 `.backups/`，未执行 COS 上传。
+- `20260722090000_v033_table_cell_reviews` 已通过 `prisma migrate deploy` 成功应用。该迁移只创建 `TableCellReview`、索引和外键，不删除或回写历史数据。升级后数据库为 14 条迁移、9 个用户、5 条快照和 5 个采集任务。
+- API/Web 镜像已用当前源码重建并切换，继续使用 `http://127.0.0.1:3300` 和 `http://127.0.0.1:4300`；三个容器 healthy，`/ready` 返回 database ready，`/version` 返回 `20260722_v033_table_cell_reviews`。浏览器仅核验登录页加载，未提交用户密码。
+- Windows 中文路径仍会触发 BuildKit 会话头错误，本地镜像使用 `DOCKER_BUILDKIT=0` 和 `COMPOSE_DOCKER_CLI_BUILD=0` 兼容构建。此操作仅影响本机预上线环境，不是生产部署；未执行服务器、DNS、SMTP、COS、提交或平台操作。
+
+## 2026-07-23 v033 迁移与 Extension 制品准备
+
+- 新增 `20260722090000_v033_table_cell_reviews` 加法式 migration：创建 `TableCellReview` 及快照坐标唯一约束、任务/快照/复核人外键和查询索引；不回填、不删除或改写历史快照与既有校准记录。
+- API、Compose、API 镜像、`.env.example` 和 Extension 构建元数据默认 Schema 已统一为 `20260722_v033_table_cell_reviews`。
+- Extension 正式制品权限精确包含两个平台域名及 PXXIS API/Web 域名，拒绝泛域名、localhost、loopback 和本地测试标识；本地 unpacked 制品指纹为 `67f3572cb3e7`。
+- 已在隔离空 PostgreSQL 顺序应用全部 14 个 migration，并执行 Prisma validate/generate、全仓构建与 197 项测试。隔离验收环境使用本地临时数据库和 `127.0.0.1:3400/4400`，不属于生产部署。
+- 本轮未执行生产 migration、服务器部署、DNS、SMTP、COS 或真实平台操作。生产应用前必须先离机备份，在 staging 执行 `prisma migrate deploy`，核对 `/version` 返回 v033，再发布同源码生成并通过制品硬校验的正式 Extension。
+
+## 2026-07-22 本地 v032 认证环境恢复
+
+- Compose 项目 `pxxis-prelaunch-20260713` 保留原 PostgreSQL 数据卷，已从 5 个 migration 顺序升级到 13 个，当前 Schema 为 `20260720_v032_audit_actor_snapshot`。
+- API 镜像已使用当前源码重建，补齐 pnpm Workspace 包级依赖并增加构建期运行时导入检查；Web、API、PostgreSQL 均 healthy。
+- 本地 HTTP 验收显式使用 `API_NODE_ENV=development`、`SESSION_COOKIE_SECURE=false`；`docker-compose.yml` 默认仍为 production，正式环境不得沿用本地参数。
+- 本地 SMTP 仅为未启用的占位配置，没有发送真实邮件；本轮未执行生产部署、DNS、真实 SMTP 或生产数据操作。
+- API `/ready` 返回 database ready，`/version` 返回 Schema `20260720_v032_audit_actor_snapshot`；Web 登录、工作台加载和退出已通过浏览器实测。
+
+## 2026-07-20 本地预上线首页备案号
+
+- 仅重新构建并替换 `pxxis-prelaunch-20260713` 的 Web 容器，继续使用 `127.0.0.1:3300`；API、PostgreSQL 和数据卷均未重建。
+- Web 容器 healthy，首页返回 200；响应内容包含 `辽ICP备2026002223号` 和 `https://beian.miit.gov.cn/`。
+- 浏览器在 720px 视口实测页脚范围为 659–720px，备案号稳定位于页面底部。本次不是生产部署，未执行 migration、服务器、DNS、SMTP、COS 或平台操作。
+
 ## 2026-07-20 v032 审计操作者快照迁移准备
 
 - 新增加法式 migration `20260720110000_v032_audit_actor_snapshot`：为 `AuditLog` 增加 nullable `actorSnapshotJson`、回填现有 `userId`、将 `userId` 改为 nullable，并将用户外键替换为 `ON DELETE SET NULL`。不删除或重写既有审计记录。
@@ -214,3 +260,18 @@
 - API、Web、PostgreSQL 三个容器均 healthy；`/ready` 返回 database ready，`/version` 返回产品版本 `0.2.2`，Web HTTP 200。
 - Extension 本地测试包为 `collector-local-test-v0.2.2-a6d87cdb8cbb.zip`，制品 SHA256 已注入本地 API 容器。
 - Windows 中文工作区下 BuildKit 仍会出现不可打印会话头错误，本次按既有方案使用 `DOCKER_BUILDKIT=0`；不影响服务器英文路径部署。
+
+## 2026-07-31 v035 部署准备（未部署）
+
+- 新增 schema 版本 `20260731_v035_ai_skill_diagnosis` 和独立 `diagnosis-worker` 服务；API 镜像已包含 `packages/diagnosis-skills` 构建产物。
+- 对新建/已登记迁移的部署库，顺序为：数据库备份 -> `prisma migrate deploy` -> API 保持 `AI_DIAGNOSIS_ENABLED=false` 启动 -> 配置 Worker 密钥 -> 真实评测与真实任务验收 -> 人工批准后开启开关。未登记迁移历史的既有库不得沿用此路径，必须遵循一次性对账演练流程。
+- Worker 环境变量：`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_BASE_URL`、`AI_DIAGNOSIS_TIMEOUT_MS`。密钥只允许进入 Worker 服务端环境。
+- 已在临时 PostgreSQL 验证空库完整迁移和旧库升级；历史 DecisionRun 保留结果并回填 `LEGACY_RULE + SUCCEEDED`，新活动运行允许结果为空。
+- 本轮没有执行 staging/生产 migration、Compose 重建、服务重启、发布、DNS 或流量切换；功能开关仍默认关闭。
+
+## 2026-08-01 v035 本地历史库升级演练（原库未升级）
+
+- 锁定升级目标为本机 `douyin_subject_diagnosis`，已完成逻辑备份、Schema 备份、行数清单与校验，并由备份克隆出 `douyin_v035_rehearsal_20260801162145` 演练库；备份和生成 SQL 均只在本机 `.backups/`，不进入 Git。
+- 演练库已在事务和执行前断言保护下执行 `tools/reconcile-v035-legacy-database.ps1` 的一次性对账路径，v035 Schema 差异为空，16 条迁移登记完成，`prisma migrate status`、历史读取与核心表行数均一致。
+- 原库没有执行 DDL、迁移登记或写入。验收任务 `cms4wmzes000uqs07m0a4q8ze` 不在 `douyin_subject_diagnosis` 而在 `pxxis_prelaunch`，因此任务存在性门禁阻断了原库升级；没有改用 `prisma migrate deploy`、没有复制任务、没有启动 API/Worker 写入或启用 AI。
+- 继续前必须由用户指定任务与锁定目标库的统一方案。获得明确决定后，仍须对原库再次备份、停止写入、复跑同一已演练脚本、登记迁移并复核备份可恢复性、迁移状态、行数和历史读取；本轮不是部署或生产变更。

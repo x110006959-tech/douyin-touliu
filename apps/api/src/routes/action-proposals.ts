@@ -9,6 +9,7 @@ import {
 import { writeAuditLog } from "../audit.js";
 import { isUniqueConstraintError, readIdempotencyKey } from "../idempotency.js";
 import { createActionOutcome, listActionOutcomes, toActionOutcomeDTO } from "../outcomes.js";
+import { attachOutcomeToDiagnosisCase } from "../diagnosis-cases.js";
 import { getOwnedActionProposal } from "../ownership.js";
 import { readPagination } from "../pagination.js";
 import { readSafeOptionalText } from "../persisted-input.js";
@@ -93,6 +94,13 @@ export function createActionProposalRouter() {
           },
           tx
         );
+        await attachOutcomeToDiagnosisCase({
+          decisionRunId: currentProposal.decisionRunId,
+          result: created.result,
+          beforeMetrics: outcomeBody.beforeMetrics || [],
+          afterMetrics: outcomeBody.afterMetrics || [],
+          conclusion: created.conclusion
+        }, tx);
         await writeAuditLog(
           req,
           "CREATE_ACTION_OUTCOME",

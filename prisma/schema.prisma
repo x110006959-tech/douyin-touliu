@@ -110,6 +110,32 @@ enum AnalysisStatus {
   FAILED
 }
 
+enum DecisionRunMode {
+  LEGACY_RULE
+  AI_SKILL_ORCHESTRATED
+}
+
+enum DecisionRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum DiagnosisSkillExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum DiagnosisCaseStatus {
+  DRAFT
+  ELIGIBLE
+  EXCLUDED
+}
+
 enum RiskLevel {
   LOW
   MEDIUM
@@ -249,6 +275,8 @@ model User {
   reviewedMetrics ReviewedMetric[]
   tableCellReviews TableCellReview[]
   actionOutcomes  ActionOutcome[]
+  diagnosisFeedback DiagnosisFeedback[]
+  diagnosisCasesReviewed DiagnosisCase[] @relation("DiagnosisCaseReviewedBy")
   metricAliasesCreated MetricAliasOverride[] @relation("MetricAliasCreatedBy")
   collectionBindingCalibrations CollectionBindingCalibration[] @relation("CollectionBindingConfirmedBy")
   metricDriftsResolved MetricDriftEvent[] @relation("MetricDriftResolvedBy")
@@ -327,6 +355,8 @@ model Workspace {
   collectionBindingCalibrations CollectionBindingCalibration[]
   extensionPairingCodes ExtensionPairingCode[]
   extensionCredentials ExtensionCredential[]
+  diagnosisCases DiagnosisCase[]
+  diagnosisFeedback DiagnosisFeedback[]
 
   @@index([ownerId])
 }
@@ -426,6 +456,7 @@ model Project {
   metricDriftEvents   MetricDriftEvent[]
   actionProposalGates ActionProposalGate[]
   actionProposalQuotas ActionProposalQuota[]
+  diagnosisCases      DiagnosisCase[]
 
   @@index([workspaceId])
   @@index([accountProfileId, status])
@@ -453,12 +484,14 @@ model CollectionTask {
   actionProposals ActionProposal[]
   executionLogs   ExecutionLog[]
   reviewedMetrics ReviewedMetric[]
+  tableCellReviews TableCellReview[]
   actionOutcomes  ActionOutcome[]
   collectionRuns  CollectionRun[]
   metricDriftEvents MetricDriftEvent[]
   actionProposalGates ActionProposalGate[]
   routeSources    CollectionRouteSource[]
   extensionPairingCodes ExtensionPairingCode[]
+  diagnosisCases DiagnosisCase[]
 
   @@unique([projectId, idempotencyKey])
   @@index([projectId])
@@ -682,30 +715,128 @@ model DecisionRun {
   collectionTaskId     String
   idempotencyKey       String?
   aiAnalysisTaskId     String?
-  engineVersion        String
-  ruleVersion          String
+  mode                 DecisionRunMode   @default(LEGACY_RULE)
+  status               DecisionRunStatus @default(SUCCEEDED)
+  provider             String?
+  model                String?
+  promptVersion        String?
+  skillSetVersion      String?
+  orchestrationVersion String?
+  engineVersion        String?
+  ruleVersion          String?
   strategyVersion      String           @default("local-life-rules-v0.1.0")
   evidenceFingerprint  String?
   inputJson            Json?
-  riskLevel            RiskLevel
-  confidence           Float
-  diagnosis            String
-  ruleResultJson       Json
+  riskLevel            RiskLevel?
+  confidence           Float?
+  diagnosis            String?
+  ruleResultJson       Json?
   aiResultJson         Json?
-  finalResultJson      Json
+  finalResultJson      Json?
   manualCheckItemsJson Json?
+  currentStage         String?
+  errorCode            String?
+  errorMessage         String?
+  durationMs           Int?
+  inputTokens          Int?
+  outputTokens         Int?
+  totalTokens          Int?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?
+  attemptCount         Int              @default(0)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   collectionTask       CollectionTask   @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
   aiAnalysisTask       AiAnalysisTask?  @relation(fields: [aiAnalysisTaskId], references: [id], onDelete: SetNull)
   actionProposals      ActionProposal[]
+  skillExecutions      DiagnosisSkillExecution[]
+  diagnosisCase        DiagnosisCase?
+  feedback             DiagnosisFeedback[]
 
   @@unique([collectionTaskId, idempotencyKey])
   @@index([projectId])
   @@index([collectionTaskId])
+  @@index([mode, status, leaseExpiresAt])
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
+}
+
+model DiagnosisSkillExecution {
+  id              String                        @id @default(cuid())
+  decisionRunId   String
+  skillId         String
+  skillVersion    String
+  sequence        Int
+  status          DiagnosisSkillExecutionStatus @default(PENDING)
+  inputJson       Json?
+  outputJson      Json?
+  errorCode       String?
+  errorMessage    String?
+  durationMs      Int?
+  inputTokens     Int?
+  outputTokens    Int?
+  totalTokens     Int?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  decisionRun     DecisionRun                   @relation(fields: [decisionRunId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionRunId, sequence])
+  @@index([decisionRunId, status])
+  @@index([skillId, skillVersion])
+}
+
+model DiagnosisCase {
+  id                  String              @id @default(cuid())
+  workspaceId         String
+  projectId           String?
+  collectionTaskId    String?
+  decisionRunId       String?             @unique
+  businessMode        String
+  status              DiagnosisCaseStatus @default(DRAFT)
+  mainProblemTag      String?
+  summaryJson         Json
+  metricRangesJson    Json?
+  routeCoverageJson   Json?
+  actionTypesJson     Json?
+  outcomeJson         Json?
+  eligibleAt          DateTime?
+  reviewedById        String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project             Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  collectionTask      CollectionTask?     @relation(fields: [collectionTaskId], references: [id], onDelete: SetNull)
+  decisionRun         DecisionRun?        @relation(fields: [decisionRunId], references: [id], onDelete: SetNull)
+  reviewedBy          User?               @relation("DiagnosisCaseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, businessMode])
+  @@index([workspaceId, mainProblemTag])
+  @@index([collectionTaskId])
+}
+
+model DiagnosisFeedback {
+  id                    String      @id @default(cuid())
+  workspaceId           String
+  decisionRunId         String
+  userId                String
+  mainProblemCorrect    Boolean
+  usefulnessScore       Int
+  adoptedActionTypesJson Json?
+  correctionNote        String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  workspace             Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decisionRun           DecisionRun @relation(fields: [decisionRunId], references: [id], onDelete: Cascade)
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionRunId, userId])
+  @@index([workspaceId, createdAt])
+  @@index([userId])
 }
 
 model ActionProposal {

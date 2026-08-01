@@ -28,7 +28,7 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-}
         BUILD_TIME: ${BUILD_TIME:-}
-        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260720_v032_audit_actor_snapshot}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260731_v035_ai_skill_diagnosis}
     restart: "no"
     environment:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
@@ -56,12 +56,12 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-}
         BUILD_TIME: ${BUILD_TIME:-}
-        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260720_v032_audit_actor_snapshot}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260731_v035_ai_skill_diagnosis}
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${API_NODE_ENV:-production}
       API_PORT: 4000
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
       SECURITY_SECRET: ${SECURITY_SECRET:-${JWT_SECRET:?SECURITY_SECRET or JWT_SECRET is required}}
@@ -71,6 +71,7 @@ services:
       EXTENSION_ORIGINS: ${EXTENSION_ORIGINS:-}
       EXTENSION_ARTIFACT_SHA256: ${EXTENSION_ARTIFACT_SHA256:-}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      AI_DIAGNOSIS_ENABLED: ${AI_DIAGNOSIS_ENABLED:-false}
       SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_SECURE: ${SMTP_SECURE:-true}
@@ -100,6 +101,42 @@ services:
     networks:
       - backend
 
+  diagnosis-worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+        BUILD_TIME: ${BUILD_TIME:-}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260731_v035_ai_skill_diagnosis}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 150s
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      AI_DIAGNOSIS_ENABLED: ${AI_DIAGNOSIS_ENABLED:-false}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-pro}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      AI_DIAGNOSIS_TIMEOUT_MS: ${AI_DIAGNOSIS_TIMEOUT_MS:-120000}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["node", "apps/api/dist/decision-worker-main.js"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.00
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+
   retention:
     build:
       context: .
@@ -107,7 +144,7 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-}
         BUILD_TIME: ${BUILD_TIME:-}
-        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260720_v032_audit_actor_snapshot}
+        SCHEMA_VERSION: ${SCHEMA_VERSION:-20260731_v035_ai_skill_diagnosis}
     restart: unless-stopped
     init: true
     stop_grace_period: 30s

@@ -18,7 +18,7 @@ if (!pnpmCli) throw new Error("pnpm CLI path is unavailable. Run this script thr
 
 let ownsContainer = false;
 try {
-  run(process.execPath, [pnpmCli, "--filter", "@douyin-local-life/shared", "--filter", "@douyin-local-life/llm", "--filter", "@douyin-local-life/decision-engine", "build"], repoRoot, env);
+  run(process.execPath, [pnpmCli, "--filter", "@douyin-local-life/shared", "--filter", "@douyin-local-life/llm", "--filter", "@douyin-local-life/decision-engine", "--filter", "@douyin-local-life/diagnosis-skills", "build"], repoRoot, env);
   if (!externalDatabaseUrl) {
     run("docker", ["compose", "-f", composeFile, "-p", "pxxis-api-test", "up", "-d", "--wait"], repoRoot);
     ownsContainer = true;

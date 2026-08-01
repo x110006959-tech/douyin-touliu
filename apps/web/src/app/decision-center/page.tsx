@@ -18,7 +18,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-state";
 
-type Account = { id: string; accountName: string; platformAccountId: string | null; projects: Array<{ id: string }> };
+type Account = { id: string; accountName: string; projects: Array<{ id: string }> };
 type Project = {
   id: string;
   name: string;
@@ -38,7 +38,7 @@ type ActionProposal = {
   requiresApproval: boolean;
   createdAt: string;
   expiresAt: string | null;
-  project: Project & { accountProfile: { id: string; accountName: string; platformAccountId: string | null; identityStatus: string } };
+  project: Project & { accountProfile: { id: string; accountName: string } };
 };
 
 const statuses: Array<ActionProposalStatus | "ALL"> = ["ALL", "PENDING_APPROVAL", "APPROVED", "OBSERVING", "REJECTED", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"];
@@ -96,7 +96,7 @@ export default function DecisionCenterPage() {
           <h1 className="mt-3 text-3xl font-bold">决策中心</h1>
           <p className="text-sm text-muted">账号 {accounts.length} / 动作建议 {proposals.length}</p>
         </div>
-        <div className="flex flex-wrap gap-3"><label className="grid gap-1 text-sm">账号<Select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="ALL">全部账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.accountName}{account.platformAccountId ? ` / ${account.platformAccountId}` : ""}</option>)}</Select></label><label className="grid gap-1 text-sm">
+        <div className="flex flex-wrap gap-3"><label className="grid gap-1 text-sm">账号<Select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="ALL">全部账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.accountName}</option>)}</Select></label><label className="grid gap-1 text-sm">
           状态
           <Select value={status} onChange={(event) => setStatus(event.target.value as ActionProposalStatus | "ALL")}>
             {statuses.map((item) => (
@@ -112,7 +112,7 @@ export default function DecisionCenterPage() {
       {error ? <div className="mb-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}
 
       <section className="grid gap-5">
-        {groupedProposals.map(([groupAccountId, group]) => group?.length ? <div className="grid gap-3" key={groupAccountId}><h2 className="text-lg font-semibold">账号：{group[0]!.project.accountProfile.accountName}<span className="ml-2 text-sm font-normal text-muted">{group[0]!.project.accountProfile.platformAccountId || "账号 ID 待补"}</span></h2>{group.map((proposal) => (
+        {groupedProposals.map(([groupAccountId, group]) => group?.length ? <div className="grid gap-3" key={groupAccountId}><h2 className="text-lg font-semibold">账号：{group[0]!.project.accountProfile.accountName}</h2>{group.map((proposal) => (
           <Link href={`/action-proposals/${proposal.id}`} key={proposal.id}>
             <Card className="transition hover:border-primary">
               <div className="flex flex-wrap items-start justify-between gap-3">

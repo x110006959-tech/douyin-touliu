@@ -1,5 +1,276 @@
 # Current Task
 
+## 2026-07-30 真实数据准确性与可信度校准
+
+### 已完成
+
+- 建立统一展示值解析：保留后台原始显示值、展示精度、单位来源和倍率，严格区分 `0`、`0.00`、缺失与 `--`；金额、千/万、百分比和 ROI 倍数不再由各层各自猜测。
+- 五条路线分别建立字段白名单、精确同义名、表头语义和统计周期规则；只接受明确卡片或“表头 + 唯一行标识 + 单元格”绑定。字段、周期、位置或候选值不唯一时写入最小绑定证据并标记异常，不保存整页正文或敏感信息。
+- 新增加法式 `20260729120000_metric_binding_calibration`：按工作区、路线、页面结构指纹、字段/表签名保存人工校准；历史快照不回填为可信。
+- 正式诊断改为全局失败关闭：当前快照出现任一 `INVALID` 字段、未确认表格行列结构或缺少绑定证据的历史表格时，整次输入为 `UNREVIEWED`，正式 `decision-runs` 返回 `DECISION_NOT_READY`。
+- 首次出现的未知表格结构必须逐格核对完整张表，不能通过“确认表头”快捷操作直接放行；完整核对后才记录同路线、同页面指纹和同表签名的结构校准。后续稳定结构通过全部门禁时才允许批量确认原值，结构异常仍只能逐项修改或忽略。
+- 服务端会把插件上报的表头、列数、行标识和表签名与实际 `rawTableData` 重新核对；元数据与原始表格错位时直接标记 `INVALID`，客户端声明不能绕过。
+- 校准大屏的指标行完整展示“后台字段标签 -> 后台显示原值 -> 系统规范精确值 -> 单位/精度 -> 周期 -> 位置 -> 异常原因”；该证据由服务端 DTO 返回，不依赖前端猜测。概览优先按后台原样展示，百分比的系统精确值明确标为“比例”，不会把 `4%` 静默显示为 `0.04%`。
+- Extension 兼容原生表格、ARIA `role=table` 与 `role=grid`，只采集用户当前已渲染的可见行；不滚动、不翻页、不点击平台控件。
+- 采集、规范化、入库和复核展示统一保留规范化十进制文本与后台显示原文，不再先转为 JavaScript `number` 再写回字符串；正式规则输入只在共享的安全数值边界内显式转换，超大或超精度值不会静默近似。
+- 同周期的支付金额、消耗和 ROI 交叉校验改为 `BigInt` 精确分数比较，并按 ROI 页面展示精度容纳正常四舍五入，不再使用浮点除法和经验容差。
+- 修复 v034 迁移中两个超长索引名被 PostgreSQL 截断后重名的问题；Schema 与迁移统一使用显式短索引名。
+- 服务端规范化不再按来源优先级静默选择同一快照中的重复标准字段；重复 `ROI` 或同键指标统一标记 `FIELD_BINDING_AMBIGUOUS` 并失败关闭。历史已确认但缺少字段绑定证据的指标同样不能进入正式诊断。
+- 页面结构签名只记录统计周期的语义位置，不包含“今日/昨日”等周期值；同一结构跨周期采集可复用人工校准，周期位置变化、缺失或不一致仍会降为待核对。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build`、`corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、`corepack pnpm version:check` 与 `git diff --check` 通过；Shared 46、Extension 37、Web 28、LLM 6、Decision Engine 37、API 93，共 247 项测试通过。
+- 独立临时空 PostgreSQL 已按正式链路执行 15 个 migration 至 `20260729120000_metric_binding_calibration`，`prisma migrate status` 确认最新；临时容器和数据卷已销毁。
+- 本地 unpacked Extension 已由当前源码重建，构建指纹为 `d1c80aee42ea`，Schema 为 `20260729_v034_metric_binding_calibration`。既有文件名含 `b4de6606e3f5` 的 ZIP 是本轮校准前制品，不能用于 v034 真实页面验收；本轮未生成或发布新的正式 ZIP。
+- 未对本地业务数据库或生产数据库执行 migration，未部署、提交、推送或执行平台自动操作。
+
+### 待人工验收
+
+验收清单：`10_项目档案/project-001-字节投流/04_交付物/2026-07-30_v034五路线真实采集验收清单.md`。
+
+1. 在五个真实后台页面分别手动采集，逐项核对“字段名 -> 后台原值 -> 系统值 -> 单位/周期 -> 卡片或表格位置”。
+2. 对首次出现的每种表格结构逐格核对完整张表；完成后，同路线、同页面指纹和同表签名的后续快照才可自动识别为稳定结构。页面指纹、表头或行标识变化后应重新进入待核对。
+3. 故意保留一个重复 ROI 或错位表头，确认校准大屏显示异常且正式诊断只能进入保守模式。
+
+### 计划外限制
+
+- 未调用或拦截平台内部接口，未读取 Cookie、Token、密码或整页正文；真实页面验收只能由用户主动登录、切换页面并点击 Popup 完成。
+
+## 2026-07-29 P1 已有采集数据后的插件重连入口
+
+### 已完成
+
+- 修复登录、复用计划或重启插件后，任务已有历史采集数据却只进入第 2 步、无法恢复插件连接的问题。
+- 任务页在当前插件未连接时始终展示连接状态：可重新检测网页桥接与服务端状态；网页桥接可用时可重新绑定当前任务；桥接不可用时仍可安全生成手动配对码。
+- 历史采集、校准、人工核对和诊断流程继续保留，不会因临时离线错误地丢失进度或改写已有证据。
+- Web Bridge 轮询补全未激活/协议不兼容状态回写，重新检测不会沿用已过期的 UI 状态。
+
+### 验证结果
+
+- `corepack pnpm typecheck`：通过。
+- `corepack pnpm test`：全部 215 项通过。
+- `corepack pnpm exec prisma validate`：通过。
+- `corepack pnpm --filter @douyin-local-life/shared build` 后执行 `corepack pnpm --filter @douyin-local-life/web build`：通过。
+- `git diff --check`：通过。
+- `corepack pnpm build`：未通过。根递归构建并行执行 shared 与 Web 时，shared 清理 `dist` 使 Web 暂时无法解析 `@douyin-local-life/shared`；串行构建已复现通过，该问题不由本次任务页改动引入。
+
+### 待人工验收
+
+1. 登录后复用一个已有采集数据的计划，确认离线时页面同时保留历史数据和“恢复采集插件连接”面板。
+2. 打开已登录目标后台页面并刷新后，点击“重新检测插件”；连接恢复时可继续通过 Popup 主动采集。
+3. 若插件本地任务绑定已丢失，点击“重新绑定当前任务”并在 Popup 完成人工确认；不得出现自动平台操作。
+
+## 2026-07-28 采集一致性与校准大屏 0.2.4 收口
+
+### 已完成
+
+- 共享采集协议版本固定为 `1`，`/version`、`/extension/context` 与快照请求使用同一协议；旧插件访问新 API、新插件访问旧 API 都会以明确错误停止上传，不能静默产生半成品快照。
+- 已验证 Extension 采集在同一事务内创建原始快照、标准化指标、`PENDING` 复核记录、路线成功状态、路线心跳和采集批次状态。页面账号 ID 已彻底退出判断链路，账号隔离继续由登录用户、账号档案、项目、任务和插件凭证保证。
+- 新增显式幂等历史修复工具，仅补建 `VERIFIED` 快照缺失的派生记录并写审计；原任务四条可信路线共补建 24 条指标和 24 条待复核记录，首条 `MANUAL_PENDING` 直播概览保持原样。最终只读复跑为 `candidateTasks: 0`。
+- 采集汇总使用最新快照时间，不再停留在首条采集；“全任务概览”只选择一个来源路线，优先本地推总览、缺失时回退直播概览，同名指标不跨路线相加。
+- 校准大屏已改为深蓝数据驾驶舱，展示任务新鲜度、五路线覆盖、待复核数量、单项来源路线与时间、真实趋势和真实表格。采集批次活跃且无草稿时自动刷新；存在未保存编辑时只提示新数据，不覆盖草稿。空任务明确显示“尚无采集数据 / 待采集”，不会把 0 条数据误写为校准完成。
+- 路线状态已区分 `MANUAL_PENDING`、`STALE` 与 `FAILED`：已采集但过期的数据不会被误标红为失败；运行卡住仍会保留问题码并阻断强动作。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`（213 项）、`corepack pnpm build`、`corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate` 和 `corepack pnpm version:check` 全部通过。
+- 本地与生产目标 Extension 均已重新构建并通过解压后的产物边界校验；本地 ZIP SHA256 为 `89be2c0b283edce1c4b9136a1993259b6ed607d61eb539fd88c6d7850fb2059b`，生产候选 ZIP SHA256 为 `75b519e56f63fef211d6d6719b04cbc1bcab4d671dd1b081a1425716b2628ee3`。
+- 本地 `127.0.0.1:3300/4300` 的 Web、API 与 PostgreSQL 均健康；API 报告产品 `0.2.4`、Schema `20260722_v033_table_cell_reviews`、采集协议 `1`。
+- 已完成 1440px 桌面与 390px 移动端视觉回归：页面无整体横向溢出，移动端宽表只在表格容器内横向滚动，不生成模拟指标或图表。
+- 本轮没有新增数据库 migration，没有改写原始快照，没有采集 Cookie、Token、密码或页面原文，也没有增加任何平台自动操作。
+
+### 待人工验收与发布
+
+1. 2026-07-29 已在用户实际 Chrome 中确认本地插件更新为 `0.2.4` / 桥接协议 `2` / 构建 `b4de6606e3f5`，与本地测试制品一致；旧插件阻塞已解除。
+2. 使用真实已登录页面重新采集首条仍为 `MANUAL_PENDING` 的直播概览，并完成五路线真实点击验收。确认任务页收到新快照后自动刷新，并在有编辑草稿时只提示刷新。
+3. `collector-production-candidate-v0.2.4-b4de6606e3f5.zip` 仅为通过校验的正式候选包，尚未提交 Chrome 正式渠道；发布前仍需干净工作树、正式审核和人工发布。
+
+## 2026-07-28 取消页面账号 ID 输入与拦截
+
+### 已完成
+
+- 已移除页面账号 ID 的采集、上传、展示、账号档案录入和诊断门禁；页面 URL 参数或可见文本中的账号 ID 不再影响任务采集。
+- 任务归属仍由登录用户、账号档案、项目、任务与 Extension 凭证在服务端校验；路线仍要求可信域名、无冲突证据和 Popup 点击确认。
+- 新快照和手工指标固定写入兼容 `MATCHED` 状态，表示服务端任务绑定已验证；共享快照清洗器会剥离旧页面账号字段，历史字段按既有 30 天留存策略清理。
+- 已更新 API、Web、Extension 与共享契约回归测试；本地 unpacked 插件构建指纹为 `33dc39c2b5c4`。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`（199 项）、`corepack pnpm build`、`corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、`corepack pnpm extension:build` 和版本检查通过。
+- 未新增 Prisma migration，未执行部署、提交、推送、真实平台采集或生产数据操作。
+
+### 待人工验收
+
+1. 在 `chrome://extensions` 重新加载 `apps/extension/release/local-unpacked-test-extension`，刷新目标后台页面。
+2. 在已登录目标页面直接点击 Popup 的“采集并上传当前路线”；确认不再显示或要求页面账号 ID，采集完成后进入任务校准大屏。
+3. 验证插件仍不能切换或上报其他账号档案下的任务。
+
+## 2026-07-27 真实后台识别与账号档案同步修复
+
+### 已完成
+
+- 根据真实截图复核：`/lamp/pc/liveboard2` 已识别为巨量本地推数据总览，`/lamp/pc/promotion/roi2` 已识别为巨量本地推任务列表；不存在路线识别失败。已识别时不显示路线下拉框，符合只在 `UNKNOWN` 或冲突时人工确认的安全设计。
+- 查明上传被拦截的真实原因：任务账号档案 ID 为 `1`，当前页面 `advid` 为 `1870840348951692`；跨账号隔离保持不变，系统不会自动改写账号档案。
+- 实现点击采集前的服务端账号/任务上下文刷新：已配对插件会读取并验证 `/extension/context`，使用当前账号档案 ID 进行本地校验；账号页保存后下次点击采集自动生效，无需重新配对，服务端二次校验不变。
+- Popup 明确区分“当前已识别路线”和“本轮待采集路线”；账号 ID 不匹配时显示两个 ID 与账号档案人工核对指引。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`（207 项）、`corepack pnpm build`、`corepack pnpm exec prisma validate`、`corepack pnpm version:check` 和 `git diff --check` 通过。
+- 本地 unpacked 插件已重新构建，指纹 `a18d187a5997`；其 Popup 与 Service Worker 已包含账号上下文刷新和新路线文案。
+- `corepack pnpm prisma:generate` 未通过：运行中的 Node 进程锁定 Windows Prisma 引擎 DLL（EPERM）。本轮没有 Prisma schema 或 migration 变更，API build/test 使用现有生成客户端通过。
+
+### 待完成
+
+1. 用户在账号档案中人工确认平台账号 ID `1870840348951692` 后保存；重新加载插件、刷新真实页面并点击一次采集，验证两条路线独立上传。
+2. 在不占用本地服务的维护窗口关闭锁定 Prisma 引擎的 Node 进程后，重新运行 `corepack pnpm prisma:generate`。
+
+## 2026-07-27 任务配对状态同步修复
+
+### 已完成
+
+- 查明任务 `cms29dr83000dq307hgs9ga02` 已完成过同任务配对；后续重复生成的配对码未被确认，造成网页旧桥接响应覆盖真实本地绑定状态。
+- Popup 现在对同账号、同任务的重复请求直接返回已绑定；对不同任务仍显示确认面板并要求用户点击确认。任务页新增 3 秒桥接状态刷新，完成 Popup 确认后自动切换到第 2 步。
+- 已重新生成本地 unpacked 插件，构建指纹 `1a66aeabd108`；Web 容器已重新构建并恢复原入口 `127.0.0.1:3300`。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm build` 通过。
+- Shared 39、Extension 30、Web 24、LLM 6、Decision Engine 34、API 71 项测试通过，共 204 项。首次全仓 API 测试因隔离测试库启动后 Prisma Schema Engine 未展开错误而中断；保留隔离库后单独复跑 API 71 项通过。
+- `corepack pnpm exec prisma validate` 与版本检查通过；本机 `prisma:generate` 被运行中的 Node 进程锁定 Windows 引擎 DLL（EPERM），Docker Web 构建内的 Prisma generate 已成功。未执行迁移、提交、推送或真实平台操作。
+
+## 2026-07-27 原账号环境 v033 升级
+
+### 已完成
+
+- 已保留原 PostgreSQL 数据卷并升级本地预上线环境 `127.0.0.1:3300/4300` 至 v033；升级前备份已在独立临时 PostgreSQL 恢复通过。
+- 已应用 `20260722090000_v033_table_cell_reviews` 加法式迁移，升级后保留 9 个用户、5 条快照和 5 个采集任务；现有迁移总数为 14。
+- API、Web、PostgreSQL 均 healthy，`/version` 为 `20260722_v033_table_cell_reviews`；浏览器实测登录表单正常出现且无控制台错误。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm build`、`corepack pnpm exec prisma validate`、`corepack pnpm version:check` 通过。
+- 201 项测试通过：Shared 39、Extension 29、Web 23、LLM 6、Decision Engine 34、API 71。API 测试复用隔离数据库，避免与已运行的本地验收库争用 `55432` 端口。
+- 未执行生产迁移、部署、提交、推送、真实平台操作或生产数据操作。
+
+## 2026-07-26 本地验收登录阻塞修复
+
+### 已完成
+
+- 首次 `/auth/me` 会话确认改用独立 3 秒超时；API 临时不可用时会清理内存会话并直接显示登录表单，不再被通用 20 秒请求超时卡住。
+- 已重新构建并重启隔离测试 Web：`http://127.0.0.1:3400/login` 指向 `http://127.0.0.1:4400`，浏览器实测重新加载后登录表单正常显示且控制台无错误。
+
+### 验证结果
+
+- `corepack pnpm --filter @douyin-local-life/web test` 通过（23 项）。
+- `corepack pnpm --filter @douyin-local-life/web typecheck` 通过；使用隔离 API 地址的 Web production build 通过。
+- 未变更数据库、迁移、Cookie、Extension 或生产配置，未执行生产操作、提交或部署。
+
+## 2026-07-26 v033 直连采集与校准大屏验收收口
+
+### 已完成
+
+- 服务端在受信插件上传事务中为已匹配账号、已验证路线的标准指标自动创建 `PENDING` 复核记录；校准大屏可以直接展示真实采集值，不再依赖页面读取时补建复核数据。
+- 自动识别出现 URL、选中分栏或可见标题冲突时统一返回 `UNKNOWN`，由 Popup 在当前任务允许路线内做一次性人工选择；缺失或冲突的 Extension 路线证据保持 `MANUAL_PENDING`，不会被 URL 推断静默升级为已验证。
+- 已使用隔离环境完成校准大屏生产构建与登录后的浏览器验收：1280px 桌面和 390px 移动端均只展示真实指标、真实表格和明确缺失状态；页面无整体横向溢出，宽表仅在自身容器内横向查看。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 全部通过，共 201 项测试：Shared 39、Extension 29、Web 22、LLM 6、Decision Engine 34、API 71。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、`corepack pnpm version:check`、`git diff --check` 通过；隔离 Web 生产构建和 API 就绪检查也已通过。
+- 使用独立的临时 PostgreSQL 空库按 `prisma migrate deploy` 顺序成功应用全部 14 个 migration，包含 `20260722090000_v033_table_cell_reviews`；临时容器已销毁。
+- 未执行生产 migration、部署、提交、真实平台操作或生产数据操作。
+
+## 2026-07-25 v033 多路线指标汇总完整性修复
+
+### 已完成
+
+- 校准大屏与采集汇总改为按“路线 + 标准指标”去重；不同路线采集到同名指标（例如“消耗”）会保留为独立真实证据，分别显示来源、时间和复核状态，不能再互相覆盖。
+- 新增 API 集成回归：同一任务的直播概览与本地推总览各自上传“消耗”后，汇总接口同时返回两条带独立路线和值的指标。
+
+### 验证结果
+
+- API 定向集成测试在隔离 PostgreSQL `127.0.0.1:55432` 通过 71 项；API typecheck 与差异格式检查通过。
+- 未执行生产 migration、部署、提交、平台操作或生产数据操作。
+
+## 2026-07-24 v033 Popup 一次确认路线核验收口
+
+### 已完成
+
+- Popup 的一次“选择当前路线并采集上传”现在在服务端可验证条件成立时直接完成该路线确认，不再要求任务页第二次确认。
+- 自动验证严格要求 Extension 采集凭证、账号绑定任务、精确可信 HTTPS 平台域名、任务已配置路线和无冲突路线证据；直播大屏商品/流量分栏仅在该范围内允许与概览页面类型共存。
+- 非 Extension 请求不能借 `manuallyConfirmed` 绕过人工路线确认；使用 Extension 凭证上传非可信来源也会被拒绝。
+
+### 验证结果
+
+- 全仓 lint、typecheck、200 项测试、build、Prisma validate/generate、版本一致性和差异格式检查通过；其中 Shared 38 项、Extension 29 项、Web 22 项、LLM 6 项、Decision Engine 34 项、API 71 项。
+- API 集成测试使用临时隔离数据库完成，未触碰现有本地或生产数据。
+
+### 完整性复核补充
+
+- 正式决策输入新增快照新鲜度门禁：即使账号、路线和复核均已通过，超过新鲜度阈值的指标、表格和结构化记录也不会进入判断；新增 API 回归测试覆盖该边界。当前完整测试基线为 200 项通过。
+- 新增 `docs/API_REFERENCE.md`，补充校准大屏、表格批量校准和标准指标校准接口的用途、参数、请求/返回示例、错误码及数据边界。
+- 标准指标校准已与表格单元格校准统一为当前快照、账号/路线确认和乐观并发版本门禁；单项、批量和全部确认均拒绝旧版本或旧快照，成功校准会推进快照版本并保留审计。
+- 任务页仅在本次已打开的页面观察到新的用户确认采集完成时，自动跳转至站内校准大屏；不会自动打开、跳转或操作任何外部平台页面。
+
+## 2026-07-23 v033 采集直连与校准大屏
+
+### 已完成
+
+- 生产 Extension 使用精确可信域名授权，按 URL、标题、选中标签和少量可见标题自动识别路线；保留 Popup 一次点击采集确认和当前任务路线下拉兜底。
+- 删除自动巡检、自动上传及非 Popup 采集入口；不自动导航、点击、翻页、提交或读取网络响应正文和认证信息。
+- 新任务自动继承全局路线模板，不再要求逐路线 URL；旧任务 URL 继续只读展示和兼容后端更新接口。
+- 新增任务校准大屏、汇总 API、表格单元格批量校准 API、`TableCellReview` 数据模型和 v033 migration。
+- 指标与表格校准均保留原始值、当前值、来源、置信度、时间、状态和审计；写入执行所有权、当前快照、账号、路线、并发版本和敏感字段校验。
+- 正式诊断统一只读取当前路线已确认或已修改的数据，并阻断待复核、忽略、过期、账号/路线未确认、跨账号和旧快照证据。
+- 已核验两个目标路径：`/lamp/pc/liveboard2` 识别为本地推总览，`/lamp/pc/promotion/roi2` 识别为任务列表。旧记录未识别的根因是两个路线均未实际触发确认采集，因此保持 `PENDING` 且无快照。
+- 页面可见文本仅在本次点击采集的浏览器内存中用于提取允许字段；共享快照契约、插件上传和 API 入库均强制清空 `rawDomText`，AI 与决策不读取页面原文。大屏新增指标类别筛选，并只展示真实表格来源、路线置信度和采集时间。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过；共 197 项测试：Shared 37、Extension 29、Web 21、LLM 6、Decision Engine 34、API 70。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate` 通过；隔离空 PostgreSQL 顺序应用全部 14 个 migration 并确认 schema 最新。
+- Extension production/local 构建和制品硬校验通过；本地 unpacked 指纹为 `84d44c50f4a6`。
+- `corepack pnpm version:check` 和 `git diff --check` 通过；本轮未执行生产 migration、部署、平台操作或生产数据操作。
+- 浏览器在 1280px 与 390px 实测大屏有数据和空数据状态；移动端无页面级横向溢出，宽表仅在表格容器内横向滚动，按钮和文字未重叠。
+
+### 待人工验收
+
+1. 在 Chrome 扩展页重新加载 `apps/extension/release/local-unpacked-test-extension`，使用真实已登录平台页面验证两域名、五路线和下拉兜底。
+2. 用真实账号 A/B 验证跨账号上传拒绝，并确认未点击 Popup 按钮时不会上传。
+3. 用户手动登录后，在 1280px 与 390px 复验校准大屏；当前本地会话已失效，未绕过登录进行自动化操作。
+4. 生产应用 v033 前先备份，在 staging 执行 `prisma migrate deploy`，核对 `/version` 和正式 Extension 制品哈希后再安排发布。
+
+## 2026-07-22 本地管理员登录修复
+
+### 已完成
+
+- 查明登录失败根因是新版 Web 与旧 v024 API 的认证协议错位，并非旧账号被删除或密码哈希不兼容。
+- 保留 PostgreSQL 数据卷，成功应用 v025-v032 共 8 段缺失 migration；数据库现有 13 个 migration，原用户与项目数据未清理。
+- 修复 API Docker runtime 未复制 Workspace 包级依赖的问题，新增镜像构建期入口导入门禁。
+- Compose 支持显式 `API_NODE_ENV`，默认仍为 production；本地 HTTP 验收使用 development，生产 Secure Cookie 红线不变。
+- 创建本地验收账号，实际完成 API 登录/会话/注销与 Web 登录/工作台/退出测试。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 全部通过，共 192 项测试。
+- `corepack pnpm exec prisma validate`、`corepack pnpm prisma:generate`、Compose 静态配置和 `git diff --check` 通过。
+- API Docker 镜像构建期运行时导入门禁通过；本地 Web/API/PostgreSQL 均 healthy。
+
+## 2026-07-20 首页备案号展示
+
+### 已完成
+
+- 首页内容区改为复用根布局的可伸缩高度，统一页脚中的工信部备案链接 `辽ICP备2026002223号` 现在固定处于首页底部可见位置，不再因首页自身的 `min-h-screen` 高度而被推到首屏以下。
+- 新增回归测试，锁定备案链接、`target="_blank"` 和首页贴底布局。
+
+### 验证结果
+
+- `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`、`corepack pnpm build` 通过；全仓 192 项测试通过。
+- 本地预上线 Web 容器已重新构建，`http://127.0.0.1:3300/` 返回 200、容器 healthy；HTTP 内容和浏览器视口均确认备案号显示在页面底部。
+- 未涉及 API、Prisma、配置、生产部署或平台操作；API 与 PostgreSQL 容器未重建。
+
 ## 2026-07-20 对抗性审查收尾验证
 
 ### 已完成
@@ -66,7 +337,7 @@
 - 正式诊断继续调用 `decision-engine`，展示系统结论、经营方案和当前 `PENDING_APPROVAL` 动作；动作只提供详情入口，审批和平台执行边界不变。
 - 专家参考分析独立调用现有 `/collection-tasks/:id/explain`，展示 Agency 方法论视角、当前证据、待补证据、人工验证、观察指标和停止条件；明确标记为仅供参考，不创建正式动作。
 - 新增只读 `/collection-tasks/:id/analysis/latest`，任务页刷新后可恢复最近一次专家参考结果；响应不包含 `requestPayload`，避免将保存的页面原始分析输入再次下发到浏览器。
-- 两栏分别运行，任一分析失败都不会改变另一份结果；真实 OpenAI/DeepSeek Provider 仍未启用，当前专家参考由本地 mock Provider 生成。
+- （历史状态）两栏曾分别运行，专家参考由本地 mock Provider 生成；该双栏主流程已被 2026-07-31 的统一 AI DecisionRun 取代。
 
 ### 当前验证
 
@@ -95,7 +366,7 @@
 ### 待处理
 
 1. 在发布前单独修复并复验当前 API 决策流的 6 项账号证据/快照回归失败。
-2. 真实 OpenAI/DeepSeek Provider 仍未配置；当前 mock Provider 返回结构化参考，未来接入真实模型时必须使用 `buildDecisionReferenceInstructions()` 并保持相同安全边界。
+2. （历史状态）当时真实 Provider 尚未配置、由 mock 返回结构化参考；新主线已改接 DeepSeek，但在真实评测完成前由功能开关保持关闭。
 
 ## 2026-07-19 认证入口与账号证据回归
 
@@ -353,3 +624,40 @@ V0.2.4 插件采集主流程整改收口
 - 生产 Extension 不拦截 fetch/XHR，不采集平台认证信息。
 - 心跳只用于连接状态，不创建诊断或平台动作。
 - 所有正式动作建议仍需人工审批，平台操作仍由用户手动完成。
+
+## 2026-07-29 采集后校准与诊断衔接验收
+
+- 已使用真实五路线任务核对采集后状态：5/5 路线已有快照，共 31 项标准指标、358 个表格单元格。
+- 采集校准大屏顶部改为展示当前任务全部已识别标准指标，不再只截取单一路线的 8 项概览指标；每项指标继续保留来源路线和采集时间，不跨口径相加。
+- 指标筛选、逐项修改、小时趋势和原始表格统一放入默认收起的“详细指标与原始表格”，普通用户不再先面对数百个单元格。
+- 新增任务级表格单元格批量确认接口；一键操作会确认剩余待复核单元格，同时保留已修改、已忽略和已确认内容，重复请求不会重复写审计。
+- “确认可信数据并生成诊断”现在串联指标确认、表格确认、决策预演和页面跳转：
+  - 数据满足时效与证据门槛时创建正式 DecisionRun，并跳转诊断区。
+  - 数据过期或证据不足时跳转保守诊断区，展示事实、缺失项和补采建议，不创建强动作建议。
+- 修复过期路线场景下误报“关键指标尚未开始人工复核”的问题；已完成的复核会被正确识别，但过期数据仍不能绕过正式决策时效门槛。
+- 真实 Chrome 页面已确认新版大屏能展示 31 项指标、5/5 路线和默认收起的 358 个表格单元格；服务重启后原浏览器会话失效，旧任务的最终点击验收由 API 集成测试覆盖，重新登录后可继续人工复验。
+- 验证结果：全仓 typecheck 通过；214 项测试通过；生产 build 通过；Prisma validate 通过。
+- 本轮未修改 Prisma schema、Extension 权限或平台采集权限，未加入任何自动点击、自动改预算、自动暂停、自动建计划或自动提交能力。
+
+## 2026-07-31 v035 AI 诊断主线校正
+
+### 已完成
+
+- `DecisionRun` 已扩展为统一的异步诊断运行，包含模式、状态、Provider/模型/版本、阶段、错误、租约、耗时和 Token；历史记录保持 `LEGACY_RULE + SUCCEEDED` 可读。
+- 新增 `packages/diagnosis-skills`，实现数据就绪、流量、直播承接、商品、投流单元、活动合规和相似案例 7 个版本化 Skill。
+- 新增 DeepSeek thinking + Tool Calls 编排、一次结构修复、单请求一次重试、8 轮/12 工具/并发 3/120 秒边界；隐藏推理不持久化。
+- 新增数据库租约 Worker、异步创建/查询 API、证据指纹复核、活动运行去重和失败不可变策略；旧 explain/analyze 只做代理并返回弃用头。
+- AI 候选动作必须经过确定性规则和现有建议生命周期裁决；失败运行和被拒动作都不会创建待审批建议。
+- 任务页已合并为单一 AI 诊断视图，展示 Skill 进度、证据、反证、缺失项、实验、停止条件、裁决和评价，不显示隐藏思考或规则兜底。
+- 新增工作区隔离的案例、反馈、人工纳入门禁、五维结构化检索和离线候选版本评测命令。
+- v035 空库迁移与带历史 DecisionRun 的旧库升级均已在临时 PostgreSQL 通过；功能开关默认保持关闭。
+- 最终验证通过：全仓 267 项测试（shared 46、Extension 37、Web 28、decision-engine 39、diagnosis-skills 4、LLM 14、API 99）、typecheck、build、lint/架构检查、Prisma validate/generate、版本一致性和使用一次性占位变量的 `docker compose config --quiet`。
+- 24 例脚本化 Provider 评测结果为结构 100%、核心命中 100%、虚构证据 0、安全违规 0；该结果不替代真实 DeepSeek 验收。
+
+### 启用前待完成
+
+1. 真实 DeepSeek 合成门禁已完成：`deepseek-v4-pro` / Prompt v13 / SkillSet v2 / Orchestration v19 串行 24 例为结构 100%、核心命中 100%、虚构证据 0、安全违规 0；密钥未持久化。
+2. 锁定升级目标 `douyin_subject_diagnosis` 已完成备份、克隆演练、一次性对账、16 条迁移登记、空 Schema 差异、迁移状态、历史读取和行数一致性验证；原库未执行 DDL、迁移登记或业务写入。原库的同一升级路径仍被任务存在性门禁阻断，因为真实验收任务 `cms4wmzes000uqs07m0a4q8ze` 位于另一套 `pxxis_prelaunch` 数据库。
+3. 用户必须先明确统一“锁定升级目标库”和“真实验收任务所在库”。在此之前，不得复制任务、切换目标库、修改门禁或以 `prisma migrate deploy` 绕过；不得重新采集、启动 Worker、注入密钥或运行真实 AI 诊断。
+4. 统一后，按“原库再次备份 -> 停止写入 -> 应用已演练对账脚本 -> 迁移登记 -> 状态/行数/历史读取复核”的顺序升级，再对真实任务重新完成时效内五路线采集与人工复核，运行一次真实诊断并由用户提交评价。
+5. 真实任务人工验收前，`AI_DIAGNOSIS_ENABLED` 必须继续为 `false`；数据库迁移、部署和开关启用仍需单独授权。

@@ -5,16 +5,17 @@ import helmet from "helmet";
 import type { NextFunction, Request, Response } from "express";
 import {
   actionProposalStatuses,
-  bulkReviewMetricInputSchema,
   collectionRouteTemplates,
   collectionSnapshotSchema,
+  extensionCollectionProtocolVersion,
   collectionFreshnessPolicy,
-  evaluateAccountIdentityMatch,
-  evaluateFormalDecisionReadiness,
   inferCollectionRoute,
   identifyMetricKey,
   isSupportedCollectionUrl,
+  isTrustedExtensionCollectionUrl,
   manualMetricsInputSchema,
+  metricValueSemantic,
+  metricValueText,
   metricKeyLabels,
   metricPulseSchema,
   normalizeCollectionRouteKey,
@@ -22,7 +23,6 @@ import {
   type CollectionSnapshotPayload,
   createCollectionTaskSchema,
   createProjectSchema,
-  reviewMetricInputSchema,
   sanitizeCaptureUrl,
   sanitizeCollectionSnapshotPayload,
   shouldRedactSensitiveKey,
@@ -32,6 +32,7 @@ import {
   type DecisionEngineOutput,
   type VisibleMetric
 } from "@douyin-local-life/shared";
+import { evaluateFormalDecisionReadiness } from "@douyin-local-life/shared/formal-decision-readiness";
 import { structureTaskCollectionTables } from "@douyin-local-life/decision-engine";
 import {
   EXPLANATION_PROMPT_VERSION,
@@ -41,9 +42,10 @@ import {
 import { authMiddleware, ensureSecurityConfiguration, extensionScopeGuard, type AuthenticatedRequest } from "./auth.js";
 import { csrfProtection } from "./csrf.js";
 import { writeAuditLog, writeAuditLogs } from "./audit.js";
-import { buildDecisionInput, runDecisionEngine, strategyVersion, toActionProposalCreate } from "./decision.js";
+import { buildDecisionInput, hasUntrustedCurrentEvidence, runDecisionEngine, strategyVersion, toActionProposalCreate } from "./decision.js";
 import { DecisionEvidenceChangedError, decisionEvidenceFingerprint } from "./decision-evidence.js";
 import { normalizeMetrics } from "./normalize.js";
+import { qualifyCapturedMetrics, qualifyTableBindings } from "./metric-validation.js";
 import { getProjectOutcomeSummary } from "./outcomes.js";
 import { isUniqueConstraintError, readIdempotencyKey } from "./idempotency.js";
 import { assignRequestId, corsOrigin, getRequestId, requireConfiguredWebOrigins, sanitizeErrorForLog, sanitizeErrorMessage } from "./http-security.js";
@@ -55,9 +57,12 @@ import { createAuthRouter } from "./routes/auth.js";
 import { createActionProposalRouter } from "./routes/action-proposals.js";
 import { accountIdentity, createAccountRouter } from "./routes/accounts.js";
 import { createExtensionProtectedRouter, createExtensionPublicRouter } from "./routes/extension-pairing.js";
+import { createReviewMetricRouter } from "./routes/review-metrics.js";
 import { createSnapshotAccountRouter } from "./routes/snapshot-accounts.js";
+import { createCollectionDashboardRouter } from "./routes/collection-dashboard.js";
 import { createSystemHealthRouter } from "./routes/system-health.js";
 import { createWorkspaceRouter } from "./routes/workspaces.js";
+import { createDecisionRunRouter } from "./routes/decision-runs.js";
 import { actionProposalStatusFilter, prepareActionProposals, proposalLifecyclePolicy, toReadableActionProposal } from "./proposal-lifecycle.js";
 import {
   createCollectionRunSchema,
@@ -92,8 +97,7 @@ import {
   currentReviewedMetrics,
   ensureReviewMetricsForTask,
   normalizedMetricsToVisibleMetrics,
-  normalizeReviewPatch,
-  toReviewedMetricDTO
+  reviewCoverage
 } from "./review-metrics.js";
 
 export function createServer(options: { isDraining?: () => boolean } = {}) {
@@ -158,9 +162,12 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.use(createAccountRouter());
   app.use(createActionProposalRouter());
   app.use(createExtensionProtectedRouter());
+  app.use(createReviewMetricRouter());
   app.use(createSnapshotAccountRouter());
+  app.use(createCollectionDashboardRouter());
   app.use(createSystemHealthRouter());
   app.use(createWorkspaceRouter());
+  app.use(createDecisionRunRouter());
 
   app.get("/projects", async (req, res) => {
     const user = currentUser(req);
@@ -172,7 +179,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         id: true,
         workspaceId: true,
         accountProfileId: true,
-        accountProfile: { select: { id: true, accountName: true, platformAccountId: true, identityStatus: true } },
+        accountProfile: { select: { id: true, accountName: true } },
         name: true,
         businessType: true,
         subjectType: true,
@@ -218,7 +225,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     const project = await prisma.$transaction(async (tx) => {
       let accountProfileId = selectedAccount?.id;
       if (!accountProfileId) {
-        const identity = accountIdentity(projectName, null);
+        const identity = accountIdentity(projectName);
         const account = await tx.accountProfile.upsert({
           where: { workspaceId_platform_identityKey: { workspaceId: workspace.id, platform: "DOUYIN_LOCAL_LIFE", identityKey: identity.identityKey } },
           create: {
@@ -227,7 +234,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             identityKey: identity.identityKey,
             accountName: projectName,
             normalizedName: identity.normalizedName,
-            identityStatus: "PENDING_ID"
+            identityStatus: "VERIFIED"
           },
           update: {}
         });
@@ -306,7 +313,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         expiresAt: true,
         dedupeKey: true,
         supersededAt: true,
-        project: { select: { id: true, name: true, accountProfile: { select: { id: true, accountName: true, platformAccountId: true, identityStatus: true } } } }
+        project: { select: { id: true, name: true, accountProfile: { select: { id: true, accountName: true } } } }
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: pagination.take,
@@ -342,7 +349,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         ...((from || to) ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {})
       },
       include: {
-        project: { include: { accountProfile: { select: { id: true, accountName: true, platformAccountId: true, identityStatus: true } } } },
+        project: { include: { accountProfile: { select: { id: true, accountName: true } } } },
         collectionTask: { select: { id: true, pageTitle: true } }
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -614,13 +621,6 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     if (parsed.data.tabState !== "VISIBLE") {
       return sendError(res, 409, "PAGE_INACTIVE", "页面非活跃，实时信号已停止");
     }
-    const accountMatch = evaluateAccountMatch(task.project.accountProfile, parsed.data);
-    if (accountMatch.status === "MISMATCHED") {
-      return sendError(res, 409, "ACCOUNT_MISMATCH", "当前页面账号与任务账号不一致，实时信号已停止");
-    }
-    if (accountMatch.status === "UNVERIFIED") {
-      return sendError(res, 409, "ACCOUNT_UNVERIFIED", "当前页面未识别到账号，确认账号后才能生成实时信号");
-    }
     if (parsed.data.collectionRunId) {
       const run = await prisma.collectionRun.findFirst({ where: { id: parsed.data.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }, select: { id: true } });
       if (!run) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "巡检批次不存在或已停止");
@@ -700,19 +700,42 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     }
 
     const snapshotPayload = sanitizeCollectionSnapshotPayload(parsed.data) as CollectionSnapshotPayload;
+    if (
+      currentUser(req).authKind === "EXTENSION"
+      && snapshotPayload.captureProtocolVersion !== extensionCollectionProtocolVersion
+    ) {
+      return sendError(res, 409, "EXTENSION_COLLECTION_PROTOCOL_MISMATCH", "插件与当前采集服务不兼容，请更新本地服务并重新加载插件后重试");
+    }
+    if (currentUser(req).authKind === "EXTENSION" && !isTrustedExtensionCollectionUrl(snapshotPayload.sourceUrl)) {
+      return sendError(res, 403, "EXTENSION_SOURCE_URL_FORBIDDEN", "插件只能上传可信平台域名下当前打开页面的采集结果");
+    }
     const suppliedRouteKey = normalizeCollectionRouteKey(snapshotPayload.routeKey);
     const inferredRouteKey = inferCollectionRoute(snapshotPayload);
     const routeDetection = snapshotPayload.captureMeta?.routeDetection;
     const routeKey = suppliedRouteKey !== "UNKNOWN" ? suppliedRouteKey : inferredRouteKey;
     const routeConfigured = task.routeSources.some((route) => route.routeKey === routeKey);
+    const extensionManualRouteConfirmed = routeDetection?.manuallyConfirmed === true
+      && routeDetection.source === "MANUAL"
+      && routeDetection.routeKey === routeKey
+      && currentUser(req).authKind === "EXTENSION"
+      && isTrustedExtensionCollectionUrl(snapshotPayload.sourceUrl);
+    // The live dashboard uses one page type for its overview, product, and traffic tabs.
+    const isManualLiveDashboardTab = extensionManualRouteConfirmed
+      && snapshotPayload.pageType === "LIVE_DATA_SCREEN"
+      && ["LIVE_PRODUCT_TAB", "LIVE_TRAFFIC_TAB"].includes(suppliedRouteKey);
     const routeConflictsWithEvidence = suppliedRouteKey !== "UNKNOWN"
       && inferredRouteKey !== "UNKNOWN"
-      && suppliedRouteKey !== inferredRouteKey;
+      && suppliedRouteKey !== inferredRouteKey
+      && !isManualLiveDashboardTab;
     const routeConflictsWithPageType = suppliedRouteKey !== "UNKNOWN"
       && snapshotPayload.pageType !== "UNKNOWN"
       && suppliedRouteKey !== snapshotPayload.pageType
       && !["LIVE_PRODUCT_TAB", "LIVE_TRAFFIC_TAB"].includes(suppliedRouteKey);
-    const routeVerificationStatus = routeKey === "UNKNOWN" || !routeConfigured || routeConflictsWithEvidence || routeConflictsWithPageType || routeDetection?.manuallyConfirmed
+    // Extension uploads must retain a concrete detection result for this exact route.
+    // URL inference remains a legacy fallback, but cannot turn an unknown/conflicting Popup route into verified evidence.
+    const extensionRouteEvidenceInvalid = currentUser(req).authKind === "EXTENSION"
+      && (!routeDetection || routeDetection.routeKey === "UNKNOWN" || routeDetection.routeKey !== routeKey);
+    const routeVerificationStatus = routeKey === "UNKNOWN" || !routeConfigured || routeConflictsWithEvidence || routeConflictsWithPageType || extensionRouteEvidenceInvalid || (routeDetection?.manuallyConfirmed && !extensionManualRouteConfirmed)
       ? "MANUAL_PENDING" as const
       : "VERIFIED" as const;
     if (routeVerificationStatus === "MANUAL_PENDING") queueSecurityMetrics([{ key: "account_route_mismatches" }]);
@@ -724,16 +747,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         detailJson: { suppliedRouteKey: snapshotPayload.routeKey || null, inferredRouteKey, sourceUrl: snapshotPayload.sourceUrl }
       });
     }
-    const accountMatch = evaluateAccountMatch(task.project.accountProfile, snapshotPayload);
-    if (accountMatch.status === "MISMATCHED") {
-      await writeAuditLog(req, "SNAPSHOT_ACCOUNT_MISMATCH_REJECTED", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: { routeKey, reason: accountMatch.reason, detectedAccountId: snapshotPayload.detectedAccountId || null, detectedAccountName: snapshotPayload.detectedAccountName || null }
-      });
-      return sendError(res, 409, "ACCOUNT_MISMATCH", "当前页面账号与任务账号不一致，请切换到正确账号后重新采集");
-    }
+    // The credential-to-task scope has already been checked by extensionScopeGuard.
     if (snapshotPayload.collectionRunId) {
       const collectionRun = await prisma.collectionRun.findFirst({
         where: { id: snapshotPayload.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }
@@ -744,8 +758,19 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       where: { workspaceId: task.project.workspaceId, active: true, pageType: { in: ["ANY", snapshotPayload.pageType] } },
       select: { aliasNormalized: true, pageType: true, metricKey: true }
     });
-    const normalized = normalizeMetrics(snapshotPayload, aliasOverrides as Parameters<typeof normalizeMetrics>[1]);
-    const formalMetrics = accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED" ? normalized : [];
+    const normalized = await qualifyCapturedMetrics(prisma, {
+      workspaceId: task.project.workspaceId,
+      routeKey,
+      captureMeta: snapshotPayload.captureMeta,
+      metrics: normalizeMetrics(snapshotPayload, aliasOverrides as Parameters<typeof normalizeMetrics>[1])
+    });
+    const qualifiedCaptureMeta = await qualifyTableBindings(prisma, {
+      workspaceId: task.project.workspaceId,
+      routeKey,
+      captureMeta: snapshotPayload.captureMeta,
+      rawTableData: snapshotPayload.rawTableData
+    });
+    const formalMetrics = routeVerificationStatus === "VERIFIED" ? normalized : [];
     const structuredData = routeKey === "TASK_TABLE"
       ? structureTaskCollectionTables(projectRawTableData(snapshotPayload.rawTableData, {
           routeKey,
@@ -764,27 +789,26 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             taskId: task.id,
             idempotencyKey: idempotency.key,
             pageType: snapshotPayload.pageType,
-            rawDomText: snapshotPayload.rawDomText,
+            // The legacy status records verified task scope, never a page account identifier.
+            accountMatchStatus: "MATCHED",
+            // Route and account detection are resolved before persistence; never retain page text.
+            rawDomText: null,
             rawNetworkJson: toJson([]),
             rawTableData: toJson(snapshotPayload.rawTableData),
             structuredDataJson: structuredData ? toJson(structuredData) : undefined,
             structuredDataVersion: structuredData?.schemaVersion || null,
             visibleMetricsJson: toJson(normalized),
-            captureMetaJson: snapshotPayload.captureMeta ? toJson(snapshotPayload.captureMeta) : undefined,
+            captureMetaJson: qualifiedCaptureMeta ? toJson(qualifiedCaptureMeta) : undefined,
             screenshotUrl: snapshotPayload.screenshotUrl || null,
             localCollectedAt: collectedAt,
             collectionRunId: snapshotPayload.collectionRunId || null,
             routeKey,
             routeVerificationStatus,
-            accountMatchStatus: accountMatch.status,
-            detectedAccountId: snapshotPayload.detectedAccountId || null,
-            detectedAccountName: snapshotPayload.detectedAccountName || null,
-            accountMatchEvidence: snapshotPayload.accountMatchEvidence ? toJson(snapshotPayload.accountMatchEvidence) : undefined,
             normalizedMetrics: {
               create: formalMetrics.map((metric: VisibleMetric) => ({
                 metricKey: metric.key,
                 metricName: metric.name,
-                metricValue: metric.value == null ? "" : String(metric.value),
+                metricValue: persistedMetricValue(metric),
                 metricUnit: metric.unit || null,
                 metricSource: metric.metricSource || metric.source,
                 confidence: metric.confidence ?? 0.5,
@@ -794,7 +818,24 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
           },
           include: { normalizedMetrics: true }
         });
-        if (snapshotPayload.collectionRunId && accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED") {
+        const trustedTableBindings = qualifiedCaptureMeta?.tableBindings?.length
+          ? qualifiedCaptureMeta.tableBindings.every((binding) => binding.validationStatus === "TRUSTED")
+          : false;
+        if (trustedTableBindings) {
+          const tables = projectRawTableData(snapshotPayload.rawTableData, { routeKey, pageType: snapshotPayload.pageType });
+          const trustedReviews = tables.flatMap((table, tableIndex) => table.rows.flatMap((row, rowIndex) => row.map((cell, columnIndex) => ({
+            taskId: task.id,
+            snapshotId: created.id,
+            tableIndex,
+            rowIndex,
+            columnIndex,
+            originalValue: cell == null ? "" : String(cell),
+            reviewedValue: cell == null ? "" : String(cell),
+            reviewStatus: "CONFIRMED" as const
+          }))));
+          if (trustedReviews.length) await tx.tableCellReview.createMany({ data: trustedReviews, skipDuplicates: true });
+        }
+        if (snapshotPayload.collectionRunId && routeVerificationStatus === "VERIFIED") {
           const collectionRun = await tx.collectionRun.findFirst({
             where: { id: snapshotPayload.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }
           });
@@ -818,17 +859,17 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
           });
           await refreshCollectionRunStatus(tx, collectionRun.id);
         }
-        const initialized = accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED"
+        const initialized = routeVerificationStatus === "VERIFIED"
           ? await ensureReviewMetricsForTask({ id: task.id, snapshots: [created] }, tx)
           : { metrics: [], createdCount: 0 };
-        const driftCount = accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED" ? await recordMetricDriftEvents(tx, {
+        const driftCount = routeVerificationStatus === "VERIFIED" ? await recordMetricDriftEvents(tx, {
           projectId: task.projectId,
           collectionTaskId: task.id,
           snapshotId: created.id,
           snapshot: snapshotPayload,
           normalized
         }) : 0;
-        if (accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED") {
+        if (routeVerificationStatus === "VERIFIED") {
           await tx.collectionRouteSource.updateMany({
             where: { taskId: task.id, routeKey },
             data: { status: "CAPTURED", lastCapturedAt: collectedAt, lastError: null, sourceUrl: snapshotPayload.sourceUrl }
@@ -837,7 +878,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         await tx.collectionTask.update({
           where: { id: task.id },
           data: {
-            status: accountMatch.status === "MATCHED" && routeVerificationStatus === "VERIFIED" ? "UPLOADED" : "REVIEWING",
+            status: routeVerificationStatus === "VERIFIED" ? "UPLOADED" : "REVIEWING",
             sourceUrl: task.sourceUrl || snapshotPayload.sourceUrl,
             pageTitle: task.pageTitle || snapshotPayload.pageTitle,
             finishedAt: new Date()
@@ -857,8 +898,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
               routeKey,
               collectionRunId: snapshotPayload.collectionRunId || null,
               idempotencyKey: idempotency.key,
-              accountMatchStatus: accountMatch.status,
-              accountMatchReason: accountMatch.reason,
+              accountBinding: "SERVER_TASK_SCOPE",
               routeVerificationStatus,
               routeDetection: routeDetection || null
             }
@@ -893,7 +933,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         }
         return created;
       });
-      return sendSuccess(res, { ...snapshot, requiresAccountConfirmation: snapshot.accountMatchStatus === "UNVERIFIED" }, 201);
+      return sendSuccess(res, { ...snapshot, requiresAccountConfirmation: false }, 201);
     } catch (error) {
       if (idempotency.key && isUniqueConstraintError(error)) {
         const existing = await prisma.dataSnapshot.findUnique({
@@ -959,9 +999,6 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       visibleMetricsJson: visibleMetrics,
       localCollectedAt: now.toISOString(),
       routeKey: parsed.data.routeKey,
-      detectedAccountId: task.project.accountProfile.platformAccountId,
-      detectedAccountName: task.project.accountProfile.accountName,
-      accountMatchEvidence: { idSource: "MANUAL_CONFIRMATION", nameSource: "MANUAL_CONFIRMATION" }
     };
     const safeSnapshotPayload = sanitizeCollectionSnapshotPayload(snapshotPayload);
     const normalized = normalizeMetrics(safeSnapshotPayload);
@@ -972,23 +1009,20 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             taskId: task.id,
             idempotencyKey: idempotency.key,
             pageType: parsed.data.pageType,
+            // Compatibility-only status: task ownership is verified server-side, not from page identity.
+            accountMatchStatus: "MATCHED",
+            accountConfirmedAt: now,
             rawDomText: "",
             rawNetworkJson: toJson([]),
             rawTableData: toJson(safeSnapshotPayload.rawTableData),
             visibleMetricsJson: toJson(normalized),
             localCollectedAt: now,
             routeKey: parsed.data.routeKey,
-            accountMatchStatus: "MATCHED",
-            detectedAccountId: task.project.accountProfile.platformAccountId,
-            detectedAccountName: task.project.accountProfile.accountName,
-            accountMatchEvidence: toJson({ idSource: "MANUAL_CONFIRMATION", nameSource: "MANUAL_CONFIRMATION" }),
-            accountConfirmedById: user.id,
-            accountConfirmedAt: now,
             normalizedMetrics: {
               create: normalized.map((metric) => ({
                 metricKey: String(metric.key),
                 metricName: metric.name,
-                metricValue: metric.value == null ? "" : String(metric.value),
+                metricValue: persistedMetricValue(metric),
                 metricUnit: metric.unit || null,
                 metricSource: "MANUAL_INPUT",
                 confidence: metric.key === "unknown" ? 0.4 : 1,
@@ -1203,206 +1237,6 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     return sendSuccess(res, summary);
   });
 
-  app.get("/collection-tasks/:id/review-metrics", async (req, res) => {
-    const task = await getOwnedTask(currentUser(req).id, req.params.id);
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    return sendSuccess(res, currentReviewedMetrics(task).map(toReviewedMetricDTO));
-  });
-
-  app.post("/collection-tasks/:id/review-metrics/initialize", async (req, res) => {
-    const initialized = await prisma.$transaction(async (tx) => {
-      const task = await getOwnedTask(currentUser(req).id, req.params.id, tx);
-      if (!task) return null;
-      const result = await ensureReviewMetricsForTask(task, tx);
-      if (result.createdCount > 0) {
-        await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
-          workspaceId: task.project.workspaceId,
-          projectId: task.projectId,
-          taskId: task.id,
-          detailJson: {
-            taskId: task.id,
-            snapshotIds: result.snapshotIds,
-            metricCount: result.createdCount,
-            source: "NormalizedMetric"
-          }
-        }, tx);
-      }
-      return result;
-    });
-    if (!initialized) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    return sendSuccess(res, initialized.metrics.map(toReviewedMetricDTO));
-  });
-
-  app.patch("/review-metrics/:id", async (req, res) => {
-    const user = currentUser(req);
-    const parsed = reviewMetricInputSchema.safeParse(req.body);
-    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "复核参数错误");
-    const reviewedValueInput = readSafeOptionalText(parsed.data.reviewedValue, 1_000);
-    if (reviewedValueInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", reviewedValueInput.error);
-    const updated = await prisma.$transaction(async (tx) => {
-      const metric = await tx.reviewedMetric.findFirst({
-        where: { id: req.params.id, task: { project: { workspace: { ownerId: user.id } } } },
-        include: { task: { include: { project: true } } }
-      });
-      if (!metric) return null;
-      const patch = normalizeReviewPatch(metric, { ...parsed.data, reviewedValue: reviewedValueInput.value || undefined });
-      const current = await tx.reviewedMetric.update({
-        where: { id: metric.id },
-        data: {
-          reviewedValue: patch.reviewedValue,
-          reviewStatus: patch.reviewStatus,
-          ...(patch.reviewStatus === "MODIFIED"
-            ? {
-                metricSource: "MANUAL_INPUT" as const,
-                rawEvidence: toJson({
-                  sourceType: "MANUAL_INPUT",
-                  path: "reviewedValue",
-                  originalSource: metric.metricSource,
-                  originalEvidence: metric.rawEvidence || null
-                })
-              }
-            : {}),
-          reviewerId: user.id,
-          reviewedAt: new Date(),
-          confidence: 1
-        }
-      });
-      await writeAuditLog(req, "REVIEW_METRIC_UPDATE", {
-        workspaceId: metric.task.project.workspaceId,
-        projectId: metric.task.projectId,
-        taskId: metric.taskId,
-        detailJson: {
-          taskId: metric.taskId,
-          metricId: metric.id,
-          metricKey: metric.metricKey,
-          oldValue: metric.reviewedValue || metric.originalValue,
-          newValue: current.reviewedValue,
-          reviewStatus: current.reviewStatus,
-          source: current.metricSource
-        }
-      }, tx);
-      return current;
-    });
-    if (!updated) return sendError(res, 404, "REVIEW_METRIC_NOT_FOUND", "复核指标不存在");
-    return sendSuccess(res, toReviewedMetricDTO(updated));
-  });
-
-  app.post("/collection-tasks/:id/review-metrics/bulk", async (req, res) => {
-    const user = currentUser(req);
-    const parsed = bulkReviewMetricInputSchema.safeParse(req.body);
-    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "复核参数错误");
-    const reviewInputs = parsed.data.items.map((item) => ({
-      ...item,
-      reviewedValueInput: readSafeOptionalText(item.reviewedValue, 1_000)
-    }));
-    const invalidReviewInput = reviewInputs.find((item) => item.reviewedValueInput.error);
-    if (invalidReviewInput?.reviewedValueInput.error) {
-      return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", invalidReviewInput.reviewedValueInput.error);
-    }
-
-    const metricIds = reviewInputs.map((item) => item.metricId);
-    const result = await prisma.$transaction(async (tx) => {
-      const task = await tx.collectionTask.findFirst({
-        where: { id: req.params.id, project: { workspace: { ownerId: user.id } } },
-        include: { project: true }
-      });
-      if (!task) return { error: "TASK_NOT_FOUND" as const };
-      const metrics = await tx.reviewedMetric.findMany({ where: { id: { in: metricIds }, taskId: task.id } });
-      if (metrics.length !== metricIds.length) return { error: "REVIEW_METRIC_NOT_FOUND" as const };
-      const byId = new Map(metrics.map((metric) => [metric.id, metric]));
-      const now = new Date();
-      const updated = await Promise.all(reviewInputs.map((item) => {
-        const metric = byId.get(item.metricId);
-        if (!metric) throw new Error("REVIEW_METRIC_NOT_FOUND");
-        const patch = normalizeReviewPatch(metric, { ...item, reviewedValue: item.reviewedValueInput.value || undefined });
-        return tx.reviewedMetric.update({
-          where: { id: metric.id },
-          data: {
-            reviewedValue: patch.reviewedValue,
-            reviewStatus: patch.reviewStatus,
-            ...(patch.reviewStatus === "MODIFIED"
-              ? {
-                  metricSource: "MANUAL_INPUT" as const,
-                  rawEvidence: toJson({
-                    sourceType: "MANUAL_INPUT",
-                    path: "reviewedValue",
-                    originalSource: metric.metricSource,
-                    originalEvidence: metric.rawEvidence || null
-                  })
-                }
-              : {}),
-            reviewerId: user.id,
-            reviewedAt: now,
-            confidence: 1
-          }
-        });
-      }));
-      await writeAuditLog(req, "REVIEW_METRICS_BULK_UPDATE", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: {
-          taskId: task.id,
-          items: updated.map((metric) => ({
-            metricId: metric.id,
-            metricKey: metric.metricKey,
-            oldValue: byId.get(metric.id)?.reviewedValue || byId.get(metric.id)?.originalValue || null,
-            newValue: metric.reviewedValue,
-            reviewStatus: metric.reviewStatus,
-            source: metric.metricSource
-          }))
-        }
-      }, tx);
-      return { task, updated };
-    });
-    if ("error" in result) {
-      if (result.error === "TASK_NOT_FOUND") {
-        return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-      }
-      return sendError(res, 404, "REVIEW_METRIC_NOT_FOUND", "存在不属于该任务的复核指标");
-    }
-    return sendSuccess(res, result.updated.map(toReviewedMetricDTO));
-  });
-
-  app.post("/collection-tasks/:id/review-metrics/confirm-all", async (req, res) => {
-    const user = currentUser(req);
-    const result = await prisma.$transaction(async (tx) => {
-      const task = await getOwnedTask(user.id, req.params.id, tx);
-      if (!task) return null;
-      const initialized = await ensureReviewMetricsForTask(task, tx);
-      const pending = initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING");
-      const now = new Date();
-      const updates = await Promise.all(pending.map((metric) => tx.reviewedMetric.updateMany({
-        where: { id: metric.id, reviewStatus: "PENDING" },
-        data: {
-          reviewStatus: "CONFIRMED",
-          reviewedValue: metric.originalValue || "",
-          reviewerId: user.id,
-          reviewedAt: now,
-          confidence: 1
-        }
-      })));
-      const metrics = await tx.reviewedMetric.findMany({
-        where: { taskId: task.id, snapshotId: { in: initialized.snapshotIds } },
-        orderBy: [{ createdAt: "asc" }, { metricKey: "asc" }]
-      });
-      await writeAuditLog(req, "REVIEW_METRICS_CONFIRM_ALL", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: {
-          taskId: task.id,
-          snapshotIds: initialized.snapshotIds,
-          updatedCount: updates.reduce((count, update) => count + update.count, 0),
-          source: "ReviewedMetric"
-        }
-      }, tx);
-      return metrics;
-    });
-    if (!result) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    return sendSuccess(res, result.map(toReviewedMetricDTO));
-  });
-
   app.post("/collection-tasks/:id/decision-preview", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
@@ -1420,333 +1254,6 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       finalOutput,
       lifecyclePolicy: proposalLifecyclePolicy
     });
-  });
-
-  app.post("/collection-tasks/:id/decision-runs", async (req, res) => {
-    const task = await getOwnedTask(currentUser(req).id, req.params.id);
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const idempotency = readIdempotencyKey(req);
-    if (idempotency.error) return sendError(res, 400, "INVALID_IDEMPOTENCY_KEY", idempotency.error);
-    if (idempotency.key) {
-      const existing = await prisma.decisionRun.findUnique({
-        where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
-        include: { actionProposals: { orderBy: { createdAt: "asc" } } }
-      });
-      if (existing) {
-        res.setHeader("Idempotent-Replayed", "true");
-        return sendSuccess(res, existing);
-      }
-    }
-    const decisionLimit = await checkDecisionRateLimit(task.id);
-    if (!decisionLimit.allowed) {
-      res.setHeader("Retry-After", String(decisionLimit.retryAfterSeconds));
-      return sendError(res, 429, "RATE_LIMITED", "决策运行过于频繁，请稍后再试");
-    }
-    if (!task.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-
-    const initialized = await prisma.$transaction(async (tx) => {
-      const result = await ensureReviewMetricsForTask(task, tx);
-      if (result.createdCount > 0) {
-        await writeAuditLog(req, "REVIEW_METRICS_INITIALIZED", {
-          workspaceId: task.project.workspaceId,
-          projectId: task.projectId,
-          taskId: task.id,
-          detailJson: {
-            taskId: task.id,
-            snapshotId: task.snapshots[0]?.id || null,
-            metricCount: result.createdCount,
-            source: "NormalizedMetric"
-          }
-        }, tx);
-      }
-      return result;
-    });
-    const refreshedTask = await getOwnedTask(currentUser(req).id, task.id);
-    if (!refreshedTask?.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-    const input = buildDecisionInput({
-      ...refreshedTask,
-      reviewedMetrics: initialized.metrics.length ? initialized.metrics : refreshedTask.reviewedMetrics
-    });
-    const { ruleOutput, finalOutput } = runDecisionEngine(input);
-    const readiness = decisionReadiness(refreshedTask, input, finalOutput);
-    if (!readiness.ready) {
-      return sendError(res, 409, "DECISION_NOT_READY", `当前只能生成保守诊断：${readiness.blockingReasons.join("；")}`, {
-        fieldErrors: { readiness: readiness.blockingReasons.join("；") }
-      });
-    }
-    const evidenceFingerprint = decisionEvidenceFingerprint(refreshedTask);
-
-    try {
-      const transactionQueuedAt = performance.now();
-      let transactionStartedAt = transactionQueuedAt;
-      const transactionResult = await runSerializableTransaction(async (tx) => {
-        transactionStartedAt = performance.now();
-        if (idempotency.key) {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${task.id}), hashtext(${idempotency.key}))`;
-          const existing = await tx.decisionRun.findUnique({
-            where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
-            include: { actionProposals: { orderBy: { createdAt: "asc" } } }
-          });
-          if (existing) return { decisionRun: existing, replayed: true };
-        }
-        const currentTask = await getOwnedTask(currentUser(req).id, task.id, tx);
-        if (!currentTask || decisionEvidenceFingerprint(currentTask) !== evidenceFingerprint) {
-          throw new DecisionEvidenceChangedError();
-        }
-        const prepared = await prepareActionProposals(tx, {
-          projectId: currentTask.projectId,
-          collectionTaskId: currentTask.id,
-          proposals: finalOutput.actionProposals
-        });
-        if (prepared.expiredProposalIds.length) {
-          await writeAuditLog(req, "action_proposals.expired", {
-            workspaceId: currentTask.project.workspaceId,
-            projectId: currentTask.projectId,
-            detailJson: {
-              actionProposalIds: prepared.expiredProposalIds,
-              expiredCount: prepared.expiredProposalIds.length,
-              source: "decision_run"
-            }
-          }, tx);
-        }
-        const persistedOutput = { ...finalOutput, actionProposals: prepared.accepted };
-        const created = await tx.decisionRun.create({
-          data: {
-            projectId: currentTask.projectId,
-            collectionTaskId: currentTask.id,
-            idempotencyKey: idempotency.key,
-            evidenceFingerprint,
-            engineVersion: persistedOutput.engineVersion || "decision-engine-v0.1.0",
-            ruleVersion: persistedOutput.ruleVersion || strategyVersion,
-            strategyVersion: persistedOutput.strategyVersion || strategyVersion,
-            inputJson: toJson(sanitizeDerivedPersistedJson(input)),
-            ruleResultJson: toJson(sanitizeDerivedPersistedJson(ruleOutput)),
-            finalResultJson: toJson(sanitizeDerivedPersistedJson(persistedOutput)),
-            manualCheckItemsJson: toJson(sanitizeDerivedPersistedJson(persistedOutput.manualCheckItems)),
-            riskLevel: persistedOutput.riskLevel,
-            confidence: persistedOutput.confidence,
-            diagnosis: persistedOutput.diagnosis
-          }
-        });
-
-        if (persistedOutput.actionProposals.length > 0) {
-          const proposalCreatedAt = new Date();
-          const oldestRouteAgeMs = input.collectionQuality?.routes.reduce((max, route) => Math.max(max, route.ageMs || 0), 0) || 0;
-          const sourceRemainingMs = input.collectionQuality
-            ? Math.max(0, collectionFreshnessPolicy.staleAfterMs - oldestRouteAgeMs)
-            : proposalLifecyclePolicy.expiresAfterMs;
-          const proposalExpiresAt = new Date(proposalCreatedAt.getTime() + Math.min(proposalLifecyclePolicy.expiresAfterMs, sourceRemainingMs));
-          await tx.actionProposal.createMany({
-            data: persistedOutput.actionProposals.map((proposal) =>
-              toActionProposalCreate(proposal, created.id, currentTask.projectId, currentTask.id, proposalCreatedAt, proposalExpiresAt)
-            )
-          });
-        }
-        const withProposals = persistedOutput.actionProposals.length
-          ? await tx.decisionRun.findUniqueOrThrow({
-              where: { id: created.id },
-              include: { actionProposals: { orderBy: { createdAt: "asc" } } }
-            })
-          : { ...created, actionProposals: [] };
-        await writeAuditLogs(req, [
-          {
-            action: "CREATE_DECISION_RUN",
-            detail: {
-              workspaceId: currentTask.project.workspaceId,
-              projectId: currentTask.projectId,
-              taskId: currentTask.id,
-              detailJson: {
-                decisionRunId: withProposals.id,
-                strategyVersion: withProposals.strategyVersion,
-                riskLevel: withProposals.riskLevel,
-                confidence: withProposals.confidence,
-                idempotencyKey: idempotency.key
-              }
-            }
-          },
-          {
-            action: "CREATE_ACTION_PROPOSALS",
-            detail: {
-              workspaceId: currentTask.project.workspaceId,
-              projectId: currentTask.projectId,
-              taskId: currentTask.id,
-              detailJson: {
-                decisionRunId: withProposals.id,
-                actionProposalCount: withProposals.actionProposals.length,
-                suppressedProposals: prepared.suppressed
-              }
-            }
-          },
-          {
-            action: input.metricLayer === "REVIEWED_METRIC" ? "DECISION_RUN_USE_REVIEWED_METRICS" : "DECISION_RUN_FALLBACK_NORMALIZED_METRICS",
-            detail: {
-              workspaceId: currentTask.project.workspaceId,
-              projectId: currentTask.projectId,
-              taskId: currentTask.id,
-              detailJson: {
-                taskId: currentTask.id,
-                decisionRunId: withProposals.id,
-                source: input.metricLayer,
-                dataReviewStatus: input.dataReviewStatus,
-                reviewCoverage: input.reviewCoverage || null
-              }
-            }
-          }
-        ], tx);
-        return { decisionRun: withProposals, replayed: false };
-      });
-      const transactionFinishedAt = performance.now();
-      if (!transactionResult.replayed) {
-        res.setHeader(
-          "Server-Timing",
-          `decision-queue;dur=${(transactionStartedAt - transactionQueuedAt).toFixed(1)}, decision-write;dur=${(transactionFinishedAt - transactionStartedAt).toFixed(1)}`
-        );
-      } else {
-        res.setHeader("Idempotent-Replayed", "true");
-      }
-      return sendSuccess(res, transactionResult.decisionRun, transactionResult.replayed ? 200 : 201);
-    } catch (error) {
-      if (error instanceof DecisionEvidenceChangedError || isSerializableConflict(error)) {
-        return sendError(res, 409, "DECISION_EVIDENCE_CHANGED", "决策期间采集证据或复核数据发生变化，请刷新后重新运行诊断");
-      }
-      if (idempotency.key && isUniqueConstraintError(error)) {
-        const existing = await prisma.decisionRun.findUnique({
-          where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
-          include: { actionProposals: { orderBy: { createdAt: "asc" } } }
-        });
-        if (existing) {
-          res.setHeader("Idempotent-Replayed", "true");
-          return sendSuccess(res, existing);
-        }
-      }
-      throw error;
-    }
-  });
-
-  app.get("/collection-tasks/:id/decision-runs/latest", async (req, res) => {
-    const task = await getOwnedTaskAccess(currentUser(req).id, req.params.id);
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const decisionRun = await prisma.decisionRun.findFirst({
-      where: { collectionTaskId: task.id },
-      include: { actionProposals: { orderBy: { createdAt: "asc" } } },
-      orderBy: { createdAt: "desc" }
-    });
-    return sendSuccess(res, decisionRun);
-  });
-
-  app.post(["/collection-tasks/:id/explain", "/collection-tasks/:id/analyze"], async (req, res) => {
-    if (req.path.endsWith("/analyze")) {
-      res.setHeader("Deprecation", "true");
-      res.setHeader("Sunset", "Wed, 31 Dec 2026 23:59:59 GMT");
-      res.setHeader("Link", '</collection-tasks/:id/explain>; rel="successor-version"');
-    }
-    const task = await getOwnedTask(currentUser(req).id, req.params.id || "");
-    if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const explanationLimit = await checkAiExplanationRateLimit(currentUser(req).id);
-    if (!explanationLimit.allowed) {
-      res.setHeader("Retry-After", String(explanationLimit.retryAfterSeconds));
-      return sendError(res, 429, "RATE_LIMITED", "AI 解读请求过于频繁，请稍后再试");
-    }
-    const latestSnapshot = task.snapshots[0];
-    if (!latestSnapshot) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-    const metrics = normalizedMetricsToVisibleMetrics(latestSnapshot.normalizedMetrics);
-    const input: AnalyzeInput = {
-      businessType: task.project.businessType as AnalyzeInput["businessType"],
-      subject: {
-        subjectType: task.project.subjectType as AnalyzeInput["subject"]["subjectType"],
-        operatorType: task.project.operatorType as AnalyzeInput["subject"]["operatorType"],
-        cooperationType: task.project.cooperationType as AnalyzeInput["subject"]["cooperationType"],
-        controlLevel: task.project.controlLevel as AnalyzeInput["subject"]["controlLevel"],
-        confidence: task.project.subjectConfidence,
-        serviceProviderName: task.project.serviceProviderName,
-        serviceMode: task.project.serviceMode,
-        serviceFee: task.project.serviceFee
-      },
-      pageTitle: task.pageTitle || "",
-      sourceUrl: task.sourceUrl || "",
-      metrics,
-      tables: Array.isArray(latestSnapshot.rawTableData) ? (latestSnapshot.rawTableData as AnalyzeInput["tables"]) : [],
-      visibleText: latestSnapshot.rawDomText || "",
-      networkJsonSummary: Array.isArray(latestSnapshot.rawNetworkJson)
-        ? (latestSnapshot.rawNetworkJson.slice(0, 10) as AnalyzeInput["networkJsonSummary"])
-        : []
-    };
-    const provider = createLlmProvider("mock");
-    const analysisTask = await prisma.aiAnalysisTask.create({
-      data: {
-        collectionTaskId: task.id,
-        provider: provider.name,
-        model: provider.model,
-        promptVersion: EXPLANATION_PROMPT_VERSION,
-        status: "RUNNING",
-        requestPayload: toJson(sanitizeDerivedPersistedJson(input))
-      }
-    });
-
-    try {
-      const output = await executeWithAiCircuit(provider.name, provider.model, () => provider.analyze(input));
-      const updated = await prisma.aiAnalysisTask.update({
-        where: { id: analysisTask.id },
-        data: {
-          status: "SUCCEEDED",
-          responsePayload: toJson(sanitizeDerivedPersistedJson({
-            summary: output.summary,
-            problems: output.problems,
-            suggestions: output.suggestions,
-            manualCheckItems: output.manualCheckItems,
-            confidence: output.confidence,
-            decisionReference: output.decisionReference,
-            finalActionsSource: "decision-engine"
-          }))
-        }
-      });
-      await writeAuditLog(req, "ai_explanation.succeeded", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: { analysisTaskId: updated.id, provider: provider.name, model: provider.model }
-      });
-      return sendSuccess(res, updated, 201);
-    } catch (error) {
-      if (error instanceof AiCircuitOpenError) {
-        const fallback = await prisma.aiAnalysisTask.update({
-          where: { id: analysisTask.id },
-          data: {
-            status: "SUCCEEDED",
-            provider: "deterministic-fallback",
-            model: "rule-template",
-            responsePayload: toJson(sanitizeDerivedPersistedJson({
-              summary: "AI解释服务正在渐进退避，当前请以确定性决策诊断、证据和人工复核项为准。",
-              manualCheckItems: [{ title: "AI解释降级", reason: error.retryAt ? `预计 ${error.retryAt.toISOString()} 后进行半开探测。` : "等待下一次半开探测。" }],
-              confidence: 1,
-              decisionReference: buildDecisionReferenceBundle(input),
-              finalActionsSource: "decision-engine",
-              fallback: true
-            }))
-          }
-        });
-        await writeAuditLog(req, "ai_explanation.fallback", {
-          workspaceId: task.project.workspaceId,
-          projectId: task.projectId,
-          taskId: task.id,
-          detailJson: { analysisTaskId: fallback.id, retryAt: error.retryAt?.toISOString() || null }
-        });
-        return sendSuccess(res, fallback, 201);
-      }
-      const safeError = readSafeOptionalText(error instanceof Error ? error.message : "", 1_000);
-      const message = safeError.value || "AI 解释服务失败";
-      const failed = await prisma.aiAnalysisTask.update({
-        where: { id: analysisTask.id },
-        data: { status: "FAILED", errorMessage: message }
-      });
-      await writeAuditLog(req, "ai_explanation.failed", {
-        workspaceId: task.project.workspaceId,
-        projectId: task.projectId,
-        taskId: task.id,
-        detailJson: { analysisTaskId: failed.id, errorMessage: message }
-      });
-      return sendError(res, 500, "AI_ANALYSIS_FAILED", message);
-    }
   });
 
   app.get("/collection-tasks/:id/analysis", async (req, res) => {
@@ -1836,42 +1343,39 @@ function decisionReadiness(
   const missingRequiredRoutes = requiredRoutes.filter((route) => !latestByRoute.has(normalizeCollectionRouteKey(route.routeKey)));
   const unverifiedRequiredRoutes = requiredRoutes.filter((route) => {
     const snapshot = latestByRoute.get(normalizeCollectionRouteKey(route.routeKey));
-    return snapshot && (snapshot.accountMatchStatus !== "MATCHED" || snapshot.routeVerificationStatus !== "VERIFIED");
+    return snapshot && snapshot.routeVerificationStatus !== "VERIFIED";
   });
+  const staleRequiredRoutes = requiredRoutes.filter((route) => {
+    const snapshot = latestByRoute.get(normalizeCollectionRouteKey(route.routeKey));
+    if (!snapshot?.localCollectedAt) return false;
+    return Date.now() - snapshot.localCollectedAt.getTime() > collectionFreshnessPolicy.staleAfterMs;
+  });
+  const currentMetricReviewCoverage = reviewCoverage(currentReviewedMetrics(task));
   const readiness = evaluateFormalDecisionReadiness({
     missingRequiredRouteLabels: missingRequiredRoutes.map((route) => route.label),
     unverifiedRequiredRouteLabels: unverifiedRequiredRoutes.map((route) => route.label),
+    staleRequiredRouteLabels: staleRequiredRoutes.map((route) => route.label),
     subjectReady: output.dataQuality.subjectReady !== false,
-    reviewTotalCount: input.reviewCoverage?.totalCount || 0,
-    reviewPendingCount: input.reviewCoverage?.pendingCount || 0
+    reviewTotalCount: Math.max(input.reviewCoverage?.totalCount || 0, currentMetricReviewCoverage.totalCount),
+    reviewPendingCount: Math.max(input.reviewCoverage?.pendingCount || 0, currentMetricReviewCoverage.pendingCount)
   });
+  const invalidEvidenceReason = hasUntrustedCurrentEvidence(task)
+    ? "当前快照存在未放行的字段绑定或表格行列证据，不能生成正式诊断"
+    : null;
+  const unsupportedBusinessModeReason = input.subject.operatorType === "SERVICE_PROVIDER_LIVE" || input.subject.serviceMode?.trim() === "代播"
+    ? null
+    : "首期 AI 诊断只支持代直播增长项目";
+  const additionalBlockingReasons = [invalidEvidenceReason, unsupportedBusinessModeReason].filter((reason): reason is string => Boolean(reason));
   const advisories = (output.dataQuality.blockingReasons || []).filter((reason) => ![
     "主体识别未完成",
     "数据未人工复核"
   ].includes(reason));
   return {
     ...readiness,
+    ready: readiness.ready && additionalBlockingReasons.length === 0,
+    blockingReasons: [...readiness.blockingReasons, ...additionalBlockingReasons],
     advisories
   };
-}
-
-function evaluateAccountMatch(
-  account: { platformAccountId: string | null; accountName: string },
-  snapshot: {
-    sourceUrl?: string | null;
-    detectedAccountId?: string | null;
-    detectedAccountName?: string | null;
-    accountMatchEvidence?: CollectionSnapshotPayload["accountMatchEvidence"];
-  }
-) {
-  return evaluateAccountIdentityMatch({
-    expectedAccountId: account.platformAccountId,
-    expectedAccountName: account.accountName,
-    sourceUrl: snapshot.sourceUrl,
-    detectedAccountId: snapshot.detectedAccountId,
-    detectedAccountName: snapshot.detectedAccountName,
-    evidence: snapshot.accountMatchEvidence
-  });
 }
 
 function isPublicServiceError(error: unknown): error is { statusCode: number; code: string; publicMessage: string } {
@@ -1909,4 +1413,8 @@ function rateLimitSubject(req: Request) {
   return request.user.authKind === "EXTENSION"
     ? `extension:${request.user.extensionCredentialId || request.user.id}`
     : `session:${request.session?.id || request.user.id}`;
+}
+
+function persistedMetricValue(metric: VisibleMetric) {
+  return metricValueText(metric, metricValueSemantic(String(metric.key))) || "";
 }

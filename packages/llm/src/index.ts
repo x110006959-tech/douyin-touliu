@@ -1,4 +1,6 @@
 import {
+  metricValueSemantic,
+  metricValueToRuleNumber,
   subjectLabel,
   type AnalyzeInput,
   type AnalyzeOutput,
@@ -12,6 +14,9 @@ import {
   buildDecisionReferenceBundle,
   type DecisionReferenceBundle
 } from "./reference-playbooks.js";
+
+export * from "./deepseek.js";
+export * from "./tool-loop.js";
 
 export type LlmProvider = {
   name: string;
@@ -106,20 +111,10 @@ function readMetrics(metrics: AnalyzeInput["metrics"]) {
   const values = new Map<string, number>();
   for (const metric of metrics) {
     const key = standardizeMetricKey(metric);
-    const value = parseNumber(metric.value);
+    const value = key === "unknown" ? null : metricValueToRuleNumber(metric, metricValueSemantic(key));
     if (key !== "unknown" && value != null && !values.has(key)) values.set(key, value);
   }
   return values;
-}
-
-function parseNumber(value: AnalyzeInput["metrics"][number]["value"]) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value !== "string") return null;
-  const text = value.trim();
-  const multiplier = text.includes("万") ? 10_000 : text.includes("千") ? 1_000 : 1;
-  const parsed = Number(text.replace(/[¥￥,%\s,，]/g, "").replace(/[万千]/g, ""));
-  if (!Number.isFinite(parsed)) return null;
-  return text.includes("%") ? parsed / 100 : parsed * multiplier;
 }
 
 function normalizeRate(value: number | undefined) {
@@ -136,6 +131,10 @@ function formatPercent(value: number) {
 }
 
 export function createLlmProvider(name: LlmProviderName = "mock"): LlmProvider {
+  const runtimeEnvironment = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NODE_ENV;
+  if (name === "mock" && runtimeEnvironment === "production") {
+    throw new Error("生产环境禁止使用 mock LLM provider");
+  }
   if (name !== "mock") {
     return {
       name,

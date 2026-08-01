@@ -53,7 +53,7 @@ type ActionProposalDetail = {
   manualExecutedAt: string | null;
   expiresAt: string | null;
   supersededAt: string | null;
-  project: { id: string; name: string; accountProfile: { id: string; accountName: string; platformAccountId: string | null; identityStatus: string } };
+  project: { id: string; name: string; accountProfile: { id: string; accountName: string } };
   collectionTask: { id: string; pageTitle: string | null; sourceUrl: string | null };
   decisionRun: { id: string; diagnosis: string; riskLevel: RiskLevel; confidence: number; strategyVersion: string; createdAt: string };
   approvalRecords: Array<{ id: string; decision: ApprovalDecision; comment: string | null; createdAt: string }>;
@@ -198,7 +198,7 @@ export default function ActionProposalDetailPage() {
             返回决策中心
           </Link>
           <h1 className="mt-3 text-3xl font-bold">{proposal.title}</h1>
-          <p className="text-sm font-medium text-primary">当前账号：{proposal.project.accountProfile.accountName}{proposal.project.accountProfile.platformAccountId ? ` / ${proposal.project.accountProfile.platformAccountId}` : " / 账号 ID 待补"}</p>
+          <p className="text-sm font-medium text-primary">当前账号：{proposal.project.accountProfile.accountName}</p>
           <p className="text-sm text-muted">
             当前项目：{proposal.project.name} / 当前任务：{proposal.collectionTask.pageTitle || proposal.collectionTask.sourceUrl || proposal.collectionTask.id}
           </p>
