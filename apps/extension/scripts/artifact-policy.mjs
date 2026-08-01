@@ -5,22 +5,20 @@ const localTestMarker = Buffer.from("本地测试", "utf8");
 const forbiddenProductionMarkers = ["localhost", "127.0.0.1", "本地测试"];
 const productionPermissions = ["activeTab", "storage", "sidePanel"];
 const productionHostPermissions = [
-  "https://eos.douyin.com/dp/liveScreen*",
-  "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-  "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*",
+  "https://eos.douyin.com/*",
+  "https://localads.chengzijianzhan.cn/*",
   "https://api.pxxis.cn/*",
   "https://www.pxxis.cn/*"
 ];
 const productionContentScriptMatches = [
   [
-    "https://eos.douyin.com/dp/liveScreen*",
-    "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-    "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*"
+    "https://eos.douyin.com/*",
+    "https://localads.chengzijianzhan.cn/*"
   ],
   ["https://www.pxxis.cn/*"]
 ];
 
-export const extensionSchemaVersion = "20260720_v032_audit_actor_snapshot";
+export const extensionSchemaVersion = "20260729_v034_metric_binding_calibration";
 
 export async function assertDirectoryArtifact(root, target) {
   assertExtensionArtifact(await readDirectoryArtifact(root), target);

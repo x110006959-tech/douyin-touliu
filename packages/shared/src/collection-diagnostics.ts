@@ -21,7 +21,6 @@ export const collectionIssueCodes = [
   "SNAPSHOT_STALE",
   "COLLECTOR_STALLED",
   "CONSECUTIVE_FAILURES",
-  "ACCOUNT_UNVERIFIED",
   "ROUTE_UNVERIFIED",
   "PARTIAL_CAPTURE",
   "LOW_FIELD_COVERAGE",
@@ -33,7 +32,6 @@ export const collectionRouteFailureCodes = [
   "CONTENT_SCRIPT_UNAVAILABLE",
   "PAGE_NOT_READY",
   "ROUTE_UNVERIFIED",
-  "ACCOUNT_UNVERIFIED",
   "UPLOAD_NETWORK_ERROR",
   "UPLOAD_HTTP_ERROR",
   "UNKNOWN"
@@ -92,7 +90,6 @@ export type CollectionRouteDiagnosticInput = {
   snapshot?: {
     id?: string | null;
     localCollectedAt?: Date | string | null;
-    accountMatchStatus?: string | null;
     routeVerificationStatus?: string | null;
     captureMeta?: {
       completeness?: string | null;
@@ -217,15 +214,6 @@ export function evaluateCollectionRouteDiagnostic(
     ));
   }
 
-  if (input.snapshot && input.snapshot.accountMatchStatus !== "MATCHED") {
-    issues.push(issue(
-      "ACCOUNT_UNVERIFIED",
-      "ERROR",
-      "当前快照尚未通过账号归属确认。",
-      "核对页面账号与任务账号；证据不足时在任务页进行人工确认。"
-    ));
-  }
-
   if (input.snapshot?.routeVerificationStatus === "MANUAL_PENDING") {
     issues.push(issue(
       "ROUTE_UNVERIFIED",
@@ -280,24 +268,25 @@ export function evaluateCollectionRouteDiagnostic(
       : ageMs! >= collectionFreshnessPolicy.agingAfterMs
         ? "AGING"
         : "FRESH";
-  const failed = stalled || consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold;
-  const summaryStatus: CollectionRouteDiagnosticStatus = failed
-    ? "FAILED"
-    : capturedAt == null
-      ? "MISSING"
-      : stale
-        ? "STALE"
-        : input.snapshot?.accountMatchStatus !== "MATCHED"
-          ? "UNVERIFIED"
-          : input.snapshot?.routeVerificationStatus === "MANUAL_PENDING"
-            ? "MANUAL_PENDING"
-            : completeness === "PARTIAL" || completeness === "UNKNOWN"
-              ? "PARTIAL"
-              : freshnessState === "AGING"
-                ? "AGING"
-                : "UPLOADED";
+  const failed = consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold
+    || (stalled && capturedAt == null);
+  const summaryStatus: CollectionRouteDiagnosticStatus = capturedAt == null
+    ? failed
+      ? "FAILED"
+      : "MISSING"
+    : input.snapshot?.routeVerificationStatus === "MANUAL_PENDING"
+      ? "MANUAL_PENDING"
+      : consecutiveFailures >= collectionFreshnessPolicy.routeFailureThreshold
+        ? "FAILED"
+        : stale
+          ? "STALE"
+          : completeness === "PARTIAL" || completeness === "UNKNOWN"
+            ? "PARTIAL"
+            : freshnessState === "AGING"
+              ? "AGING"
+              : "UPLOADED";
   const blocksFormalDecision = issues.some((item) =>
-    item.code === "NO_SNAPSHOT" || item.code === "ACCOUNT_UNVERIFIED" || item.code === "ROUTE_UNVERIFIED"
+    item.code === "NO_SNAPSHOT" || item.code === "ROUTE_UNVERIFIED"
   );
   const blocksStrongActions = blocksFormalDecision || failed || stale;
 
@@ -357,8 +346,6 @@ function failureMessage(value: string | null | undefined) {
       return "目标页面尚未完成加载。";
     case "ROUTE_UNVERIFIED":
       return "插件无法确认当前页面路线。";
-    case "ACCOUNT_UNVERIFIED":
-      return "当前页面账号尚未确认。";
     case "UPLOAD_NETWORK_ERROR":
       return "采集数据上传时网络连接失败。";
     case "UPLOAD_HTTP_ERROR":

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isSupportedExtensionCollectionUrl,
   normalizeApiBaseUrl,
   sanitizeSensitiveFields,
   sanitizeSnapshotPayload
@@ -73,6 +74,16 @@ describe("extension safety helpers", () => {
     expect(normalizeApiBaseUrl("https://user:secret@api.pxxis.cn")).toBeNull();
   });
 
+  it("allows every path on exact trusted platform hosts only", () => {
+    expect(isSupportedExtensionCollectionUrl("https://eos.douyin.com/any/user-opened/page")).toBe(true);
+    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/another/dashboard")).toBe(true);
+    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=1")).toBe(true);
+    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2?advid=1")).toBe(true);
+    expect(isSupportedExtensionCollectionUrl("https://fake.eos.douyin.com/dp/liveScreen")).toBe(false);
+    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn.attacker.example/page")).toBe(false);
+    expect(isSupportedExtensionCollectionUrl("http://eos.douyin.com/dp/liveScreen")).toBe(false);
+  });
+
   it("sanitizes snapshots before local persistence or upload", () => {
     const snapshot = sanitizeSnapshotPayload({
       rawDomText: "contact 13800138000 demo@example.com Bearer secret-token",
@@ -88,7 +99,7 @@ describe("extension safety helpers", () => {
       rawTableData: [{ mobile: "13800138000", safe: "ok" }]
     });
 
-    expect(snapshot.rawDomText).toBe("contact [REDACTED] [REDACTED] Bearer [REDACTED]");
+    expect(snapshot.rawDomText).toBe("");
     expect(snapshot.rawNetworkJson).toEqual([]);
     expect(snapshot.rawTableData).toEqual([{ mobile: "[REDACTED]", safe: "ok" }]);
   });

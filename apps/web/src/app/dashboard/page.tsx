@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { accountIdentityStatusLabels, aiDisclaimer, extensionSafetyNotice, subjectTypeLabels, type AccountIdentityStatus, type BuildMetadata, type SubjectType } from "@douyin-local-life/shared";
+import { aiDisclaimer, extensionSafetyNotice, subjectTypeLabels, type BuildMetadata, type SubjectType } from "@douyin-local-life/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -15,16 +15,14 @@ type AccountProject = {
   subjectType: SubjectType;
   updatedAt: string;
   _count: { tasks: number };
-  tasks: Array<{ snapshots: Array<{ createdAt: string; accountMatchStatus: string }>; decisionRuns: Array<{ createdAt: string }> }>;
+  tasks: Array<{ snapshots: Array<{ createdAt: string }>; decisionRuns: Array<{ createdAt: string }> }>;
 };
 
 type AccountProfile = {
   id: string;
   accountName: string;
-  platformAccountId: string | null;
   merchantName: string | null;
   storeName: string | null;
-  identityStatus: AccountIdentityStatus;
   projects: AccountProject[];
 };
 
@@ -194,8 +192,8 @@ export default function DashboardPage() {
             <Card key={account.id}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold">{account.accountName}</h2><span className="rounded border border-border px-2 py-0.5 text-xs text-muted">{accountIdentityStatusLabels[account.identityStatus]}</span></div>
-                  <p className="mt-1 text-sm text-muted">{account.platformAccountId ? `账号 ID：${account.platformAccountId}` : "尚未填写平台账号 ID"}{account.storeName ? ` / ${account.storeName}` : ""}</p>
+                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold">{account.accountName}</h2></div>
+                  <p className="mt-1 text-sm text-muted">{account.storeName || "未填写门店或区域"}</p>
                   <p className="mt-2 text-sm">{latest ? `最近项目：${latest.name} · ${subjectTypeLabels[latest.subjectType]} · 任务 ${latest._count.tasks}` : "尚未创建诊断项目"}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">

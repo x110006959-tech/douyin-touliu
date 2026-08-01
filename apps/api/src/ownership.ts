@@ -27,8 +27,16 @@ export function getOwnedTaskAccess(userId: string, taskId: string) {
 type TaskQueryClient = Prisma.TransactionClient | PrismaClient;
 
 export async function getOwnedTask(userId: string, taskId: string, client: TaskQueryClient = prisma) {
+  return getTaskForDecisionWhere({ id: taskId, project: { workspace: { ownerId: userId } } }, client);
+}
+
+export async function getTaskForDecision(taskId: string, client: TaskQueryClient = prisma) {
+  return getTaskForDecisionWhere({ id: taskId }, client);
+}
+
+async function getTaskForDecisionWhere(where: Prisma.CollectionTaskWhereInput, client: TaskQueryClient) {
   const task = await client.collectionTask.findFirst({
-    where: { id: taskId, project: { workspace: { ownerId: userId } } },
+    where,
     include: {
       project: { include: { accountProfile: true } },
       routeSources: { orderBy: [{ required: "desc" }, { createdAt: "asc" }] },
@@ -56,7 +64,7 @@ export async function getOwnedTask(userId: string, taskId: string, client: TaskQ
     ? await client.dataSnapshot.findMany({
         where: { id: { in: snapshotIds } },
         orderBy: [{ localCollectedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-        include: { normalizedMetrics: true }
+        include: { normalizedMetrics: true, tableCellReviews: true }
       })
     : [];
   return {
@@ -69,7 +77,6 @@ export async function getOwnedTask(userId: string, taskId: string, client: TaskQ
         routeKey: snapshot.routeKey,
         pageType: snapshot.pageType,
         localCollectedAt: snapshot.localCollectedAt,
-        accountMatchStatus: snapshot.accountMatchStatus,
         routeVerificationStatus: snapshot.routeVerificationStatus,
         captureMetaJson: snapshot.captureMetaJson
       }))

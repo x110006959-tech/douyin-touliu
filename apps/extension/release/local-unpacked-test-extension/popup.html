@@ -44,9 +44,6 @@
       .hidden { display: none !important; }
       details { border-top: 1px solid #e5e7eb; padding-top: 9px; }
       summary { cursor: pointer; color: #475467; font-weight: 600; }
-      .route-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 9px 0; }
-      .route-grid label { display: flex; align-items: center; gap: 5px; }
-      .route-grid input { width: 15px; min-height: 15px; }
       pre { max-height: 130px; overflow: auto; margin: 8px 0 0; border-radius: 6px; background: #111827; color: #e5e7eb; padding: 8px; white-space: pre-wrap; }
     </style>
   </head>
@@ -59,7 +56,7 @@
       <section class="panel stack">
         <div class="status-line"><span id="statusDot" class="status-dot"></span><strong id="status">正在检查插件状态</strong></div>
         <div class="row"><span class="muted">当前页面</span><span id="pageType" class="value">识别中</span></div>
-        <div class="row"><span class="muted">当前分栏</span><span id="routeKey" class="value">识别中</span></div>
+        <div class="row"><span class="muted">当前已识别路线</span><span id="routeKey" class="value">识别中</span></div>
         <div class="row"><span class="muted">页面网址</span><span id="currentUrl" class="value">读取中</span></div>
         <div class="row"><span class="muted">采集能力</span><span id="collectable" class="value">检查中</span></div>
       </section>
@@ -94,7 +91,8 @@
         <div class="row"><span class="muted">账号</span><span id="accountName" class="value">未绑定</span></div>
         <div class="row"><span class="muted">项目</span><span id="projectName" class="value">未绑定</span></div>
         <div class="row"><span class="muted">任务</span><span id="taskId" class="value">未绑定</span></div>
-        <div class="row"><span class="muted">下一路线</span><span id="nextRoute" class="value">等待任务信息</span></div>
+        <div class="row"><span class="muted">本轮待采集路线</span><span id="nextRoute" class="value">等待任务信息</span></div>
+        <span id="routeRecognitionHint" class="muted hidden"></span>
         <div id="routeOverridePanel" class="stack hidden">
           <label for="routeOverride"><strong>确认本次采集路线</strong></label>
           <span class="muted">当前页面无法自动确定路线。该选择只用于本次采集，不会修改平台页面。</span>
@@ -116,12 +114,9 @@
           <summary>高级设置与故障排查</summary>
           <div class="stack" style="margin-top: 10px">
             <div class="row"><span class="muted">授权</span><span id="hasToken" class="value">未配对</span></div>
-            <div class="row"><span class="muted">巡检</span><span id="patrolStatus" class="value">未开启</span></div>
-            <div class="row"><span class="muted">批次</span><span id="collectionRunId" class="value">-</span></div>
+            <div class="row"><span class="muted">本次采集批次</span><span id="collectionRunId" class="value">-</span></div>
             <div class="row"><span class="muted">插件构建</span><span id="extensionBuild" class="value">读取中</span></div>
-            <div id="routeChoices" class="route-grid"></div>
-            <div class="button-row"><button id="startPatrolBtn">开启巡检</button><button id="stopPatrolBtn">停止巡检</button></div>
-            <div class="button-row"><button id="sidePanelBtn">实时侧边栏</button><button id="uploadBtn">重传上次快照</button></div>
+            <button id="sidePanelBtn">查看网页决策状态</button>
             <button id="refreshBtn">刷新插件状态</button>
             <button id="clearBtn">清空本地快照</button>
             <button id="clearPairingBtn" class="danger">解除本地绑定</button>

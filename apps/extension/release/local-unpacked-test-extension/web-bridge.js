@@ -4084,7 +4084,7 @@
       website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
       purpose: "\u91C7\u96C6\u6210\u4EA4\u3001\u89C2\u770B\u3001\u66DD\u5149\u548C\u76F4\u64AD\u95F4\u627F\u63A5\u6307\u6807",
       required: true,
-      urlHint: "\u4F8B\u5982 localads.chengzijianzhan.cn/lamp/pc/liveboard2"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6253\u5F00\u6982\u89C8\u9875\u9762"
     },
     {
       routeKey: "LIVE_PRODUCT_TAB",
@@ -4092,7 +4092,7 @@
       website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
       purpose: "\u91C7\u96C6\u5546\u54C1\u652F\u4ED8\u3001\u8BA2\u5355\u3001\u66DD\u5149\u548C\u5546\u54C1\u8F6C\u5316\u6570\u636E",
       required: false,
-      urlHint: "\u5728\u76F4\u64AD\u5927\u5C4F\u4E2D\u5207\u6362\u5230\u201C\u5546\u54C1\u201D\u540E\u91C7\u96C6"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u5546\u54C1\u201D"
     },
     {
       routeKey: "LIVE_TRAFFIC_TAB",
@@ -4100,7 +4100,7 @@
       website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
       purpose: "\u91C7\u96C6\u81EA\u7136\u6D41\u91CF\u3001\u5546\u4E1A\u6D41\u91CF\u548C\u6D41\u91CF\u8D8B\u52BF",
       required: false,
-      urlHint: "\u5728\u76F4\u64AD\u5927\u5C4F\u4E2D\u5207\u6362\u5230\u201C\u6D41\u91CF\u201D\u540E\u91C7\u96C6"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u6D41\u91CF\u201D"
     },
     {
       routeKey: "LOCAL_PROMOTION_DASHBOARD",
@@ -4108,7 +4108,7 @@
       website: "\u5DE8\u91CF\u672C\u5730\u63A8",
       purpose: "\u91C7\u96C6\u6D88\u8017\u3001\u9884\u7B97\u3001ROI\u3001\u8BA2\u5355\u548C\u6210\u672C\u6307\u6807",
       required: true,
-      urlHint: "\u8BF7\u7C98\u8D34\u5F53\u524D\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u6570\u636E\u9875\u9762\u5730\u5740"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u6570\u636E\u603B\u89C8"
     },
     {
       routeKey: "TASK_TABLE",
@@ -4116,7 +4116,7 @@
       website: "\u5DE8\u91CF\u672C\u5730\u63A8",
       purpose: "\u91C7\u96C6\u8BA1\u5212\u72B6\u6001\u3001\u9884\u7B97\u3001\u51FA\u4EF7\u548C\u4EFB\u52A1\u5C42\u7EA7\u6570\u636E",
       required: true,
-      urlHint: "\u8BF7\u6253\u5F00\u5DE8\u91CF\u672C\u5730\u63A8\u7684\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
     }
   ];
   var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
@@ -4136,19 +4136,8 @@
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
-  // ../../packages/shared/dist/account-evidence.js
-  var accountIdEvidenceSources = [
-    "URL:advertiser_id",
-    "URL:account_id",
-    "URL:advid",
-    "URL:aadvid",
-    "MANUAL_CONFIRMATION"
-  ];
-  var accountNameEvidenceSources = ["VISIBLE_TEXT_LABEL", "MANUAL_CONFIRMATION"];
-  var accountMatchEvidenceSchema = external_exports.object({
-    idSource: external_exports.enum(accountIdEvidenceSources).nullable(),
-    nameSource: external_exports.enum(accountNameEvidenceSources).nullable()
-  }).strict();
+  // ../../packages/shared/dist/metric-value.js
+  var metricValidationStatuses = ["TRUSTED", "REQUIRES_REVIEW", "INVALID"];
 
   // ../../packages/shared/dist/collection-diagnostics.js
   var collectionRouteDiagnosticStatuses = [
@@ -4166,7 +4155,6 @@
     "SNAPSHOT_STALE",
     "COLLECTOR_STALLED",
     "CONSECUTIVE_FAILURES",
-    "ACCOUNT_UNVERIFIED",
     "ROUTE_UNVERIFIED",
     "PARTIAL_CAPTURE",
     "LOW_FIELD_COVERAGE",
@@ -4278,6 +4266,28 @@
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
+  // ../../packages/shared/dist/collection-dashboard.js
+  var bulkTableCellReviewInputSchema = external_exports.object({
+    snapshotId: external_exports.string().min(1),
+    expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+    items: external_exports.array(external_exports.object({
+      tableIndex: external_exports.number().int().min(0).max(3),
+      rowIndex: external_exports.number().int().min(0).max(999),
+      columnIndex: external_exports.number().int().min(0).max(99),
+      reviewedValue: external_exports.string().optional(),
+      reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+    }).superRefine((value, ctx) => {
+      if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+        ctx.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["reviewedValue"], message: "MODIFIED requires reviewedValue" });
+      }
+    })).min(1).max(240)
+  });
+  var confirmTableBindingInputSchema = external_exports.object({
+    snapshotId: external_exports.string().min(1),
+    expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+    tableIndex: external_exports.number().int().min(0).max(3)
+  });
+
   // ../../packages/shared/dist/index.js
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
@@ -4311,7 +4321,6 @@
   ];
   var controlLevels = ["PENDING", "HIGH", "MEDIUM", "LOW"];
   var accountPlatforms = ["DOUYIN_LOCAL_LIFE"];
-  var accountMatchStatuses = ["MATCHED", "MISMATCHED", "UNVERIFIED"];
   var collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"];
   var riskLevels = ["LOW", "MEDIUM", "HIGH"];
   var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
@@ -4347,7 +4356,7 @@
   var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"];
   var dataReviewStatuses = ["REVIEWED", "UNREVIEWED"];
-  var metricLayers = ["REVIEWED_METRIC", "NORMALIZED_METRIC"];
+  var metricLayers = ["REVIEWED_METRIC"];
   var metricKeys = [
     "unknown",
     "verify_roi",
@@ -4520,7 +4529,22 @@
     url: external_exports.string().optional(),
     method: external_exports.string().optional(),
     jsonPath: external_exports.string().optional(),
-    textSnippet: external_exports.string().optional()
+    textSnippet: external_exports.string().max(500).optional(),
+    fieldLabel: external_exports.string().max(100).optional(),
+    displayValue: external_exports.string().max(100).optional(),
+    normalizedValue: external_exports.string().max(100).nullable().optional(),
+    displayPrecision: external_exports.number().int().min(0).max(20).nullable().optional(),
+    multiplier: external_exports.number().positive().optional(),
+    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+    timeRange: external_exports.string().max(100).nullable().optional(),
+    timeRangeSource: external_exports.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
+    timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+    bindingKind: external_exports.enum(["CARD", "TABLE", "MANUAL"]).optional(),
+    componentPath: external_exports.string().max(300).optional(),
+    rowIdentity: external_exports.string().max(200).optional(),
+    calibrationSignature: external_exports.string().max(500).optional(),
+    validationStatus: external_exports.enum(metricValidationStatuses).optional(),
+    validationReasons: external_exports.array(external_exports.string().max(100)).max(20).optional()
   });
   var metricKeySchema = external_exports.enum(metricKeys);
   var visibleMetricSchema = external_exports.object({
@@ -4575,6 +4599,18 @@
     extractedFields: external_exports.array(external_exports.string().max(100)).max(100),
     visibleRegions: external_exports.array(external_exports.string().max(100)).max(50),
     renderModes: external_exports.array(external_exports.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
+    tableBindings: external_exports.array(external_exports.object({
+      tableIndex: external_exports.number().int().min(0).max(3),
+      headers: external_exports.array(external_exports.string().max(100)).min(1).max(100),
+      identityColumn: external_exports.string().max(100).nullable(),
+      identityColumnIndex: external_exports.number().int().min(0).max(99).nullable().optional(),
+      timeRange: external_exports.string().max(100).nullable().optional(),
+      timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+      componentPath: external_exports.string().max(300).nullable().optional(),
+      bindingSignature: external_exports.string().min(1).max(500),
+      validationStatus: external_exports.enum(metricValidationStatuses),
+      validationReasons: external_exports.array(external_exports.string().max(100)).max(20)
+    })).max(4).optional(),
     tabState: external_exports.enum(captureTabStates),
     originalBytes: external_exports.number().int().min(0),
     acceptedBytes: external_exports.number().int().min(0),
@@ -4610,10 +4646,8 @@
     localCollectedAt: external_exports.string().datetime(),
     collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
     routeKey: external_exports.enum(collectionRouteKeys).optional(),
-    captureMeta: captureMetaSchema.optional(),
-    detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
+    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
+    captureMeta: captureMetaSchema.optional()
   });
   var createExtensionPairingCodeSchema = external_exports.object({
     accountProfileId: external_exports.string().min(1, "\u8BF7\u9009\u62E9\u8981\u7ED1\u5B9A\u7684\u5E73\u53F0\u8D26\u53F7"),
@@ -4637,10 +4671,6 @@
     routeKey: external_exports.enum(collectionRouteKeys).optional(),
     collectable: external_exports.boolean(),
     tabState: external_exports.enum(captureTabStates),
-    detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional(),
-    accountMatchStatus: external_exports.enum(accountMatchStatuses),
     lastError: external_exports.string().trim().max(500).nullable().optional(),
     observedAt: external_exports.string().datetime()
   });
@@ -4665,10 +4695,7 @@
     tabState: external_exports.enum(captureTabStates),
     metrics: external_exports.array(visibleMetricSchema).max(32),
     captureMeta: captureMetaSchema,
-    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
-    detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional()
   });
   var manualCheckItemSchema = external_exports.object({
     title: external_exports.string().min(1),
@@ -4726,6 +4753,14 @@
     metricSource: external_exports.enum(metricSources),
     confidence: external_exports.number().min(0).max(1),
     rawEvidence: external_exports.unknown().optional(),
+    displayValue: external_exports.string().nullable().optional(),
+    normalizedValue: external_exports.string().nullable().optional(),
+    fieldLabel: external_exports.string().nullable().optional(),
+    displayPrecision: external_exports.number().int().min(0).nullable().optional(),
+    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).nullable().optional(),
+    bindingLocation: external_exports.string().nullable().optional(),
+    bindingStatus: external_exports.enum(metricValidationStatuses).nullable().optional(),
+    bindingReasons: external_exports.array(external_exports.string()).optional(),
     pageType: external_exports.string().nullable().optional(),
     scope: external_exports.string().nullable().optional(),
     timeRange: external_exports.string().nullable().optional(),
@@ -4733,7 +4768,9 @@
     reviewedAt: external_exports.string().nullable().optional()
   });
   var reviewMetricInputSchema = external_exports.object({
+    expectedSnapshotUpdatedAt: external_exports.string().datetime(),
     reviewedValue: external_exports.string().optional(),
+    timeRange: external_exports.string().trim().min(1).max(100).optional(),
     reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
   }).superRefine((value, ctx) => {
     if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -4747,7 +4784,9 @@
   var bulkReviewMetricInputSchema = external_exports.object({
     items: external_exports.array(external_exports.object({
       metricId: external_exports.string().min(1),
+      expectedSnapshotUpdatedAt: external_exports.string().datetime(),
       reviewedValue: external_exports.string().optional(),
+      timeRange: external_exports.string().trim().min(1).max(100).optional(),
       reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
     }).superRefine((value, ctx) => {
       if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -4758,6 +4797,20 @@
         });
       }
     })).min(1)
+  });
+  var confirmAllReviewMetricsInputSchema = external_exports.object({
+    snapshotVersions: external_exports.array(external_exports.object({
+      snapshotId: external_exports.string().min(1),
+      expectedSnapshotUpdatedAt: external_exports.string().datetime()
+    })).min(1).max(100).superRefine((versions, ctx) => {
+      const seen = /* @__PURE__ */ new Set();
+      for (const [index, version] of versions.entries()) {
+        if (seen.has(version.snapshotId)) {
+          ctx.addIssue({ code: external_exports.ZodIssueCode.custom, path: [index, "snapshotId"], message: "snapshotId must be unique" });
+        }
+        seen.add(version.snapshotId);
+      }
+    })
   });
   var actionProposalDTOSchema = external_exports.object({
     id: external_exports.string().optional(),
@@ -4913,7 +4966,6 @@
   var createAccountProfileSchema = external_exports.object({
     workspaceId: external_exports.string().min(1).optional(),
     platform: external_exports.enum(accountPlatforms).default("DOUYIN_LOCAL_LIFE"),
-    platformAccountId: external_exports.string().trim().max(200).optional().nullable(),
     accountName: external_exports.string().trim().min(1, "\u8BF7\u586B\u5199\u5E73\u53F0\u8D26\u53F7\u540D\u79F0").max(100, "\u8D26\u53F7\u540D\u79F0\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57"),
     merchantName: external_exports.string().trim().max(100).optional().nullable(),
     storeName: external_exports.string().trim().max(100).optional().nullable(),
@@ -4941,27 +4993,6 @@
     sourceUrl: external_exports.string().trim().url("\u8BF7\u8F93\u5165\u5B8C\u6574\u7684\u9875\u9762\u5730\u5740\uFF0C\u4F8B\u5982 https://example.com/page").max(snapshotSafetyLimits.urlChars).optional(),
     pageTitle: external_exports.string().trim().max(100).optional(),
     routeSources: external_exports.array(collectionRouteSourceInputSchema).max(10).optional()
-  });
-  var confirmSnapshotAccountSchema = external_exports.object({
-    confirmed: external_exports.literal(true),
-    expectedUpdatedAt: external_exports.string().datetime(),
-    note: external_exports.string().trim().max(500).optional()
-  });
-  var confirmSnapshotAccountsSchema = external_exports.object({
-    confirmed: external_exports.literal(true),
-    snapshots: external_exports.array(external_exports.object({
-      snapshotId: external_exports.string().min(1),
-      expectedUpdatedAt: external_exports.string().datetime()
-    })).min(1).max(20).superRefine((snapshots, context) => {
-      const seen = /* @__PURE__ */ new Set();
-      snapshots.forEach((snapshot, index) => {
-        if (seen.has(snapshot.snapshotId)) {
-          context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "\u5FEB\u7167\u4E0D\u80FD\u91CD\u590D\u786E\u8BA4", path: [index, "snapshotId"] });
-        }
-        seen.add(snapshot.snapshotId);
-      });
-    }),
-    note: external_exports.string().trim().max(500).optional()
   });
   var confirmSnapshotRouteSchema = external_exports.object({
     confirmed: external_exports.literal(true),
@@ -5052,11 +5083,7 @@
   var MESSAGE = {
     START_COLLECTION: "AI_DIAGNOSIS_START_COLLECTION",
     GET_PAGE_CONTEXT: "AI_DIAGNOSIS_GET_PAGE_CONTEXT",
-    SNAPSHOT_CAPTURED: "AI_DIAGNOSIS_SNAPSHOT_CAPTURED",
-    METRIC_PULSE_CAPTURED: "AI_DIAGNOSIS_METRIC_PULSE_CAPTURED",
     PAGE_ACTIVITY: "AI_DIAGNOSIS_PAGE_ACTIVITY",
-    GET_PATROL_STATE: "AI_DIAGNOSIS_GET_PATROL_STATE",
-    SYNC_PATROL_STATE: "AI_DIAGNOSIS_SYNC_PATROL_STATE",
     CAPTURE_AND_UPLOAD: "AI_DIAGNOSIS_CAPTURE_AND_UPLOAD",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
@@ -5065,10 +5092,7 @@
     CANCEL_PAIRING: "AI_DIAGNOSIS_CANCEL_PAIRING",
     SELECT_TASK: "AI_DIAGNOSIS_SELECT_TASK",
     CLEAR_PAIRING: "AI_DIAGNOSIS_CLEAR_PAIRING",
-    UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
     CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
-    START_PATROL: "AI_DIAGNOSIS_START_PATROL",
-    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL",
     OPEN_SIDE_PANEL: "AI_DIAGNOSIS_OPEN_SIDE_PANEL"
   };
 
@@ -5080,7 +5104,7 @@
   function announce() {
     document.documentElement.setAttribute(markerAttribute, chrome.runtime.getManifest().version);
     document.documentElement.setAttribute(protocolAttribute, String(extensionBridgeProtocolVersion));
-    document.documentElement.setAttribute(buildAttribute, "0d6a167e1cb6");
+    document.documentElement.setAttribute(buildAttribute, "d1c80aee42ea");
     window.dispatchEvent(new CustomEvent(extensionBridgeEvents.READY));
   }
   window.addEventListener(extensionBridgeEvents.LEGACY_PING, announce);
@@ -5099,7 +5123,7 @@
         dispatchResponse(sanitizeBridgeResponse({
           requestId: request.requestId,
           extensionVersion: chrome.runtime.getManifest().version,
-          buildFingerprint: "0d6a167e1cb6",
+          buildFingerprint: "d1c80aee42ea",
           fallbackErrorCode: "INVALID_PAIRING_REQUEST",
           fallbackMessage: "\u914D\u5BF9\u7801\u6216\u670D\u52A1\u5668\u5730\u5740\u4E0D\u7B26\u5408\u5B89\u5168\u8981\u6C42"
         }));
@@ -5119,13 +5143,13 @@
         requestId: request.requestId,
         runtimeResult,
         extensionVersion: chrome.runtime.getManifest().version,
-        buildFingerprint: "0d6a167e1cb6"
+        buildFingerprint: "d1c80aee42ea"
       }));
     } catch {
       dispatchResponse(sanitizeBridgeResponse({
         requestId: request.requestId,
         extensionVersion: chrome.runtime.getManifest().version,
-        buildFingerprint: "0d6a167e1cb6",
+        buildFingerprint: "d1c80aee42ea",
         fallbackErrorCode: "BACKGROUND_UNRESPONSIVE",
         fallbackMessage: "\u63D2\u4EF6\u540E\u53F0\u672A\u54CD\u5E94\uFF0C\u8BF7\u5728\u6269\u5C55\u7BA1\u7406\u9875\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6"
       }));

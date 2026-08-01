@@ -8,7 +8,7 @@ describe("shared collection safety", () => {
     ).toEqual({ password: "[REDACTED]", nested: [{ access_token: "[REDACTED]", mobile: "[REDACTED]", keep: 1 }] });
   });
 
-  it("sanitizes every persisted snapshot surface", () => {
+  it("removes page text from every sanitized snapshot payload", () => {
     const snapshot = sanitizeCollectionSnapshotPayload({
       sourceUrl: "https://life.douyin.com/page?token=secret",
       pageTitle: "contact 13800138000",
@@ -29,7 +29,26 @@ describe("shared collection safety", () => {
 
     expect(JSON.stringify(snapshot)).not.toContain("secret");
     expect(JSON.stringify(snapshot)).not.toContain("13800138000");
+    expect(snapshot.rawDomText).toBe("");
     expect(snapshot.visibleMetricsJson[0]).toMatchObject({ key: "spend", name: "消耗" });
+  });
+
+  it("drops page account identifiers before a snapshot is persisted", () => {
+    const snapshot = sanitizeCollectionSnapshotPayload({
+      sourceUrl: "https://life.douyin.com/page",
+      pageTitle: "page",
+      rawDomText: "",
+      rawNetworkJson: [],
+      rawTableData: [],
+      visibleMetricsJson: [],
+      detectedAccountId: "page-account-id",
+      detectedAccountName: "page account",
+      accountMatchEvidence: { idSource: "URL:advid" }
+    });
+
+    expect(snapshot).not.toHaveProperty("detectedAccountId");
+    expect(snapshot).not.toHaveProperty("detectedAccountName");
+    expect(snapshot).not.toHaveProperty("accountMatchEvidence");
   });
 
   it("drops production network response bodies instead of sanitizing large payloads on the page", () => {

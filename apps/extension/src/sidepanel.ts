@@ -1,4 +1,4 @@
-import type { ActionProposalDTO, BuildMetadata, RealtimeSignal } from "@douyin-local-life/shared";
+import type { ActionProposalDTO, BuildMetadata } from "@douyin-local-life/shared";
 import { developmentLoopbackHostnames, isLocalBuild, localWebPort } from "./build-target";
 import { STORAGE } from "./messages";
 
@@ -10,7 +10,6 @@ const elements = {
   accountName: document.getElementById("accountName")!,
   projectName: document.getElementById("projectName")!,
   taskId: document.getElementById("taskId")!,
-  signals: document.getElementById("signals")!,
   proposals: document.getElementById("proposals")!
 };
 
@@ -26,16 +25,13 @@ async function render() {
 }
 
 async function renderLocalState() {
-  const local = await chrome.storage.local.get([STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY, STORAGE.CONFIG]);
-  const patrol = local[STORAGE.PATROL] || {};
+  const local = await chrome.storage.local.get([STORAGE.PAGE_ACTIVITY, STORAGE.CONFIG, STORAGE.ACTIVE_COLLECTION_SESSION]);
   const activity = local[STORAGE.PAGE_ACTIVITY] || {};
-  elements.runId.textContent = patrol.collectionRunId || "-";
+  elements.runId.textContent = local[STORAGE.ACTIVE_COLLECTION_SESSION]?.collectionRunId || "-";
   elements.accountName.textContent = local[STORAGE.CONFIG]?.accountName || "未绑定";
   elements.projectName.textContent = local[STORAGE.CONFIG]?.projectName || "未绑定";
   elements.taskId.textContent = local[STORAGE.CONFIG]?.collectionTaskId || "-";
   elements.activity.textContent = activity.tabState === "VISIBLE" ? "活跃" : activity.tabState === "HIDDEN" ? "页面非活跃" : "未知";
-  const signals = (local[STORAGE.LATEST_SIGNALS] || []) as RealtimeSignal[];
-  elements.signals.replaceChildren(...(signals.length ? signals.map(renderSignal) : [textNode("暂无信号", "muted")]));
 }
 
 async function renderProposals() {
@@ -60,13 +56,6 @@ async function renderProposals() {
   } catch (error) {
     elements.status.textContent = error instanceof Error ? error.message : "连接失败";
   }
-}
-
-function renderSignal(signal: RealtimeSignal) {
-  const node = document.createElement("div");
-  node.className = `signal ${signal.severity === "CRITICAL" ? "critical" : signal.severity === "WARNING" ? "warning" : ""}`;
-  node.textContent = signal.message;
-  return node;
 }
 
 function renderProposal(proposal: ActionProposalDTO, apiBaseUrl: string) {

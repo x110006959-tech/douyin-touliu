@@ -41,21 +41,28 @@ describe("extension source safety guard", () => {
     }
   });
 
-  it("keeps production permissions route-specific and local testing isolated", () => {
+  it("keeps production permissions on exact trusted platform domains and local testing isolated", () => {
     const manifest = JSON.parse(readFileSync(resolve(root, "public/manifest.json"), "utf8"));
     expect(manifest.permissions).toEqual(["activeTab", "storage", "sidePanel"]);
-    expect(manifest.host_permissions).toContain("https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*");
-    expect(manifest.host_permissions).toContain("https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*");
-    expect(manifest.host_permissions).toContain("https://eos.douyin.com/dp/liveScreen*");
+    expect(manifest.host_permissions).toEqual([
+      "https://eos.douyin.com/*",
+      "https://localads.chengzijianzhan.cn/*",
+      "https://api.pxxis.cn/*",
+      "https://www.pxxis.cn/*"
+    ]);
+    expect(manifest.content_scripts[0].matches).toEqual([
+      "https://eos.douyin.com/*",
+      "https://localads.chengzijianzhan.cn/*"
+    ]);
     expect(manifest.host_permissions).not.toContain("http://127.0.0.1/*");
     expect(manifest.host_permissions).not.toContain("http://localhost/*");
     expect(manifest.host_permissions).not.toContain("https://*.chengzijianzhan.cn/*");
     expect(manifest.host_permissions.some((entry: string) => entry.includes("*.") || entry === "*://*/*")).toBe(false);
     const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
     const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
-    expect(worker).toContain("START_PATROL");
-    expect(worker).toContain("STOP_PATROL");
-    expect(content).toContain("patrol.enabled");
+    expect(worker).not.toContain("START_PATROL");
+    expect(worker).not.toContain("STOP_PATROL");
+    expect(content).not.toContain("patrol.enabled");
     expect(content).not.toContain("chrome.storage.local");
     expect(worker).toContain('accessLevel: "TRUSTED_CONTEXTS"');
     expect(worker).not.toMatch(/chrome\.tabs\.(create|update)/);
@@ -72,7 +79,8 @@ describe("extension source safety guard", () => {
     expect(html).toContain("确认本次采集路线");
     expect(html).toContain("确认插件配对");
     expect(popup).toContain("CONFIRM_PAIRING");
-    expect(html).toContain('id="routeChoices"');
+    expect(html).toContain('id="routeOverride"');
+    expect(html).not.toContain('id="routeChoices"');
     expect(html).not.toContain('id="routeMaterial"');
     expect(html).not.toContain('id="routeTrend"');
     expect(html).toContain("高级设置");
@@ -88,7 +96,8 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("/extension/pairing-codes/exchange");
     expect(worker).toContain("任务切换只能在插件 Popup 中完成。");
     expect(worker).toContain("解除配对只能在插件 Popup 中完成。");
-    expect(worker).toContain("启动巡检只能在插件 Popup 中完成。");
+    expect(worker).toContain("采集确认只能在插件 Popup 中完成。");
+    expect(worker).toContain("if (!isPopupSender(sender))");
   });
 
   it("keeps one-shot manual route confirmation scoped to the current task", () => {
@@ -97,17 +106,16 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("currentTaskRouteKeys");
     expect(worker).toContain("本次人工路线选择无效");
     expect(worker).not.toContain("[\"LIVE_DATA_SCREEN\", \"LIVE_PRODUCT_TAB\", \"LIVE_TRAFFIC_TAB\"]");
-    expect(popup).toContain("const calibratedRoutes");
     expect(popup).toContain("task?.routeSources");
     expect(popup).not.toContain('"MATERIAL_LIBRARY"');
     expect(popup).not.toContain('"HOURLY_TREND"');
   });
 
-  it("coalesces only matching capture and patrol requests", () => {
+  it("coalesces only matching user-confirmed capture requests", () => {
     const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
     expect(worker).toContain("SingleFlight");
     expect(worker).toContain("captureSingleFlight.run");
-    expect(worker).toContain("patrolSingleFlight.run");
+    expect(worker).not.toContain("patrolSingleFlight.run");
     expect(worker).toContain("MESSAGE.GET_PAGE_CONTEXT");
     expect(worker).toContain("taskId");
     expect(worker).toContain("tabId");
@@ -156,9 +164,8 @@ describe("extension source safety guard", () => {
     expect(manifest.version).toBe(rootPackage.version);
     expect(manifest.permissions).toEqual(["activeTab", "storage", "sidePanel"]);
     expect(manifest.host_permissions).toEqual([
-      "https://eos.douyin.com/dp/liveScreen*",
-      "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-      "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*",
+      "https://eos.douyin.com/*",
+      "https://localads.chengzijianzhan.cn/*",
       "https://api.pxxis.cn/*",
       "https://www.pxxis.cn/*"
     ]);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PXXIS 智能投流采集（本地测试）",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "本地测试包：只用于本机开发验收，不得上传 Chrome 网上应用店。",
   "permissions": [
     "activeTab",
@@ -15,9 +15,8 @@
     "128": "icons/icon128.png"
   },
   "host_permissions": [
-    "https://eos.douyin.com/dp/liveScreen*",
-    "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-    "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*",
+    "https://eos.douyin.com/*",
+    "https://localads.chengzijianzhan.cn/*",
     "https://api.pxxis.cn/*",
     "https://www.pxxis.cn/*",
     "http://localhost/*",
@@ -43,9 +42,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://eos.douyin.com/dp/liveScreen*",
-        "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-        "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*"
+        "https://eos.douyin.com/*",
+        "https://localads.chengzijianzhan.cn/*"
       ],
       "js": [
         "content.js"

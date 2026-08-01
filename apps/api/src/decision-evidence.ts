@@ -10,11 +10,17 @@ type DecisionEvidenceTask = {
     collectionRunId?: string | null;
     localCollectedAt?: Date;
     createdAt?: Date;
-    accountMatchStatus: string;
     routeVerificationStatus: string;
-    accountConfirmedAt?: Date | null;
     routeConfirmedAt?: Date | null;
     updatedAt: Date;
+    tableCellReviews?: Array<{
+      tableIndex: number;
+      rowIndex: number;
+      columnIndex: number;
+      reviewStatus: string;
+      reviewedValue: string | null;
+      updatedAt: Date;
+    }>;
   }>;
   reviewedMetrics: Array<{
     id: string;
@@ -33,11 +39,17 @@ export function decisionEvidenceFingerprint(task: DecisionEvidenceTask) {
     .map((snapshot) => ({
       id: snapshot.id,
       routeKey: snapshot.routeKey || snapshot.pageType || "UNKNOWN",
-      accountMatchStatus: snapshot.accountMatchStatus,
       routeVerificationStatus: snapshot.routeVerificationStatus,
-      accountConfirmedAt: snapshot.accountConfirmedAt?.toISOString() || null,
       routeConfirmedAt: snapshot.routeConfirmedAt?.toISOString() || null,
-      updatedAt: snapshot.updatedAt.toISOString()
+      updatedAt: snapshot.updatedAt.toISOString(),
+      tableCellReviews: (snapshot.tableCellReviews || []).map((review) => ({
+        tableIndex: review.tableIndex,
+        rowIndex: review.rowIndex,
+        columnIndex: review.columnIndex,
+        reviewStatus: review.reviewStatus,
+        reviewedValue: review.reviewedValue,
+        updatedAt: review.updatedAt.toISOString()
+      })).sort((left, right) => left.tableIndex - right.tableIndex || left.rowIndex - right.rowIndex || left.columnIndex - right.columnIndex)
     }))
     .sort((left, right) => left.routeKey.localeCompare(right.routeKey) || left.id.localeCompare(right.id));
   const snapshotIds = new Set(snapshots.map((snapshot) => snapshot.id));

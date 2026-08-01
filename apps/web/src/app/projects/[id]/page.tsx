@@ -17,7 +17,7 @@ type CollectionTaskArchive = { id: string; status: CollectionTaskStatus; pageTit
 type ProjectDetail = {
   id: string; name: string; subjectType: SubjectType; operatorType: OperatorType; cooperationType: CooperationType; subjectConfidence: number;
   serviceProviderName: string | null; serviceMode: string | null; serviceFee: number | null; status: string;
-  accountProfile: { id: string; accountName: string; platformAccountId: string | null; identityStatus: string };
+  accountProfile: { id: string; accountName: string };
   tasks: CollectionTaskArchive[];
 };
 
@@ -34,10 +34,9 @@ export default function ProjectDetailPage() {
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!token || !project || submitting) return;
     const formElement = event.currentTarget; const form = new FormData(formElement); setSubmitting(true); setError("");
-    const routeSources = collectionRouteTemplates.map((route) => ({ routeKey: route.routeKey, sourceUrl: String(form.get(`route_${route.routeKey}`) || "").trim() || undefined }));
     try {
       taskIdempotencyKey.current ||= createIdempotencyKey(`task:${project.id}`);
-      const task = await apiFetch<{ id: string }>("/collection-tasks", token, { method: "POST", headers: { "idempotency-key": taskIdempotencyKey.current }, body: JSON.stringify({ projectId: project.id, pageTitle: form.get("pageTitle"), routeSources }) });
+      const task = await apiFetch<{ id: string }>("/collection-tasks", token, { method: "POST", headers: { "idempotency-key": taskIdempotencyKey.current }, body: JSON.stringify({ projectId: project.id, pageTitle: form.get("pageTitle") }) });
       taskIdempotencyKey.current = null; formElement.reset(); router.push(`/tasks/${task.id}`);
     } catch (e) { setError(e instanceof Error ? e.message : "创建采集任务失败"); } finally { setSubmitting(false); }
   }
@@ -65,7 +64,7 @@ export default function ProjectDetailPage() {
   if (!project) return <main className="mx-auto max-w-5xl px-6 py-8 text-sm text-muted">{error || "加载中..."}</main>;
   return <><main className="mx-auto max-w-6xl px-6 py-8">
     <Link className="text-sm text-primary" href={`/accounts/${project.accountProfile.id}`}>返回账号档案</Link>
-    <header className="mb-5 mt-3 flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-primary">当前账号：{project.accountProfile.accountName}</p><h1 className="text-3xl font-bold">{project.name}</h1><p className="mt-1 text-sm text-muted">账号 ID：{project.accountProfile.platformAccountId || "待补充"} · 所有采集与诊断只归入当前账号</p></div><div className="flex gap-2"><Link className="rounded-md border border-border px-4 py-2 text-sm" href={`/projects/new?accountId=${project.accountProfile.id}&sourceProjectId=${project.id}`}>复用配置新建项目</Link><Link className="rounded-md border border-border px-4 py-2 text-sm" href="/decision-center">查看动作建议</Link></div></header>
+    <header className="mb-5 mt-3 flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-primary">当前账号：{project.accountProfile.accountName}</p><h1 className="text-3xl font-bold">{project.name}</h1><p className="mt-1 text-sm text-muted">所有采集与诊断只归入当前账号</p></div><div className="flex gap-2"><Link className="rounded-md border border-border px-4 py-2 text-sm" href={`/projects/new?accountId=${project.accountProfile.id}&sourceProjectId=${project.id}`}>复用配置新建项目</Link><Link className="rounded-md border border-border px-4 py-2 text-sm" href="/decision-center">查看动作建议</Link></div></header>
     <div className="mb-4 rounded-lg border border-border bg-white p-3 text-sm text-muted">{aiDisclaimer}</div>
     <details className="group mb-4 rounded-md border border-border bg-white px-4 py-3 shadow-sm">
       <summary className="cursor-pointer list-none text-sm [&::-webkit-details-marker]:hidden">
@@ -96,7 +95,7 @@ export default function ProjectDetailPage() {
     </details>
     <Card className="mb-4"><CardTitle>第一次使用按这 5 步操作</CardTitle><ol className="grid gap-2 text-sm md:grid-cols-5"><li><strong>1. 确认账号</strong><p className="text-muted">检查页面顶部账号与平台一致</p></li><li><strong>2. 新建任务</strong><p className="text-muted">一个直播场次或诊断周期一个任务</p></li><li><strong>3. 打开页面</strong><p className="text-muted">自行登录并打开下方所列页面</p></li><li><strong>4. 插件采集</strong><p className="text-muted">逐页点击插件“采集并上传当前路线”</p></li><li><strong>5. 复核诊断</strong><p className="text-muted">确认缺失指标后生成建议</p></li></ol></Card>
     <section className="grid gap-4 lg:grid-cols-[460px_1fr]">
-      <Card><CardTitle>新建本次采集任务</CardTitle><form className="grid gap-4" onSubmit={createTask}><label className="grid gap-1 text-sm"><span>任务名称 <strong className="text-danger">必填</strong></span><Input name="pageTitle" required placeholder="例如：7月14日晚场直播" /></label><div className="grid gap-3">{collectionRouteTemplates.map((route) => <label className="grid gap-1 rounded-md border border-border p-3 text-sm" key={route.routeKey}><span className="font-medium">{route.label} <span className={route.required ? "text-danger" : "text-muted"}>{route.required ? "基础路线" : "补充路线"}</span></span><span className="text-xs text-muted">{route.website}：{route.purpose}</span><Input name={`route_${route.routeKey}`} type="url" placeholder="页面地址（可选，可由插件识别当前页面）" /><span className="text-xs text-muted">{route.urlHint}</span></label>)}</div><div className="rounded-md bg-slate-50 p-3 text-xs leading-5 text-muted">系统不会代替你登录或自动打开、点击平台页面。URL 只用于标记采集路线；请先在浏览器中自行打开并登录目标页面。</div>{error ? <div className="rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}<Button disabled={submitting} type="submit">{submitting ? "正在创建..." : "创建任务并查看采集清单"}</Button></form></Card>
+      <Card><CardTitle>新建本次采集任务</CardTitle><form className="grid gap-4" onSubmit={createTask}><label className="grid gap-1 text-sm"><span>任务名称 <strong className="text-danger">必填</strong></span><Input name="pageTitle" required placeholder="例如：7月14日晚场直播" /></label><div className="grid gap-3">{collectionRouteTemplates.map((route) => <div className="grid gap-1 rounded-md border border-border p-3 text-sm" key={route.routeKey}><span className="font-medium">{route.label} <span className={route.required ? "text-danger" : "text-muted"}>{route.required ? "基础路线" : "补充路线"}</span></span><span className="text-xs text-muted">{route.website}：{route.purpose}</span><span className="text-xs text-muted">{route.urlHint}</span></div>)}</div><div className="rounded-md bg-slate-50 p-3 text-xs leading-5 text-muted">任务会自动继承全局采集路线。系统不会代替你登录或自动打开、点击平台页面。</div>{error ? <div className="rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}<Button disabled={submitting} type="submit">{submitting ? "正在创建..." : "创建任务并查看采集清单"}</Button></form></Card>
       <Card>
         <CardTitle>采集任务存档</CardTitle>
         <div className="grid gap-3">

@@ -1,6 +1,6 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { Router } from "express";
-import { createExtensionPairingCodeSchema, evaluateAccountIdentityMatch, exchangeExtensionPairingCodeSchema, extensionHeartbeatSchema } from "@douyin-local-life/shared";
+import { createExtensionPairingCodeSchema, exchangeExtensionPairingCodeSchema, extensionCollectionProtocolVersion, extensionHeartbeatSchema } from "@douyin-local-life/shared";
 import { hashExtensionSecret, requireHumanSession, type AuthenticatedRequest } from "../auth.js";
 import { createAuditActorSnapshot, writeAuditLog } from "../audit.js";
 import { getExtensionStatus, recordExtensionPresence, removeExtensionPresence } from "../extension-presence.js";
@@ -33,7 +33,7 @@ export function createExtensionPublicRouter() {
       return sendError(res, 401, "PAIRING_CODE_INVALID", "配对码错误、已使用或已过期，请在网页重新生成");
     }
     return sendSuccess(res, {
-      account: { id: pairing.accountProfile.id, accountName: pairing.accountProfile.accountName, platformAccountId: pairing.accountProfile.platformAccountId },
+      account: { id: pairing.accountProfile.id, accountName: pairing.accountProfile.accountName },
       task: pairing.collectionTask && pairing.collectionTask.project.accountProfileId === pairing.accountProfileId
         ? {
             id: pairing.collectionTask.id,
@@ -103,7 +103,7 @@ export function createExtensionPublicRouter() {
       return sendSuccess(res, {
         token: rawToken,
         expiresAt: credential.expiresAt,
-        account: pairing.accountProfile,
+        account: { id: pairing.accountProfile.id, accountName: pairing.accountProfile.accountName },
         scopes: credential.scopes,
         suggestedTask: pairing.collectionTask && pairing.collectionTask.project.accountProfileId === pairing.accountProfileId
           ? {
@@ -186,7 +186,7 @@ export function createExtensionProtectedRouter() {
     return sendSuccess(res, {
       code,
       expiresAt: created.expiresAt,
-      account: { id: account.id, accountName: account.accountName, platformAccountId: account.platformAccountId },
+      account: { id: account.id, accountName: account.accountName },
       task: collectionTask ? { id: collectionTask.id, pageTitle: collectionTask.pageTitle, projectId: collectionTask.projectId, projectName: collectionTask.project.name } : null
     }, 201);
   });
@@ -195,7 +195,7 @@ export function createExtensionProtectedRouter() {
     const user = currentUser(req);
     const credentials = await prisma.extensionCredential.findMany({
       where: { userId: user.id },
-      include: { accountProfile: { select: { id: true, accountName: true, platformAccountId: true } } },
+      include: { accountProfile: { select: { id: true, accountName: true } } },
       orderBy: { createdAt: "desc" }
     });
     return sendSuccess(res, credentials.map(({ tokenHash: _tokenHash, ...credential }) => credential));
@@ -228,23 +228,14 @@ export function createExtensionProtectedRouter() {
     if (lastErrorInput.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", lastErrorInput.error);
     const task = await prisma.collectionTask.findFirst({
       where: { id: parsed.data.collectionTaskId, project: { accountProfileId: extensionUser.extensionAccountProfileId } },
-      select: { id: true, project: { select: { accountProfile: { select: { platformAccountId: true, accountName: true } } } } }
+      select: { id: true }
     });
     if (!task) return sendError(res, 403, "EXTENSION_ACCOUNT_MISMATCH", "该任务不属于当前插件绑定账号，已阻止状态上报");
-    const accountMatch = evaluateAccountIdentityMatch({
-      expectedAccountId: task.project.accountProfile.platformAccountId,
-      expectedAccountName: task.project.accountProfile.accountName,
-      sourceUrl: parsed.data.currentUrl,
-      detectedAccountId: parsed.data.detectedAccountId,
-      detectedAccountName: parsed.data.detectedAccountName,
-      evidence: parsed.data.accountMatchEvidence
-    });
     recordExtensionPresence({
       credentialId: extensionUser.extensionCredentialId,
       accountProfileId: extensionUser.extensionAccountProfileId,
       heartbeat: {
         ...parsed.data,
-        accountMatchStatus: accountMatch.status,
         lastError: lastErrorInput.value
       }
     });
@@ -283,7 +274,9 @@ export function createExtensionProtectedRouter() {
     }
     const account = await prisma.accountProfile.findFirst({
       where: { id: user.extensionAccountProfileId, workspaceId: user.workspaceId, status: "ACTIVE" },
-      include: {
+      select: {
+        id: true,
+        accountName: true,
         projects: {
           where: { status: "ACTIVE" },
           orderBy: { updatedAt: "desc" },
@@ -292,7 +285,11 @@ export function createExtensionProtectedRouter() {
       }
     });
     if (!account) return sendError(res, 404, "ACCOUNT_PROFILE_NOT_FOUND", "绑定账号已停用或不存在");
-    return sendSuccess(res, { account, credential: { id: user.extensionCredentialId, scopes: user.extensionScopes } });
+    return sendSuccess(res, {
+      account,
+      credential: { id: user.extensionCredentialId, scopes: user.extensionScopes },
+      collectionProtocolVersion: extensionCollectionProtocolVersion
+    });
   });
 
   return router;

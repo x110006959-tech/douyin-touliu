@@ -16,7 +16,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body nonce={nonce}>
         <AuthProvider>
           <div className="flex min-h-screen flex-col">
-            <main className="flex-1">{children}</main>
+            <main className="flex flex-1 flex-col">{children}</main>
             <footer className="border-t border-slate-200 bg-white px-4 py-5 text-center text-sm text-slate-500">
               <p>
                 <a

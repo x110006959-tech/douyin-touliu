@@ -10,24 +10,40 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+const SESSION_CHECK_TIMEOUT_MS = 3_000;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), SESSION_CHECK_TIMEOUT_MS);
+
     window.localStorage.removeItem("douyin-local-life-token");
     window.sessionStorage.removeItem("douyin-local-life-token");
-    void apiFetch<{ csrfToken: string }>("/auth/me", null)
+    void apiFetch<{ csrfToken: string }>("/auth/me", null, { signal: controller.signal })
       .then((session) => {
+        if (!active) return;
         setCsrfToken(session.csrfToken);
         setTokenState(cookieSessionMarker);
       })
       .catch(() => {
+        if (!active) return;
         setCsrfToken(null);
         setTokenState(null);
       })
-      .finally(() => setHydrated(true));
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+        if (active) setHydrated(true);
+      });
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   const value = useMemo<AuthState>(

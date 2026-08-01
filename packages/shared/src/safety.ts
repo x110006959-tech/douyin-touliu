@@ -248,17 +248,29 @@ export function addSafeNetworkRecord<T extends NetworkRecordLike>(records: T[], 
 }
 
 export function sanitizeCollectionSnapshotPayload<T extends SnapshotLike>(snapshot: T): T {
+  // Page account identifiers are not collection data. Task-scoped authorization is enforced server-side.
+  const {
+    detectedAccountId: _detectedAccountId,
+    detectedAccountName: _detectedAccountName,
+    accountMatchEvidence: _accountMatchEvidence,
+    ...snapshotWithoutPageAccount
+  } = snapshot as T & {
+    detectedAccountId?: unknown;
+    detectedAccountName?: unknown;
+    accountMatchEvidence?: unknown;
+  };
   const truncatedFields = [
-    ...(snapshot.rawDomText.length > snapshotSafetyLimits.rawDomTextChars ? ["rawDomText"] : []),
+    ...(snapshot.rawDomText.length ? ["rawDomText"] : []),
     ...(snapshot.rawNetworkJson.length ? ["rawNetworkJson"] : []),
     ...(snapshot.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : []),
     ...((snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : [])
   ];
   const sanitized = {
-    ...snapshot,
+    ...snapshotWithoutPageAccount,
     sourceUrl: sanitizeCaptureUrl(snapshot.sourceUrl || ""),
     pageTitle: sanitizeVisibleText(snapshot.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
-    rawDomText: sanitizeVisibleText(snapshot.rawDomText || "", snapshotSafetyLimits.rawDomTextChars),
+    // Page text may be used in memory to derive allowlisted fields, but is never part of a snapshot payload.
+    rawDomText: "",
     rawNetworkJson: [],
     rawTableData: limitArrayValue(
       sanitizeSensitiveData(snapshot.rawTableData.slice(0, snapshotSafetyLimits.tableItems)) as unknown[],
@@ -266,14 +278,19 @@ export function sanitizeCollectionSnapshotPayload<T extends SnapshotLike>(snapsh
     ),
     visibleMetricsJson: (snapshot.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
     screenshotUrl: snapshot.screenshotUrl ? sanitizeCaptureUrl(snapshot.screenshotUrl) : snapshot.screenshotUrl
-  } as T;
+  } as unknown as T;
   if ("captureMeta" in snapshot && snapshot.captureMeta && typeof snapshot.captureMeta === "object") {
     const meta = snapshot.captureMeta as Record<string, unknown>;
     (sanitized as T & { captureMeta: Record<string, unknown> }).captureMeta = {
       ...meta,
       acceptedBytes: serializedLength({ rawDomText: sanitized.rawDomText, rawTableData: sanitized.rawTableData, visibleMetricsJson: sanitized.visibleMetricsJson }),
       truncatedFields: [...new Set([...(Array.isArray(meta.truncatedFields) ? meta.truncatedFields.map(String) : []), ...truncatedFields])],
-      truncationReasons: [...new Set([...(Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : []), ...(snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : []), ...(truncatedFields.length ? ["SNAPSHOT_SAFETY_LIMIT"] : [])])]
+      truncationReasons: [...new Set([
+        ...(Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : []),
+        ...(snapshot.rawDomText.length ? ["PAGE_TEXT_CAPTURE_DISABLED"] : []),
+        ...(snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : []),
+        ...(snapshot.rawTableData.length > snapshotSafetyLimits.tableItems || (snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["SNAPSHOT_SAFETY_LIMIT"] : [])
+      ])]
     };
   }
   return sanitized;

@@ -23,7 +23,7 @@ export function createAccountRouter() {
               orderBy: { createdAt: "desc" },
               take: 1,
               include: {
-                snapshots: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true, accountMatchStatus: true } },
+                snapshots: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
                 decisionRuns: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } }
               }
             },
@@ -46,21 +46,21 @@ export function createAccountRouter() {
       ? await prisma.workspace.findFirst({ where: { id: parsed.data.workspaceId, ownerId: user.id } })
       : await prisma.workspace.findFirst({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" } });
     if (!workspace) return sendError(res, 404, "WORKSPACE_NOT_FOUND", "默认工作区不存在，请重新登录后再试");
-    const identity = accountIdentity(input.accountName || "", input.platformAccountId);
+    const identity = accountIdentity(input.accountName || "");
     try {
       const account = await prisma.$transaction(async (tx) => {
         const created = await tx.accountProfile.create({
           data: {
             workspaceId: workspace.id,
             platform: parsed.data.platform,
-            platformAccountId: identity.platformAccountId,
+            platformAccountId: null,
             identityKey: identity.identityKey,
             accountName: input.accountName || "",
             normalizedName: identity.normalizedName,
             merchantName: input.merchantName,
             storeName: input.storeName,
             memo: input.memo,
-            identityStatus: identity.platformAccountId ? "VERIFIED" : "PENDING_ID"
+            identityStatus: "VERIFIED"
           }
         });
         await writeAuditLog(req, "ACCOUNT_PROFILE_CREATED", {
@@ -91,18 +91,17 @@ export function createAccountRouter() {
     const input = readAccountProfileText(parsed.data);
     if (input.error) return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", input.error);
     const accountName = input.accountName === undefined ? account.accountName : input.accountName || account.accountName;
-    const platformAccountId = input.platformAccountId === undefined ? account.platformAccountId : input.platformAccountId;
-    const identity = accountIdentity(accountName, platformAccountId);
+    const identity = accountIdentity(accountName);
     try {
       const updated = await prisma.$transaction(async (tx) => {
         const saved = await tx.accountProfile.update({
           where: { id: account.id },
           data: {
             accountName,
-            platformAccountId: identity.platformAccountId,
+            platformAccountId: null,
             identityKey: identity.identityKey,
             normalizedName: identity.normalizedName,
-            identityStatus: identity.platformAccountId ? "VERIFIED" : "PENDING_ID",
+            identityStatus: "VERIFIED",
             merchantName: input.merchantName === undefined ? account.merchantName : input.merchantName,
             storeName: input.storeName === undefined ? account.storeName : input.storeName,
             memo: input.memo === undefined ? account.memo : input.memo
@@ -254,21 +253,18 @@ export function createAccountRouter() {
 
 function readAccountProfileText(value: {
   accountName?: string;
-  platformAccountId?: string | null;
   merchantName?: string | null;
   storeName?: string | null;
   memo?: string | null;
 }) {
   const accountName = value.accountName === undefined ? undefined : readSafeOptionalText(value.accountName, 100);
-  const platformAccountId = value.platformAccountId === undefined ? undefined : readSafeOptionalText(value.platformAccountId, 200);
   const merchantName = value.merchantName === undefined ? undefined : readSafeOptionalText(value.merchantName, 100);
   const storeName = value.storeName === undefined ? undefined : readSafeOptionalText(value.storeName, 100);
   const memo = value.memo === undefined ? undefined : readSafeOptionalText(value.memo, 1_000);
-  const error = accountName?.error || platformAccountId?.error || merchantName?.error || storeName?.error || memo?.error || null;
+  const error = accountName?.error || merchantName?.error || storeName?.error || memo?.error || null;
   return {
     error,
     accountName: accountName?.value,
-    platformAccountId: platformAccountId?.value,
     merchantName: merchantName?.value,
     storeName: storeName?.value,
     memo: memo?.value
@@ -279,13 +275,11 @@ export function normalizeAccountValue(value: string | null | undefined) {
   return String(value || "").trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, "");
 }
 
-export function accountIdentity(accountName: string, platformAccountId?: string | null) {
+export function accountIdentity(accountName: string) {
   const normalizedName = normalizeAccountValue(accountName);
-  const normalizedId = normalizeAccountValue(platformAccountId);
   return {
     normalizedName,
-    platformAccountId: normalizedId || null,
-    identityKey: normalizedId ? `id:${normalizedId}` : `name:${normalizedName}`
+    identityKey: `name:${normalizedName}`
   };
 }
 

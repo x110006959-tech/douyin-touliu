@@ -1,4 +1,4 @@
-import type { MetricKey, MetricPulse, RealtimeSignal, VisibleMetric } from "@douyin-local-life/shared";
+import { metricValueSemantic, metricValueToRuleNumber, type MetricKey, type MetricPulse, type RealtimeSignal, type VisibleMetric } from "@douyin-local-life/shared";
 
 type StoredPulse = MetricPulse & { receivedAt: number };
 type SignalListener = (signals: RealtimeSignal[]) => void;
@@ -108,13 +108,8 @@ function firstNumber(metrics: VisibleMetric[], keys: MetricKey[]) {
 }
 
 function metricNumber(metrics: VisibleMetric[], key: MetricKey) {
-  const raw = metrics.find((metric) => metric.key === key)?.value;
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string") {
-    const parsed = Number(raw.replace(/,/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
+  const metric = metrics.find((item) => item.key === key);
+  return metric ? metricValueToRuleNumber(metric, metricValueSemantic(key)) : null;
 }
 
 function formatWindow(ms: number) {

@@ -1,8 +1,9 @@
 import {
+  isTrustedExtensionCollectionUrl,
   sanitizeCollectionSnapshotPayload,
   sanitizeSensitiveData,
   shouldRedactSensitiveKey
-} from "@douyin-local-life/shared/safety";
+} from "@douyin-local-life/shared";
 import { developmentLoopbackHostnames, isLocalBuild } from "./build-target";
 
 export const sanitizeSnapshotPayload = sanitizeCollectionSnapshotPayload;
@@ -21,13 +22,5 @@ export function normalizeApiBaseUrl(value: string, allowedLoopbackHostnames = de
 }
 
 export function isSupportedExtensionCollectionUrl(value: string) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:") return false;
-    if (url.hostname === "eos.douyin.com") return url.pathname === "/dp/liveScreen";
-    if (url.hostname !== "localads.chengzijianzhan.cn") return false;
-    return url.pathname === "/lamp/pc/liveboard2" || url.pathname === "/lamp/pc/promotion/roi2";
-  } catch {
-    return false;
-  }
+  return isTrustedExtensionCollectionUrl(value);
 }

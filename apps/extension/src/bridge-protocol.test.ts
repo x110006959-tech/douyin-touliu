@@ -35,4 +35,20 @@ describe("extension web bridge protocol", () => {
     expect(response).toEqual(expect.objectContaining({ ok: true, paired: true, boundTaskId: "task-a" }));
     expect(JSON.stringify(response)).not.toMatch(/secret-token|Bearer private|private-cookie|private-password/);
   });
+
+  it("returns an existing task binding without exposing local configuration", () => {
+    const response = sanitizeBridgeResponse({
+      requestId: "pair-existing-task",
+      extensionVersion: "0.2.2",
+      buildFingerprint: "abc123",
+      runtimeResult: {
+        ok: true,
+        paired: true,
+        boundTaskId: "task-a",
+        message: "插件已配对并绑定当前任务，无需重复确认。"
+      }
+    });
+
+    expect(response).toEqual(expect.objectContaining({ ok: true, paired: true, boundTaskId: "task-a", pendingConfirmation: false }));
+  });
 });

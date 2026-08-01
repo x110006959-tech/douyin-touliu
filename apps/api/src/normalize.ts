@@ -1,7 +1,9 @@
 import {
   identifyMetricKey,
   metricKeyLabels,
+  metricValueSemantic,
   normalizeMetricLookupValue,
+  parseDisplayedMetricValue,
   standardizeMetricKey,
   type CollectionSnapshotPayload,
   type MetricKey,
@@ -10,113 +12,87 @@ import {
 
 export type MetricAliasOverrideInput = { aliasNormalized: string; pageType: string; metricKey: MetricKey };
 
-const metricPatterns: Array<{ key: MetricKey; unit?: string; pattern: RegExp }> = [
-  { key: "spend", unit: "元", pattern: /(?:消耗|广告消耗|今日消耗|投放消耗)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "daily_budget", unit: "元", pattern: /(?:日预算|预算)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "remaining_budget", unit: "元", pattern: /(?:剩余预算)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "recent_30m_spend", unit: "元", pattern: /(?:近\s*30\s*分钟消耗)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "recent_30m_orders", pattern: /(?:近\s*30\s*分钟订单(?:数)?)[^\d-]*([\d,.]+)/i },
-  { key: "live_duration_minutes", unit: "分钟", pattern: /(?:开播时长|直播时长)[^\d-]*([\d,.]+)/i },
-  { key: "minutes_since_last_adjustment", unit: "分钟", pattern: /(?:距上次调价|距上次调整)[^\d-]*([\d,.]+)/i },
-  { key: "impressions", pattern: /(?:曝光量|曝光次数|商品曝光人数|直播曝光人数|累计曝光次数)[^\d-]*([\d,.]+(?:万|千)?)/i },
-  { key: "clicks", pattern: /(?:点击量|点击人数|商品点击人数)[^\d-]*([\d,.]+(?:万|千)?)/i },
-  { key: "ctr", unit: "%", pattern: /(?:点击率|CTR|商品点击率)[^\d-]*([\d,.]+%?)/i },
-  { key: "orders", pattern: /(?:成交订单数|成交人数|支付订单数|支付订单)[^\d-]*([\d,.]+(?:万|千)?)/i },
-  { key: "cpa", unit: "元", pattern: /(?:转化成本|成交成本|订单成本|CPA)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "target_cpa", unit: "元", pattern: /(?:目标\s*CPA|目标成本)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "pay_roi", pattern: /(?:支付\s*ROI|付款\s*ROI)[^\d-]*([\d,.]+)/i },
-  { key: "verify_roi", pattern: /(?:核销\s*ROI)[^\d-]*([\d,.]+)/i },
-  { key: "gross_profit_roi", pattern: /(?:毛利\s*ROI|核销毛利\s*ROI)[^\d-]*([\d,.]+)/i },
-  { key: "target_roi", pattern: /(?:目标\s*ROI)[^\d-]*([\d,.]+)/i },
-  { key: "gmv", unit: "元", pattern: /(?:成交金额|支付金额|GMV)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "live_viewers", pattern: /(?:直播间观看人数|观看人数|看播人数|累计在线人数)[^\d-]*([\d,.]+(?:万|千)?)/i },
-  { key: "gpm", pattern: /(?:GPM|千次观看成交金额)[^\d-]*([\d,.]+)/i },
-  { key: "store_searches", pattern: /(?:门店搜索量|搜索量)[^\d-]*([\d,.]+(?:万|千)?)/i },
-  { key: "poi_visits", pattern: /(?:POI访问|POI 访问|门店访问)[^\d-]*([\d,.]+(?:万|千)?)/i },
-  { key: "shelf_gmv", unit: "元", pattern: /(?:货架成交|团购货架)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "search_gmv", unit: "元", pattern: /(?:搜索成交)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "gross_profit", unit: "元", pattern: /(?:核销毛利|毛利)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "merchant_subsidy", unit: "元", pattern: /(?:商家补贴)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "service_fee", unit: "元", pattern: /(?:服务费|服务商费用)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "store_rating", pattern: /(?:门店评分|体验分|经营分)[^\d-]*([\d,.]+)/i },
-  { key: "complaint_rate", unit: "%", pattern: /(?:投诉率|客诉率)[^\d-]*([\d,.]+%?)/i },
-  { key: "refund_rate", unit: "%", pattern: /(?:退款率)[^\d-]*([\d,.]+%?)/i },
-  { key: "fulfillment_exception_rate", unit: "%", pattern: /(?:履约异常率)[^\d-]*([\d,.]+%?)/i },
-  { key: "inventory_capacity", pattern: /(?:库存承接|预约承接|可接待量)[^\d-]*([\d,.]+)/i },
-  { key: "platform_subsidy", unit: "元", pattern: /(?:平台补贴)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "ad_coupon", unit: "元", pattern: /(?:投放券)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i },
-  { key: "rebate_coupon", unit: "元", pattern: /(?:消返券)[^\d-]*([¥￥]?\s*[\d,.]+(?:万|千)?)/i }
-];
-
 export function normalizeMetrics(snapshot: CollectionSnapshotPayload, aliases: MetricAliasOverrideInput[] = []): VisibleMetric[] {
-  const known = new Map<MetricKey, VisibleMetric>();
+  const known = new Map<MetricKey, VisibleMetric[]>();
   const unknown: VisibleMetric[] = [];
 
   for (const metric of snapshot.visibleMetricsJson) {
-    const normalized = withSourceDefaults(metric, snapshot.pageType, aliases);
+    const normalized = normalizeVisibleMetric(metric, snapshot.pageType, aliases);
     if (normalized.key === "unknown") {
       unknown.push(normalized);
-    } else {
-      const key = normalized.key as MetricKey;
-      const existing = known.get(key);
-      if (!existing || metricPriority(normalized) > metricPriority(existing)) known.set(key, normalized);
+      continue;
     }
+    const key = normalized.key as MetricKey;
+    known.set(key, [...(known.get(key) || []), normalized]);
   }
 
-  for (const definition of metricPatterns) {
-    if (known.has(definition.key)) continue;
-    const matched = snapshot.rawDomText.match(definition.pattern);
-    if (!matched?.[1]) continue;
-    known.set(definition.key, {
-      key: definition.key,
-      name: metricKeyLabels[definition.key],
-      value: parseMetricValue(matched[1], definition.unit),
-      unit: definition.unit || null,
-      source: "dom",
-      metricSource: "DOM_TEXT",
-      confidence: 0.6,
-      rawEvidence: {
-        sourceType: "DOM_TEXT",
-        textSnippet: matched[0].slice(0, 160)
-      }
-    });
-  }
-
-  return [...known.values(), ...unknown];
+  // Page text is intentionally not persisted. Only adapters that provide field binding evidence may create metrics.
+  return [
+    ...[...known.values()].map((candidates) => candidates.length === 1 ? candidates[0]! : invalidateAmbiguousMetric(candidates)),
+    ...unknown
+  ];
 }
 
-function withSourceDefaults(metric: VisibleMetric, pageType: string, aliases: MetricAliasOverrideInput[]): VisibleMetric {
+function invalidateAmbiguousMetric(candidates: VisibleMetric[]) {
+  const selected = [...candidates].sort((left, right) => metricPriority(right) - metricPriority(left))[0]!;
+  return {
+    ...selected,
+    value: null,
+    confidence: 0.1,
+    rawEvidence: {
+      ...(selected.rawEvidence || { sourceType: selected.metricSource || metricSourceFromLegacy(selected.source) }),
+      validationStatus: "INVALID" as const,
+      validationReasons: [...new Set([...(selected.rawEvidence?.validationReasons || []), "FIELD_BINDING_AMBIGUOUS"])]
+    }
+  };
+}
+
+function normalizeVisibleMetric(metric: VisibleMetric, pageType: string, aliases: MetricAliasOverrideInput[]): VisibleMetric {
   const aliasCandidates = [metric.key, metric.name].map((value) => normalizeMetricLookupValue(String(value || "")));
   const override = aliases.find((alias) => aliasCandidates.includes(alias.aliasNormalized) && (alias.pageType === "ANY" || alias.pageType === pageType));
   const standardKey = override?.metricKey || standardizeMetricKey(metric);
   const metricSource = metric.metricSource || metricSourceFromLegacy(metric.source);
+  const hasPageDisplayValue = typeof metric.rawEvidence?.displayValue === "string";
+  const displayValue = hasPageDisplayValue ? metric.rawEvidence!.displayValue! : (metric.value == null ? "" : String(metric.value));
+  const parsed = hasPageDisplayValue || typeof metric.value === "string"
+    ? parseDisplayedMetricValue(
+        displayValue,
+        standardKey === "unknown" ? "UNKNOWN" : metricValueSemantic(standardKey),
+        metric.unit
+      )
+    : null;
+  const manualInput = metricSource === "MANUAL_INPUT";
+  const evidence = {
+    ...(metric.rawEvidence || { sourceType: metricSource }),
+    displayValue,
+    normalizedValue: parsed?.normalizedText ?? metric.rawEvidence?.normalizedValue ?? null,
+    displayPrecision: parsed?.displayPrecision ?? null,
+    multiplier: parsed?.multiplier ?? 1,
+    validationStatus: metric.rawEvidence?.validationStatus === "INVALID" || parsed?.status === "INVALID"
+      ? "INVALID" as const
+      : manualInput
+        ? "TRUSTED" as const
+      : metric.rawEvidence?.bindingKind && metric.rawEvidence.calibrationSignature
+        ? "REQUIRES_REVIEW" as const
+        : "REQUIRES_REVIEW" as const,
+    validationReasons: [...new Set([
+      ...(metric.rawEvidence?.validationReasons || []),
+      ...(parsed?.reasons || []),
+      ...(!manualInput && !metric.rawEvidence?.bindingKind ? ["BINDING_EVIDENCE_MISSING"] : []),
+      ...(!manualInput && !metric.rawEvidence?.calibrationSignature ? ["BINDING_SIGNATURE_MISSING"] : [])
+    ])]
+  };
   const isKnown = standardKey !== "unknown";
   return {
     ...metric,
     key: standardKey,
     name: isKnown ? metricKeyLabels[standardKey] : metric.name || metric.key || metricKeyLabels.unknown,
+    value: parsed?.normalizedText ?? metric.value,
+    unit: metric.unit || parsed?.unit,
     metricSource,
-    confidence: metric.confidence ?? defaultConfidence(metricSource, standardKey),
-    rawEvidence:
-      metric.rawEvidence ??
-      (isKnown
-        ? null
-        : {
-            sourceType: metricSource,
-            path: "visibleMetricsJson",
-            textSnippet: `${metric.key}:${metric.name}`
-          })
+    confidence: parsed?.status === "INVALID" ? 0.1 : metric.confidence ?? defaultConfidence(metricSource, standardKey),
+    rawEvidence: evidence
   };
-}
-
-function parseMetricValue(raw: string, unit?: string) {
-  const text = raw.trim();
-  const multiplier = text.includes("万") ? 10_000 : text.includes("千") ? 1_000 : 1;
-  const cleaned = text.replace(/[¥￥%\s,]/g, "").replace(/[万千]/g, "");
-  const percent = text.includes("%") || unit === "%";
-  const value = Number(cleaned);
-  if (!Number.isFinite(value)) return raw;
-  return percent ? value / 100 : value * multiplier;
 }
 
 function metricSourceFromLegacy(source: VisibleMetric["source"]): NonNullable<VisibleMetric["metricSource"]> {

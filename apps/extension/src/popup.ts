@@ -15,7 +15,6 @@ const els = {
   taskId: document.getElementById("taskId")!,
   accountName: document.getElementById("accountName")!,
   projectName: document.getElementById("projectName")!,
-  patrolStatus: document.getElementById("patrolStatus")!,
   collectionRunId: document.getElementById("collectionRunId")!,
   extensionBuild: document.getElementById("extensionBuild")!,
   snapshot: document.getElementById("snapshot")!,
@@ -40,12 +39,9 @@ const els = {
   captureBtn: document.getElementById("captureBtn") as HTMLButtonElement,
   routeOverridePanel: document.getElementById("routeOverridePanel")!,
   routeOverride: document.getElementById("routeOverride") as HTMLSelectElement,
+  routeRecognitionHint: document.getElementById("routeRecognitionHint")!,
   nextRoute: document.getElementById("nextRoute")!,
-  routeChoices: document.getElementById("routeChoices")!,
-  startPatrolBtn: document.getElementById("startPatrolBtn") as HTMLButtonElement,
-  stopPatrolBtn: document.getElementById("stopPatrolBtn") as HTMLButtonElement,
   refreshBtn: document.getElementById("refreshBtn") as HTMLButtonElement,
-  uploadBtn: document.getElementById("uploadBtn") as HTMLButtonElement,
   clearBtn: document.getElementById("clearBtn") as HTMLButtonElement
 };
 
@@ -60,10 +56,7 @@ els.captureBtn.addEventListener("click", captureAndUpload);
 els.routeOverride.addEventListener("change", () => {
   els.captureBtn.disabled = !els.routeOverride.value;
 });
-els.startPatrolBtn.addEventListener("click", startPatrol);
-els.stopPatrolBtn.addEventListener("click", stopPatrol);
 els.refreshBtn.addEventListener("click", render);
-els.uploadBtn.addEventListener("click", uploadSnapshot);
 els.clearBtn.addEventListener("click", clearSnapshot);
 
 async function activeTab() {
@@ -95,8 +88,7 @@ async function render() {
   els.taskId.textContent = state?.config?.collectionTaskId || "尚未绑定任务";
   els.accountName.textContent = state?.config?.accountName || "未绑定";
   els.projectName.textContent = state?.config?.projectName || "未绑定";
-  els.patrolStatus.textContent = state?.patrol?.enabled ? "运行中，仅采集已打开页面" : "未开启";
-  els.collectionRunId.textContent = state?.patrol?.collectionRunId || state?.activeCollectionSession?.collectionRunId || "-";
+  els.collectionRunId.textContent = state?.activeCollectionSession?.collectionRunId || "-";
   els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${__PXXIS_EXTENSION_BUILD__}`;
   els.snapshot.textContent = state?.latestSnapshot
     ? JSON.stringify({
@@ -109,7 +101,6 @@ async function render() {
     : "暂无本地快照";
   renderTaskOptions(state?.context, state?.config?.collectionTaskId);
   const boundTask = currentTask(state);
-  renderPatrolRouteChoices(boundTask, state?.patrol?.requiredRoutes || []);
 
   const hasToken = Boolean(state?.hasToken);
   const pendingPairing = state?.pendingPairingConfirmation;
@@ -117,16 +108,21 @@ async function render() {
   const needsRouteOverride = collectable && routeKey === "UNKNOWN";
   renderRouteOverrideOptions(boundTask, needsRouteOverride ? els.routeOverride.value : "");
   toggle(els.pairingPanel, !hasToken);
-  toggle(els.pairingConfirmationPanel, !hasToken && Boolean(pendingPairing));
+  // A new task pairing still requires an explicit confirmation when the account is already paired.
+  toggle(els.pairingConfirmationPanel, Boolean(pendingPairing));
   toggle(els.taskPanel, hasToken && !hasTask);
   toggle(els.boundPanel, hasToken && hasTask);
   toggle(els.routeOverridePanel, hasToken && hasTask && needsRouteOverride);
+  toggle(els.routeRecognitionHint, hasToken && hasTask && collectable && !needsRouteOverride);
+  els.routeRecognitionHint.textContent = routeKey === "UNKNOWN"
+    ? "当前页面尚未识别，需要手动选择本次采集路线。"
+    : `当前页面已自动识别为“${routeLabel(routeKey)}”，无需选择下拉路线。`;
   if (!needsRouteOverride) els.routeOverride.value = "";
   els.captureBtn.disabled = !collectable || !hasTask || (needsRouteOverride && !els.routeOverride.value);
   els.nextRoute.textContent = nextPendingRouteLabel(state);
   els.pendingPairServer.textContent = pendingPairing?.apiBaseUrl || "-";
   els.pendingPairAccount.textContent = pendingPairing
-    ? `${pendingPairing.account.accountName}${pendingPairing.account.platformAccountId ? ` / ${pendingPairing.account.platformAccountId}` : ""}`
+    ? pendingPairing.account.accountName
     : "-";
   els.pendingPairTask.textContent = pendingPairing?.task
     ? `${pendingPairing.task.projectName} / ${pendingPairing.task.pageTitle || pendingPairing.task.id}`
@@ -173,11 +169,10 @@ async function captureAndUpload() {
       showCaptureResult(chineseError(response?.error, "采集或上传失败，请稍后重试"), false);
       return;
     }
-    const accountMessage = response.accountMatchStatus === "MATCHED" ? "账号已匹配" : "账号待人工确认";
     const skippedMessage = response.skipped ? "数据未变化，已保留上次上传" : "快照已上传";
     setStatus("采集完成，网页任务页会自动更新", "ready");
     showCaptureResult(
-      `${skippedMessage}；识别 ${response.metricCount || 0} 个指标；覆盖率 ${formatPercent(response.coverageRatio)}；${accountMessage}。`,
+      `${skippedMessage}；识别 ${response.metricCount || 0} 个指标；覆盖率 ${formatPercent(response.coverageRatio)}。`,
       true
     );
   } catch {
@@ -297,63 +292,9 @@ function renderRouteOverrideOptions(task: any, selectedRouteKey?: string) {
   els.routeOverride.replaceChildren(...options);
 }
 
-async function startPatrol() {
-  const requiredRoutes = selectedRoutes();
-  if (!requiredRoutes.length) {
-    setStatus("请至少选择一个目标页面", "error");
-    return;
-  }
-  const tab = await activeTab().catch(() => undefined);
-  const response = await runtimeMessage({ type: MESSAGE.START_PATROL, payload: { requiredRoutes, tabId: tab?.id } });
-  setStatus(response?.ok ? "固定页面巡检已开启" : chineseError(response?.error, "巡检启动失败"), response?.ok ? "ready" : "error");
-  await render();
-}
-
-async function stopPatrol() {
-  const tab = await activeTab().catch(() => undefined);
-  const response = await runtimeMessage({ type: MESSAGE.STOP_PATROL, payload: { tabId: tab?.id } });
-  setStatus(response?.ok ? "巡检已停止" : chineseError(response?.error, "巡检停止失败"), response?.ok ? "warning" : "error");
-  await render();
-}
-
-function selectedRoutes(): CollectionRouteKey[] {
-  return [...els.routeChoices.querySelectorAll<HTMLInputElement>("input[data-route-key]:checked")]
-    .map((input) => normalizeCollectionRouteKey(input.dataset.routeKey))
-    .filter((route): route is CollectionRouteKey => route !== "UNKNOWN");
-}
-
-function renderPatrolRouteChoices(task: any, activeRoutes: unknown[]) {
-  const calibratedRoutes = new Set<CollectionRouteKey>([
-    "LOCAL_PROMOTION_DASHBOARD",
-    "LIVE_DATA_SCREEN",
-    "LIVE_PRODUCT_TAB",
-    "LIVE_TRAFFIC_TAB",
-    "TASK_TABLE"
-  ]);
-  const selected = new Set((activeRoutes || []).map(normalizeCollectionRouteKey));
-  const labels = (task?.routeSources || []).flatMap((route: any) => {
-    const routeKey = normalizeCollectionRouteKey(route.routeKey);
-    if (routeKey === "UNKNOWN" || !calibratedRoutes.has(routeKey)) return [];
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.dataset.routeKey = routeKey;
-    input.checked = selected.size ? selected.has(routeKey) : Boolean(route.required);
-    const label = document.createElement("label");
-    label.append(input, document.createTextNode(routeLabel(routeKey)));
-    return [label];
-  });
-  els.routeChoices.replaceChildren(...labels);
-}
-
 async function openSidePanel() {
   await chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
   window.close();
-}
-
-async function uploadSnapshot() {
-  const response = await runtimeMessage({ type: MESSAGE.UPLOAD_SNAPSHOT });
-  setStatus(response?.ok ? "上次快照已重新上传" : chineseError(response?.error, "快照上传失败"), response?.ok ? "ready" : "error");
-  await render();
 }
 
 async function clearSnapshot() {

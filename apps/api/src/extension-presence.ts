@@ -69,9 +69,6 @@ export function getExtensionStatus(input: {
       routeKey: currentOtherTask.routeKey || null,
       collectable: currentOtherTask.collectable,
       tabState: currentOtherTask.tabState,
-      accountMatchStatus: currentOtherTask.accountMatchStatus,
-      detectedAccountId: currentOtherTask.detectedAccountId || null,
-      detectedAccountName: currentOtherTask.detectedAccountName || null,
       lastHeartbeatAt: new Date(currentOtherTask.receivedAt).toISOString(),
       lastError: currentOtherTask.lastError || null
     };
@@ -109,15 +106,9 @@ function statusFromPresence(presence: ExtensionPresence, taskTitle: string, expe
   } else if (presence.tabState !== "VISIBLE") {
     state = "PAGE_INACTIVE";
     message = "目标页面当前不活跃，请切回该标签页后再采集。";
-  } else if (presence.accountMatchStatus === "MISMATCHED") {
-    state = "ACCOUNT_MISMATCH";
-    message = "当前页面账号与任务账号不一致，已阻止上传。";
   } else if (!presence.routeKey || presence.routeKey === "UNKNOWN") {
     state = "ROUTE_UNVERIFIED";
     message = "当前页面可采集，但无法确认所处分栏；请在插件中为本次采集选择概览、商品或流量。";
-  } else if (presence.accountMatchStatus === "UNVERIFIED") {
-    state = "ACCOUNT_UNVERIFIED";
-    message = "插件已连接，但页面账号尚未通过服务端可信证据校验；采集后需要人工核对。";
   }
 
   return {
@@ -134,9 +125,6 @@ function statusFromPresence(presence: ExtensionPresence, taskTitle: string, expe
     routeKey: presence.routeKey || null,
     collectable: presence.collectable,
     tabState: presence.tabState,
-    accountMatchStatus: presence.accountMatchStatus,
-    detectedAccountId: presence.detectedAccountId || null,
-    detectedAccountName: presence.detectedAccountName || null,
     lastHeartbeatAt: new Date(presence.receivedAt).toISOString(),
     lastError: presence.lastError || null,
     message
@@ -158,9 +146,6 @@ function emptyStatus(state: ExtensionConnectionState, paired: boolean, message: 
     routeKey: null,
     collectable: false,
     tabState: null,
-    accountMatchStatus: null,
-    detectedAccountId: null,
-    detectedAccountName: null,
     lastHeartbeatAt: null,
     lastError: null,
     message

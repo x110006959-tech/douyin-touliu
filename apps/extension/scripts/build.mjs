@@ -28,9 +28,8 @@ const sourceFingerprint = await fingerprintBuildInputs([
   "apps/extension/src/messages.ts",
   "apps/extension/src/page-adapters.ts",
   "apps/extension/src/safety.ts",
-  "apps/extension/src/account-identity.ts",
+  "apps/extension/src/extension-context.ts",
   "apps/extension/scripts/artifact-policy.mjs",
-  "packages/shared/src/account-evidence.ts",
   "packages/shared/src/index.ts",
   "packages/shared/src/collection-routes.ts",
   "packages/shared/src/safety.ts"

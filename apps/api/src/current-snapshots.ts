@@ -18,7 +18,6 @@ export async function findCurrentSnapshotIdsByRoute(
     taskId: string;
     collectionRunId?: string | null;
     routeKeys: ReadonlyArray<string | null | undefined>;
-    accountMatchStatus?: Prisma.EnumAccountMatchStatusFilter;
   }
 ): Promise<string[]> {
   const routeKeys = [...new Set(query.routeKeys
@@ -28,7 +27,6 @@ export async function findCurrentSnapshotIdsByRoute(
     where: {
       taskId: query.taskId,
       ...(query.collectionRunId ? { collectionRunId: query.collectionRunId } : {}),
-      ...(query.accountMatchStatus ? { accountMatchStatus: query.accountMatchStatus } : {}),
       OR: [{ routeKey }, { routeKey: null, pageType: routeKey }]
     },
     orderBy: [{ localCollectedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],

@@ -51,16 +51,22 @@ export function collectBudgetedVisibleText(document: Document, state: CaptureBud
 
 export function collectBudgetedTables(document: Document, state: CaptureBudgetState) {
   const tables: string[][][] = [];
-  for (const table of document.querySelectorAll("table")) {
+  for (const table of document.querySelectorAll('table,[role="table"],[role="grid"]')) {
     if (!consumeNode(state) || !isCaptureVisibleElement(table)) break;
     const rows: string[][] = [];
-    for (const row of table.querySelectorAll("tr")) {
+    const rowSelector = table.tagName === "TABLE" ? "tr" : '[role="row"]';
+    const cellSelector = table.tagName === "TABLE"
+      ? "th,td"
+      : '[role="columnheader"],[role="rowheader"],[role="cell"],[role="gridcell"]';
+    for (const row of table.querySelectorAll(rowSelector)) {
+      if (!belongsToTable(row, table)) continue;
       if (!consumeNode(state) || state.rows >= captureBudget.maxRows) {
         state.reasons.add("TABLE_ROW_LIMIT");
         break;
       }
       const cells: string[] = [];
-      for (const cell of row.querySelectorAll("th,td")) {
+      for (const cell of row.querySelectorAll(cellSelector)) {
+        if (!belongsToRow(cell, row)) continue;
         if (!consumeNode(state) || state.cells >= captureBudget.maxCells || cells.length >= captureBudget.maxColumns) {
           state.reasons.add(state.cells >= captureBudget.maxCells ? "TABLE_CELL_LIMIT" : "TABLE_COLUMN_LIMIT");
           break;
@@ -79,6 +85,16 @@ export function collectBudgetedTables(document: Document, state: CaptureBudgetSt
     if (isTimedOut(state) || state.rows >= captureBudget.maxRows || state.cells >= captureBudget.maxCells) break;
   }
   return tables;
+}
+
+function belongsToTable(element: Element, table: Element) {
+  return typeof element.closest !== "function"
+    || element.closest('table,[role="table"],[role="grid"]') === table;
+}
+
+function belongsToRow(element: Element, row: Element) {
+  return typeof element.closest !== "function"
+    || element.closest('tr,[role="row"]') === row;
 }
 
 export function applyCaptureBudget(meta: CaptureMeta, state: CaptureBudgetState): CaptureMeta {

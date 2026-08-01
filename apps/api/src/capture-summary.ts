@@ -15,6 +15,7 @@ import {
 import { prisma } from "./prisma.js";
 import { requiredRoutesFromJson } from "./collection-runs.js";
 import { findCurrentSnapshotIdsByRoute } from "./current-snapshots.js";
+import { projectSnapshotTables, toTableCellReviewDTO } from "./table-cell-reviews.js";
 
 export async function getCaptureSummary(userId: string, collectionTaskId: string): Promise<CaptureSummaryDTO | null> {
   const task = await prisma.collectionTask.findFirst({
@@ -29,6 +30,8 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
           requiredRoutesJson: true,
           startedAt: true,
           status: true,
+          lastSnapshotAt: true,
+          completedAt: true,
           routeHealth: true
         }
       }
@@ -49,7 +52,7 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
     ? await prisma.dataSnapshot.findMany({
         where: { id: { in: snapshotIds } },
         orderBy: [{ localCollectedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-        include: { normalizedMetrics: { include: { reviewedMetric: true } } }
+        include: { normalizedMetrics: { include: { reviewedMetric: true } }, tableCellReviews: true }
       })
     : [];
   const latestByRoute = new Map(selectedSnapshots.map((snapshot) => [
@@ -75,7 +78,6 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
       snapshot: snapshot ? {
         id: snapshot.id,
         localCollectedAt: snapshot.localCollectedAt,
-        accountMatchStatus: snapshot.accountMatchStatus,
         routeVerificationStatus: snapshot.routeVerificationStatus,
         captureMeta
       } : null,
@@ -91,9 +93,6 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
       snapshotUpdatedAt: snapshot?.updatedAt.toISOString() || null,
       state,
       routeVerificationStatus: snapshot?.routeVerificationStatus || null,
-      accountMatchStatus: snapshot?.accountMatchStatus || null,
-      detectedAccountId: snapshot?.detectedAccountId || null,
-      detectedAccountName: snapshot?.detectedAccountName || null,
       completeness: captureMeta?.completeness || null,
       lastCapturedAt: diagnostic.lastCapturedAt || route.lastCapturedAt?.toISOString() || null,
       metricCount: snapshot?.normalizedMetrics.length || 0,
@@ -110,13 +109,17 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
     for (const metric of snapshot.normalizedMetrics) {
       const reviewed = metric.reviewedMetric;
       const standardizedKey = identifyMetricKey(metric.metricKey);
-      const dedupeKey = standardizedKey === "unknown" ? `${routeKey}:${metric.metricName}` : standardizedKey;
+      // A matching metric on separate routes is distinct evidence and must stay independently reviewable.
+      const dedupeKey = standardizedKey === "unknown"
+        ? `${routeKey}:${metric.metricName}`
+        : `${routeKey}:${standardizedKey}`;
       if (metricByKey.has(dedupeKey)) continue;
       const reviewStatus = (reviewed?.reviewStatus || "PENDING") as MetricReviewStatus;
       metricByKey.set(dedupeKey, {
         metricKey: metric.metricKey,
         metricName: metric.metricName,
         metricValue: reviewed?.reviewStatus === "MODIFIED" ? reviewed.reviewedValue || metric.metricValue : metric.metricValue,
+        displayValue: summaryDisplayValue(metric, reviewed),
         metricUnit: metric.metricUnit,
         category: standardizedKey === "unknown" ? "UNKNOWN" : metricKeyCategories[standardizedKey],
         confidence: reviewed?.confidence ?? metric.confidence,
@@ -132,7 +135,6 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
             snapshot: {
               id: snapshot.id,
               localCollectedAt: snapshot.localCollectedAt,
-              accountMatchStatus: snapshot.accountMatchStatus,
               routeVerificationStatus: snapshot.routeVerificationStatus,
               captureMeta: readCaptureMeta(snapshot.captureMetaJson)
             }
@@ -146,36 +148,44 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
   const coverageValues = selectedSnapshots
     .map((snapshot) => readCaptureMeta(snapshot.captureMetaJson)?.coverageRatio)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  const accountMatchStatus = selectedSnapshots.length
-    ? selectedSnapshots.every((snapshot) => snapshot.accountMatchStatus === "MATCHED") ? "MATCHED" : "UNVERIFIED"
-    : null;
   const requiredRoutes = routes.filter((route) => route.required);
   const requiredRoutesCaptured = requiredRoutes.every((route) => Boolean(route.snapshotId));
-  const requiredRoutesAccountMatched = requiredRoutesCaptured
-    && requiredRoutes.every((route) => route.accountMatchStatus === "MATCHED");
-  const requiredRoutesComplete = requiredRoutesAccountMatched
+  const requiredRoutesComplete = requiredRoutesCaptured
     && requiredRoutes.every((route) => route.state === "UPLOADED" || route.state === "PARTIAL");
 
+  const metrics = [...metricByKey.values()];
+  const overview = selectOverviewMetrics(metrics);
   return {
     snapshotCount: selectedSnapshots.length,
     latestCapturedAt: selectedSnapshots[0]?.localCollectedAt.toISOString() || null,
-    accountMatchStatus,
+    collectionRun: latestRun ? {
+      id: latestRun.id,
+      status: latestRun.status,
+      startedAt: latestRun.startedAt.toISOString(),
+      lastSnapshotAt: latestRun.lastSnapshotAt?.toISOString() || null,
+      completedAt: latestRun.completedAt?.toISOString() || null
+    } : null,
     coverageRatio: coverageValues.length ? coverageValues.reduce((sum, value) => sum + value, 0) / coverageValues.length : null,
     requiredRoutesCaptured,
-    requiredRoutesAccountMatched,
     requiredRoutesComplete,
-    pendingAccountConfirmationCount: routes.filter((route) => route.snapshotId && route.accountMatchStatus === "UNVERIFIED").length,
     pendingRouteConfirmationCount: routes.filter((route) => route.snapshotId && route.routeVerificationStatus === "MANUAL_PENDING").length,
+    overviewRouteKey: overview.routeKey,
+    overviewMetrics: overview.metrics,
     routes,
-    metrics: [...metricByKey.values()],
+    metrics,
     structuredData: selectedSnapshots.flatMap((snapshot) => {
       const parsed = structuredCollectionDataSchema.safeParse(snapshot.structuredDataJson);
       return parsed.success ? [parsed.data] : [];
     }),
     tables: selectedSnapshots.flatMap((snapshot) => projectTables(snapshot.rawTableData, {
+      snapshotId: snapshot.id,
+      snapshotUpdatedAt: snapshot.updatedAt.toISOString(),
       routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
+      routeDetectionConfidence: readCaptureMeta(snapshot.captureMetaJson)?.routeDetection?.confidence ?? null,
+      tableBindings: readCaptureMeta(snapshot.captureMetaJson)?.tableBindings || [],
       pageType: snapshot.pageType,
-      capturedAt: snapshot.localCollectedAt.toISOString()
+      capturedAt: snapshot.localCollectedAt.toISOString(),
+      reviews: snapshot.tableCellReviews
     }))
   };
 }
@@ -186,6 +196,26 @@ function routeState(
 ): CaptureSummaryRouteState {
   if (status === "MISSING") return sourceUrl ? "READY" : "PENDING";
   return status;
+}
+
+export function selectOverviewMetrics(metrics: CaptureSummaryMetricDTO[]) {
+  // Overview values come from one route only; same-name metrics are not safely additive.
+  const preferredRouteKeys = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN"] as const;
+  const routeKey = preferredRouteKeys.find((candidate) => metrics.some((metric) => metric.routeKey === candidate)) || null;
+  return {
+    routeKey,
+    metrics: routeKey ? metrics.filter((metric) => metric.routeKey === routeKey) : []
+  };
+}
+
+export function summaryDisplayValue(
+  metric: { metricValue: string; rawEvidence: unknown },
+  reviewed?: { reviewStatus: string; reviewedValue: string | null } | null
+) {
+  if (reviewed?.reviewStatus === "MODIFIED" && reviewed.reviewedValue) return reviewed.reviewedValue;
+  if (!metric.rawEvidence || typeof metric.rawEvidence !== "object" || Array.isArray(metric.rawEvidence)) return null;
+  const displayValue = (metric.rawEvidence as Record<string, unknown>).displayValue;
+  return typeof displayValue === "string" && displayValue ? displayValue : null;
 }
 
 function readCaptureMeta(value: unknown): CaptureMeta | null {
@@ -201,17 +231,70 @@ function normalizeMetricSource(value: string): MetricSource {
 
 function projectTables(
   raw: unknown,
-  context: { routeKey: CaptureSummaryDTO["tables"][number]["routeKey"]; pageType: string | null; capturedAt: string }
-): CaptureSummaryDTO["tables"] {
-  if (!Array.isArray(raw)) return [];
-  const result: CaptureSummaryDTO["tables"] = [];
-  for (const candidate of raw.slice(0, 4)) {
-    if (!Array.isArray(candidate)) continue;
-    const rows = candidate.slice(0, 20).flatMap((row) => {
-      if (!Array.isArray(row)) return [];
-      return [row.slice(0, 12).map((cell) => String(cell ?? "").slice(0, 200))];
-    });
-    if (rows.length) result.push({ ...context, rows });
+  context: {
+    snapshotId: string;
+    snapshotUpdatedAt: string;
+    routeKey: CaptureSummaryDTO["tables"][number]["routeKey"];
+    routeDetectionConfidence: number | null;
+    tableBindings: NonNullable<CaptureMeta["tableBindings"]>;
+    pageType: string | null;
+    capturedAt: string;
+    reviews: Array<{
+      id: string;
+      taskId: string;
+      snapshotId: string;
+      tableIndex: number;
+      rowIndex: number;
+      columnIndex: number;
+      originalValue: string | null;
+      reviewedValue: string | null;
+      reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED";
+      reviewedAt: Date | null;
+    }>;
   }
-  return result;
+): CaptureSummaryDTO["tables"] {
+  return projectSnapshotTables(raw, {
+    routeKey: context.routeKey,
+    pageType: context.pageType
+  }).map((table, tableIndex) => {
+    const binding = context.tableBindings.find((item) => item.tableIndex === tableIndex);
+    return {
+      ...context,
+      tableIndex,
+      bindingStatus: binding?.validationStatus || "REQUIRES_REVIEW",
+      bindingReasons: binding?.validationReasons || ["TABLE_BINDING_EVIDENCE_MISSING"],
+      headers: binding?.headers || table.rows[0]?.map((cell) => String(cell ?? "")) || [],
+      identityColumn: binding?.identityColumn || null,
+      identityColumnIndex: binding?.identityColumnIndex ?? null,
+      timeRange: binding?.timeRange || null,
+      bindingLocation: binding?.componentPath || null,
+      rows: table.rows.map((row) => row.map((cell) => String(cell ?? "").slice(0, 1_000))),
+      cellReviews: context.reviews.filter((review) => review.tableIndex === tableIndex).map(toTableCellReviewDTO)
+    };
+  });
+}
+
+export function tableReviewCoverageForSummary(summary: CaptureSummaryDTO) {
+  const totalCount = summary.tables.reduce((total, table) => total + table.rows.reduce((rowTotal, row) => rowTotal + row.length, 0), 0);
+  const reviews = summary.tables.flatMap((table) => table.cellReviews);
+  const statusCounts = new Map(reviews.map((review) => [
+    `${review.snapshotId}:${review.tableIndex}:${review.rowIndex}:${review.columnIndex}`,
+    review.reviewStatus
+  ]));
+  let confirmedCount = 0;
+  let modifiedCount = 0;
+  let ignoredCount = 0;
+  let pendingCount = 0;
+  for (const table of summary.tables) {
+    for (const [rowIndex, row] of table.rows.entries()) {
+      for (const [columnIndex] of row.entries()) {
+        const status = statusCounts.get(`${table.snapshotId}:${table.tableIndex}:${rowIndex}:${columnIndex}`) || "PENDING";
+        if (status === "CONFIRMED") confirmedCount += 1;
+        else if (status === "MODIFIED") modifiedCount += 1;
+        else if (status === "IGNORED") ignoredCount += 1;
+        else pendingCount += 1;
+      }
+    }
+  }
+  return { confirmedCount, modifiedCount, ignoredCount, pendingCount, totalCount };
 }

@@ -14,9 +14,7 @@
     TOKEN: "douyinLocalLifeDiagnosisToken",
     LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
     LOGS: "douyinLocalLifeDiagnosisLogs",
-    PATROL: "douyinLocalLifeDiagnosisPatrol",
     ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState",
-    LATEST_SIGNALS: "douyinLocalLifeDiagnosisLatestSignals",
     PAGE_ACTIVITY: "douyinLocalLifeDiagnosisPageActivity",
     CONTEXT: "douyinLocalLifeDiagnosisContext",
     ACTIVE_COLLECTION_SESSION: "douyinLocalLifeDiagnosisActiveCollectionSession",
@@ -32,7 +30,6 @@
     accountName: document.getElementById("accountName"),
     projectName: document.getElementById("projectName"),
     taskId: document.getElementById("taskId"),
-    signals: document.getElementById("signals"),
     proposals: document.getElementById("proposals")
   };
   elements.version.textContent = chrome.runtime.getManifest().version;
@@ -45,16 +42,13 @@
     await renderProposals();
   }
   async function renderLocalState() {
-    const local = await chrome.storage.local.get([STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY, STORAGE.CONFIG]);
-    const patrol = local[STORAGE.PATROL] || {};
+    const local = await chrome.storage.local.get([STORAGE.PAGE_ACTIVITY, STORAGE.CONFIG, STORAGE.ACTIVE_COLLECTION_SESSION]);
     const activity = local[STORAGE.PAGE_ACTIVITY] || {};
-    elements.runId.textContent = patrol.collectionRunId || "-";
+    elements.runId.textContent = local[STORAGE.ACTIVE_COLLECTION_SESSION]?.collectionRunId || "-";
     elements.accountName.textContent = local[STORAGE.CONFIG]?.accountName || "\u672A\u7ED1\u5B9A";
     elements.projectName.textContent = local[STORAGE.CONFIG]?.projectName || "\u672A\u7ED1\u5B9A";
     elements.taskId.textContent = local[STORAGE.CONFIG]?.collectionTaskId || "-";
     elements.activity.textContent = activity.tabState === "VISIBLE" ? "\u6D3B\u8DC3" : activity.tabState === "HIDDEN" ? "\u9875\u9762\u975E\u6D3B\u8DC3" : "\u672A\u77E5";
-    const signals = local[STORAGE.LATEST_SIGNALS] || [];
-    elements.signals.replaceChildren(...signals.length ? signals.map(renderSignal) : [textNode("\u6682\u65E0\u4FE1\u53F7", "muted")]);
   }
   async function renderProposals() {
     const { apiBaseUrl, collectionTaskId, token } = await apiContext();
@@ -78,12 +72,6 @@
     } catch (error) {
       elements.status.textContent = error instanceof Error ? error.message : "\u8FDE\u63A5\u5931\u8D25";
     }
-  }
-  function renderSignal(signal) {
-    const node = document.createElement("div");
-    node.className = `signal ${signal.severity === "CRITICAL" ? "critical" : signal.severity === "WARNING" ? "warning" : ""}`;
-    node.textContent = signal.message;
-    return node;
   }
   function renderProposal(proposal, apiBaseUrl) {
     const node = document.createElement("div");

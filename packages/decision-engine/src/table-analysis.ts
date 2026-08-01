@@ -1,8 +1,12 @@
 import {
+  collectionFieldProfiles,
+  metricValueToRuleNumber,
+  parseDisplayedMetricValue,
   structuredCollectionDataSchema,
   structuredCollectionDataVersion,
   type CollectionRouteKey,
   type DecisionTableInput,
+  type MetricValueSemantic,
   type StructuredCollectionData,
   type TaskCollectionRow
 } from "@douyin-local-life/shared";
@@ -26,34 +30,19 @@ export type ProductTableAnalysis =
   | { status: "INSUFFICIENT_SAMPLE"; evidence: string[]; productClicks: number | null }
   | { status: "READY"; traffic: RankedProduct; primary: RankedProduct; acceptance: RankedProduct; evidence: string[]; productClicks: number };
 
-const productColumnAliases = {
-  id: ["商品ID", "商品编号", "SPUID", "商品编码"],
-  name: ["商品名称", "商品标题", "商品名"],
-  price: ["售价", "商品售价", "原价"],
-  seckillPrice: ["秒杀价", "活动价", "到手价"],
-  paymentAmount: ["支付金额", "成交金额", "商品成交金额", "GMV"],
-  orders: ["支付订单数", "支付订单", "成交订单数", "成交订单", "订单数"],
-  impressions: ["商品曝光人数", "商品曝光", "曝光人数", "曝光量", "曝光"],
-  clicks: ["商品点击人数", "商品点击", "点击人数", "点击量", "点击"],
-  detailVisits: ["商品详情访问人数", "商品详情访问", "详情访问人数", "详情访问"],
-  submitVisits: ["提单访问人数", "提单访问", "提交订单人数", "提单人数"],
-  submitRate: ["提单率", "提交订单率"],
-  conversionRate: ["支付转化率", "成交转化率", "转化率"]
-} as const;
+const productColumnAliases = tableAliases("LIVE_PRODUCT_TAB") as Record<
+  "id" | "name" | "price" | "seckillPrice" | "paymentAmount" | "orders" | "impressions" | "clicks" | "detailVisits" | "submitVisits" | "submitRate" | "conversionRate",
+  readonly string[]
+>;
 
-const unitColumnAliases = {
-  id: ["投流单元ID", "单元ID", "任务ID", "计划ID"],
-  name: ["投流单元", "单元名称", "任务名称", "计划名称", "广告组名称"],
-  status: ["投放状态", "任务状态", "计划状态", "状态"],
-  budget: ["日预算", "每日预算", "预算"],
-  spend: ["广告消耗", "总消耗", "消耗"],
-  roi: ["支付ROI", "核销ROI", "整体支付ROI", "ROI"],
-  targetRoi: ["目标ROI", "目标支付ROI", "ROI目标"],
-  orders: ["支付订单数", "支付订单", "成交订单数", "订单数"],
-  impressions: ["曝光量", "曝光次数", "曝光"],
-  clicks: ["点击量", "点击次数", "点击人数", "点击"],
-  ctr: ["点击率", "CTR"]
-} as const;
+const unitColumnAliases = tableAliases("TASK_TABLE") as Record<
+  "id" | "name" | "status" | "budget" | "spend" | "roi" | "targetRoi" | "orders" | "impressions" | "clicks" | "ctr",
+  readonly string[]
+>;
+
+function tableAliases(routeKey: "LIVE_PRODUCT_TAB" | "TASK_TABLE") {
+  return Object.fromEntries((collectionFieldProfiles[routeKey]?.tableFields || []).map((field) => [field.key, field.labels]));
+}
 
 export function structureTaskCollectionTables(
   tables: DecisionTableInput[],
@@ -84,14 +73,14 @@ export function structureTaskCollectionTables(
         if (warnings.length < 20) warnings.push(`表 ${table.tableIndex + 1} 第 ${rowIndex + 1} 行缺少任务 ID 和名称`);
         return;
       }
-      const parseNumber = (field: string, columnIndex: number, rate = false) => {
+      const parseNumber = (field: string, columnIndex: number, semantic: MetricValueSemantic) => {
         if (columnIndex < 0) return null;
         const raw = row[columnIndex];
         const text = raw == null ? "" : String(raw).trim();
         if (!text || text === "--" || text === "-") return null;
-        const parsed = rate
-          ? readRateCell(row, columnIndex)
-          : readNonNegativeNumberCell(row, columnIndex);
+        const parsed = semantic === "PERCENTAGE"
+          ? readRateCell(row, columnIndex, table.headers[columnIndex])
+          : readNonNegativeNumberCell(row, columnIndex, semantic, table.headers[columnIndex]);
         if (parsed == null && warnings.length < 20) {
           warnings.push(`表 ${table.tableIndex + 1} 第 ${rowIndex + 1} 行 ${field} 无法解析，已保留为空`);
         }
@@ -101,14 +90,14 @@ export function structureTaskCollectionTables(
         taskId,
         taskName,
         status: readTextCell(row, columns.status),
-        budget: parseNumber("预算", columns.budget),
-        spend: parseNumber("消耗", columns.spend),
-        roi: parseNumber("ROI", columns.roi),
-        targetRoi: parseNumber("目标 ROI", columns.targetRoi),
-        orders: parseNumber("订单", columns.orders),
-        impressions: parseNumber("曝光", columns.impressions),
-        clicks: parseNumber("点击", columns.clicks),
-        ctr: parseNumber("CTR", columns.ctr, true),
+        budget: parseNumber("预算", columns.budget, "CURRENCY"),
+        spend: parseNumber("消耗", columns.spend, "CURRENCY"),
+        roi: parseNumber("ROI", columns.roi, "ROI"),
+        targetRoi: parseNumber("目标 ROI", columns.targetRoi, "ROI"),
+        orders: parseNumber("订单", columns.orders, "COUNT"),
+        impressions: parseNumber("曝光", columns.impressions, "COUNT"),
+        clicks: parseNumber("点击", columns.clicks, "COUNT"),
+        ctr: parseNumber("CTR", columns.ctr, "PERCENTAGE"),
         provenance: {
           routeKey: context.routeKey,
           capturedAt: context.capturedAt,
@@ -160,13 +149,13 @@ export function analyzeProductTables(tables: DecisionTableInput[]): ProductTable
     const id = readTextCell(row, columns.id);
     const name = readTextCell(row, columns.name) || id || `第 ${rowIndex + 1} 行商品`;
     if (!id && !readTextCell(row, columns.name)) return [];
-    const price = firstNumberCell(row, [columns.seckillPrice, columns.price]);
-    const paymentAmount = readNumberCell(row, columns.paymentAmount);
-    const orders = readNumberCell(row, columns.orders);
-    const impressions = readNumberCell(row, columns.impressions);
-    const clicks = readNumberCell(row, columns.clicks);
-    const detailVisits = readNumberCell(row, columns.detailVisits);
-    const submitVisits = readNumberCell(row, columns.submitVisits);
+    const price = firstNumberCell(row, [columns.seckillPrice, columns.price], "CURRENCY", table.headers);
+    const paymentAmount = readNumberCell(row, columns.paymentAmount, "CURRENCY", table.headers[columns.paymentAmount]);
+    const orders = readNumberCell(row, columns.orders, "COUNT", table.headers[columns.orders]);
+    const impressions = readNumberCell(row, columns.impressions, "COUNT", table.headers[columns.impressions]);
+    const clicks = readNumberCell(row, columns.clicks, "COUNT", table.headers[columns.clicks]);
+    const detailVisits = readNumberCell(row, columns.detailVisits, "COUNT", table.headers[columns.detailVisits]);
+    const submitVisits = readNumberCell(row, columns.submitVisits, "COUNT", table.headers[columns.submitVisits]);
     if ([price, paymentAmount, orders, impressions, clicks, detailVisits, submitVisits].some((value) => value == null || value < 0)) return [];
     return [{
       id,
@@ -178,8 +167,8 @@ export function analyzeProductTables(tables: DecisionTableInput[]): ProductTable
       clicks: clicks!,
       detailVisits: detailVisits!,
       submitVisits: submitVisits!,
-      invalidSubmitRate: hasInvalidRateCell(row, columns.submitRate),
-      invalidConversionRate: hasInvalidRateCell(row, columns.conversionRate)
+      invalidSubmitRate: hasInvalidRateCell(row, columns.submitRate, table.headers[columns.submitRate]),
+      invalidConversionRate: hasInvalidRateCell(row, columns.conversionRate, table.headers[columns.conversionRate])
     }];
   });
   const productClicks = products.length ? products.reduce((sum, product) => sum + product.clicks, 0) : null;
@@ -287,13 +276,13 @@ export function analyzeInvestmentUnitTables(
   if (missingColumns.length) return { status: "MISSING_COLUMNS", missingColumns };
   const units = table.rows.flatMap((row, rowIndex) => {
     const name = readTextCell(row, columns.name) || readTextCell(row, columns.id) || `第 ${rowIndex + 1} 个投流单元`;
-    const spend = readNumberCell(row, columns.spend);
+    const spend = readNumberCell(row, columns.spend, "CURRENCY", table.headers[columns.spend]);
     if (spend == null || spend < 0) return [];
-    const roi = readNumberCell(row, columns.roi);
-    const orders = readNumberCell(row, columns.orders);
-    const impressions = readNumberCell(row, columns.impressions);
-    const clicks = readNumberCell(row, columns.clicks);
-    const parsedCtr = readRateCell(row, columns.ctr);
+    const roi = readNumberCell(row, columns.roi, "ROI", table.headers[columns.roi]);
+    const orders = readNumberCell(row, columns.orders, "COUNT", table.headers[columns.orders]);
+    const impressions = readNumberCell(row, columns.impressions, "COUNT", table.headers[columns.impressions]);
+    const clicks = readNumberCell(row, columns.clicks, "COUNT", table.headers[columns.clicks]);
+    const parsedCtr = readRateCell(row, columns.ctr, table.headers[columns.ctr]);
     const ctr = parsedCtr ?? (clicks != null && impressions != null && impressions > 0 && clicks <= impressions ? clicks / impressions : null);
     const mature = spend > 0 && ((orders ?? 0) >= 3 || (impressions ?? 0) >= 1000 || (clicks ?? 0) >= 100);
     return [{ name, spend, roi, orders, impressions, clicks, ctr, mature }];
@@ -345,8 +334,7 @@ function normalizeDecisionTables(input: DecisionTableInput[]): DecisionTable[] {
 
 function toDecisionTable(routeKey: string | null, matrix: unknown[], tableIndex: number): DecisionTable {
   const rows = matrix.filter((row): row is unknown[] => Array.isArray(row));
-  const headerIndex = Math.max(0, rows.slice(0, 5).map((row) => row.filter((cell) => String(cell ?? "").trim()).length).reduce((best, count, index, counts) => count > counts[best]! ? index : best, 0));
-  return { routeKey, tableIndex, headers: rows[headerIndex]!.map((cell) => String(cell ?? "").trim()), rows: rows.slice(headerIndex + 1) };
+  return { routeKey, tableIndex, headers: rows[0]!.map((cell) => String(cell ?? "").trim()), rows: rows.slice(1) };
 }
 
 function isMatrix(value: unknown[]): boolean {
@@ -369,14 +357,12 @@ function columnIndexes<T extends Record<string, readonly string[]>>(headers: str
 
 function findColumn(headers: string[], aliases: readonly string[]) {
   const normalizedHeaders = headers.map(normalizeColumnName);
-  const normalizedAliases = aliases.map(normalizeColumnName).sort((left, right) => right.length - left.length);
-  const exact = normalizedHeaders.findIndex((header) => normalizedAliases.includes(header));
-  if (exact >= 0) return exact;
-  return normalizedHeaders.findIndex((header) => normalizedAliases.some((alias) => alias.length >= 3 && header.includes(alias)));
+  const normalizedAliases = aliases.map(normalizeColumnName);
+  return normalizedHeaders.findIndex((header) => normalizedAliases.includes(header));
 }
 
 function normalizeColumnName(value: string) {
-  return value.toLowerCase().replace(/[\s_\-—/（）()：:·]/g, "");
+  return value.toLowerCase().replace(/[\s_\-—/（）()：:·]/g, "").replace(/(?:人民币|元|%|倍)$/, "");
 }
 
 function readTextCell(row: unknown[], index: number) {
@@ -385,48 +371,50 @@ function readTextCell(row: unknown[], index: number) {
   return value && value !== "--" ? value.slice(0, 120) : null;
 }
 
-function firstNumberCell(row: unknown[], indexes: number[]) {
+function firstNumberCell(row: unknown[], indexes: number[], semantic: MetricValueSemantic, headers: string[]) {
   for (const index of indexes) {
-    const value = readNumberCell(row, index);
+    const value = readNumberCell(row, index, semantic, headers[index]);
     if (value != null && value > 0) return value;
   }
   return null;
 }
 
-function readNumberCell(row: unknown[], index: number) {
+function readNumberCell(row: unknown[], index: number, semantic: MetricValueSemantic, header?: string) {
   if (index < 0) return null;
   const value = row[index];
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "number") return metricValueToRuleNumber({ value }, semantic);
   if (typeof value !== "string") return null;
   const text = value.trim();
   if (!text || text === "--" || text === "-") return null;
-  const multiplier = /万|w/i.test(text) ? 10_000 : /千/.test(text) ? 1_000 : 1;
-  const parsed = Number(text.replace(/[¥￥,%\s,，万千wW]/g, ""));
-  if (!Number.isFinite(parsed)) return null;
-  return text.includes("%") ? parsed / 100 : parsed * multiplier;
+  const parsed = parseDisplayedMetricValue(text, semantic, declaredUnitFromHeader(header, semantic));
+  if (parsed.status === "INVALID") return null;
+  return metricValueToRuleNumber({ value: parsed.normalizedText }, semantic);
 }
 
-function readNonNegativeNumberCell(row: unknown[], index: number) {
-  const value = readNumberCell(row, index);
+function readNonNegativeNumberCell(row: unknown[], index: number, semantic: MetricValueSemantic, header?: string) {
+  const value = readNumberCell(row, index, semantic, header);
   return value != null && value >= 0 ? value : null;
 }
 
-function readRateCell(row: unknown[], index: number) {
-  const value = readNumberCell(row, index);
+function readRateCell(row: unknown[], index: number, header?: string) {
+  const value = readNumberCell(row, index, "PERCENTAGE", header);
   if (value == null) return null;
-  const raw = index >= 0 ? row[index] : null;
-  if (typeof raw === "string" && raw.includes("%")) {
-    return value >= 0 && value <= 1 ? value : null;
-  }
-  const normalized = value > 1 && value <= 100 ? value / 100 : value;
-  return normalized >= 0 && normalized <= 1 ? normalized : null;
+  return value >= 0 && value <= 1 ? value : null;
 }
 
-function hasInvalidRateCell(row: unknown[], index: number) {
+function declaredUnitFromHeader(header: string | undefined, semantic: MetricValueSemantic) {
+  if (!header) return null;
+  if (semantic === "PERCENTAGE" && /%|百分比/.test(header)) return "%";
+  if (semantic === "CURRENCY" && /元|人民币|金额|消耗|预算|售价|价格/.test(header)) return "yuan";
+  if (semantic === "ROI" && /倍/.test(header)) return "倍";
+  return null;
+}
+
+function hasInvalidRateCell(row: unknown[], index: number, header?: string) {
   if (index < 0) return false;
   const raw = row[index];
   if (raw == null || String(raw).trim() === "" || String(raw).trim() === "--" || String(raw).trim() === "-") return false;
-  return readRateCell(row, index) == null;
+  return readRateCell(row, index, header) == null;
 }
 
 function conservativeRate(numerator: number, denominator: number, minimumDenominator: number) {

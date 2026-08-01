@@ -78,6 +78,7 @@ export async function runRetention(client: PrismaClient, options: RetentionOptio
           rawNetworkJson: Prisma.DbNull,
           rawTableData: Prisma.DbNull,
           screenshotUrl: null,
+          // Legacy page identity fields are not collected anymore; expire old values with raw evidence.
           detectedAccountId: null,
           detectedAccountName: null,
           accountMatchEvidence: Prisma.DbNull

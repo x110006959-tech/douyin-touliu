@@ -1,10 +1,10 @@
 {
-  "productVersion": "0.2.2",
-  "gitSha": "65c197b27b0b",
-  "buildTime": "2026-07-19T17:59:07.475Z",
-  "schemaVersion": "20260720_v032_audit_actor_snapshot",
-  "extensionVersion": "0.2.2",
-  "sourceFingerprint": "0d6a167e1cb6",
+  "productVersion": "0.2.4",
+  "gitSha": "b4e7a97998b6",
+  "buildTime": "2026-08-01T08:57:44.606Z",
+  "schemaVersion": "20260729_v034_metric_binding_calibration",
+  "extensionVersion": "0.2.4",
+  "sourceFingerprint": "d1c80aee42ea",
   "buildTarget": "local",
   "localTestOnly": true
 }

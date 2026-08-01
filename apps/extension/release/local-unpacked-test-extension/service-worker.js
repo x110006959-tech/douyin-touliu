@@ -4179,17 +4179,19 @@
     }
   }
   function sanitizeCollectionSnapshotPayload(snapshot) {
+    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot;
     const truncatedFields = [
-      ...snapshot.rawDomText.length > snapshotSafetyLimits.rawDomTextChars ? ["rawDomText"] : [],
+      ...snapshot.rawDomText.length ? ["rawDomText"] : [],
       ...snapshot.rawNetworkJson.length ? ["rawNetworkJson"] : [],
       ...snapshot.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : [],
       ...(snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : []
     ];
     const sanitized = {
-      ...snapshot,
+      ...snapshotWithoutPageAccount,
       sourceUrl: sanitizeCaptureUrl(snapshot.sourceUrl || ""),
       pageTitle: sanitizeVisibleText(snapshot.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
-      rawDomText: sanitizeVisibleText(snapshot.rawDomText || "", snapshotSafetyLimits.rawDomTextChars),
+      // Page text may be used in memory to derive allowlisted fields, but is never part of a snapshot payload.
+      rawDomText: "",
       rawNetworkJson: [],
       rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
       visibleMetricsJson: (snapshot.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
@@ -4201,7 +4203,12 @@
         ...meta,
         acceptedBytes: serializedLength({ rawDomText: sanitized.rawDomText, rawTableData: sanitized.rawTableData, visibleMetricsJson: sanitized.visibleMetricsJson }),
         truncatedFields: [.../* @__PURE__ */ new Set([...Array.isArray(meta.truncatedFields) ? meta.truncatedFields.map(String) : [], ...truncatedFields])],
-        truncationReasons: [.../* @__PURE__ */ new Set([...Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : [], ...snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : [], ...truncatedFields.length ? ["SNAPSHOT_SAFETY_LIMIT"] : []])]
+        truncationReasons: [.../* @__PURE__ */ new Set([
+          ...Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : [],
+          ...snapshot.rawDomText.length ? ["PAGE_TEXT_CAPTURE_DISABLED"] : [],
+          ...snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : [],
+          ...snapshot.rawTableData.length > snapshotSafetyLimits.tableItems || (snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["SNAPSHOT_SAFETY_LIMIT"] : []
+        ])]
       };
     }
     return sanitized;
@@ -4269,7 +4276,7 @@
       website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
       purpose: "\u91C7\u96C6\u6210\u4EA4\u3001\u89C2\u770B\u3001\u66DD\u5149\u548C\u76F4\u64AD\u95F4\u627F\u63A5\u6307\u6807",
       required: true,
-      urlHint: "\u4F8B\u5982 localads.chengzijianzhan.cn/lamp/pc/liveboard2"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6253\u5F00\u6982\u89C8\u9875\u9762"
     },
     {
       routeKey: "LIVE_PRODUCT_TAB",
@@ -4277,7 +4284,7 @@
       website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
       purpose: "\u91C7\u96C6\u5546\u54C1\u652F\u4ED8\u3001\u8BA2\u5355\u3001\u66DD\u5149\u548C\u5546\u54C1\u8F6C\u5316\u6570\u636E",
       required: false,
-      urlHint: "\u5728\u76F4\u64AD\u5927\u5C4F\u4E2D\u5207\u6362\u5230\u201C\u5546\u54C1\u201D\u540E\u91C7\u96C6"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u5546\u54C1\u201D"
     },
     {
       routeKey: "LIVE_TRAFFIC_TAB",
@@ -4285,7 +4292,7 @@
       website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
       purpose: "\u91C7\u96C6\u81EA\u7136\u6D41\u91CF\u3001\u5546\u4E1A\u6D41\u91CF\u548C\u6D41\u91CF\u8D8B\u52BF",
       required: false,
-      urlHint: "\u5728\u76F4\u64AD\u5927\u5C4F\u4E2D\u5207\u6362\u5230\u201C\u6D41\u91CF\u201D\u540E\u91C7\u96C6"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u6D41\u91CF\u201D"
     },
     {
       routeKey: "LOCAL_PROMOTION_DASHBOARD",
@@ -4293,7 +4300,7 @@
       website: "\u5DE8\u91CF\u672C\u5730\u63A8",
       purpose: "\u91C7\u96C6\u6D88\u8017\u3001\u9884\u7B97\u3001ROI\u3001\u8BA2\u5355\u548C\u6210\u672C\u6307\u6807",
       required: true,
-      urlHint: "\u8BF7\u7C98\u8D34\u5F53\u524D\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u6570\u636E\u9875\u9762\u5730\u5740"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u6570\u636E\u603B\u89C8"
     },
     {
       routeKey: "TASK_TABLE",
@@ -4301,10 +4308,22 @@
       website: "\u5DE8\u91CF\u672C\u5730\u63A8",
       purpose: "\u91C7\u96C6\u8BA1\u5212\u72B6\u6001\u3001\u9884\u7B97\u3001\u51FA\u4EF7\u548C\u4EFB\u52A1\u5C42\u7EA7\u6570\u636E",
       required: true,
-      urlHint: "\u8BF7\u6253\u5F00\u5DE8\u91CF\u672C\u5730\u63A8\u7684\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
     }
   ];
   var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
+  var trustedExtensionCollectionHosts = [
+    "eos.douyin.com",
+    "localads.chengzijianzhan.cn"
+  ];
+  function isTrustedExtensionCollectionUrl(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && trustedExtensionCollectionHosts.includes(url.hostname.toLowerCase());
+    } catch {
+      return false;
+    }
+  }
   var collectionFreshnessPolicy = {
     agingAfterMs: 5 * 60 * 1e3,
     staleAfterMs: 10 * 60 * 1e3,
@@ -4329,19 +4348,8 @@
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
-  // ../../packages/shared/dist/account-evidence.js
-  var accountIdEvidenceSources = [
-    "URL:advertiser_id",
-    "URL:account_id",
-    "URL:advid",
-    "URL:aadvid",
-    "MANUAL_CONFIRMATION"
-  ];
-  var accountNameEvidenceSources = ["VISIBLE_TEXT_LABEL", "MANUAL_CONFIRMATION"];
-  var accountMatchEvidenceSchema = external_exports.object({
-    idSource: external_exports.enum(accountIdEvidenceSources).nullable(),
-    nameSource: external_exports.enum(accountNameEvidenceSources).nullable()
-  }).strict();
+  // ../../packages/shared/dist/metric-value.js
+  var metricValidationStatuses = ["TRUSTED", "REQUIRES_REVIEW", "INVALID"];
 
   // ../../packages/shared/dist/collection-diagnostics.js
   var collectionRouteDiagnosticStatuses = [
@@ -4359,7 +4367,6 @@
     "SNAPSHOT_STALE",
     "COLLECTOR_STALLED",
     "CONSECUTIVE_FAILURES",
-    "ACCOUNT_UNVERIFIED",
     "ROUTE_UNVERIFIED",
     "PARTIAL_CAPTURE",
     "LOW_FIELD_COVERAGE",
@@ -4471,6 +4478,28 @@
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
+  // ../../packages/shared/dist/collection-dashboard.js
+  var bulkTableCellReviewInputSchema = external_exports.object({
+    snapshotId: external_exports.string().min(1),
+    expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+    items: external_exports.array(external_exports.object({
+      tableIndex: external_exports.number().int().min(0).max(3),
+      rowIndex: external_exports.number().int().min(0).max(999),
+      columnIndex: external_exports.number().int().min(0).max(99),
+      reviewedValue: external_exports.string().optional(),
+      reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+    }).superRefine((value, ctx) => {
+      if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+        ctx.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["reviewedValue"], message: "MODIFIED requires reviewedValue" });
+      }
+    })).min(1).max(240)
+  });
+  var confirmTableBindingInputSchema = external_exports.object({
+    snapshotId: external_exports.string().min(1),
+    expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+    tableIndex: external_exports.number().int().min(0).max(3)
+  });
+
   // ../../packages/shared/dist/index.js
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
@@ -4504,7 +4533,6 @@
   ];
   var controlLevels = ["PENDING", "HIGH", "MEDIUM", "LOW"];
   var accountPlatforms = ["DOUYIN_LOCAL_LIFE"];
-  var accountMatchStatuses = ["MATCHED", "MISMATCHED", "UNVERIFIED"];
   var collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"];
   var riskLevels = ["LOW", "MEDIUM", "HIGH"];
   var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
@@ -4540,7 +4568,7 @@
   var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"];
   var dataReviewStatuses = ["REVIEWED", "UNREVIEWED"];
-  var metricLayers = ["REVIEWED_METRIC", "NORMALIZED_METRIC"];
+  var metricLayers = ["REVIEWED_METRIC"];
   var metricKeys = [
     "unknown",
     "verify_roi",
@@ -4590,6 +4618,7 @@
   var captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"];
   var captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"];
   var extensionBridgeProtocolVersion = 2;
+  var extensionCollectionProtocolVersion = 1;
   var metricKeyLabels = {
     unknown: "\u672A\u77E5\u6307\u6807",
     verify_roi: "\u6838\u9500 ROI",
@@ -4713,7 +4742,22 @@
     url: external_exports.string().optional(),
     method: external_exports.string().optional(),
     jsonPath: external_exports.string().optional(),
-    textSnippet: external_exports.string().optional()
+    textSnippet: external_exports.string().max(500).optional(),
+    fieldLabel: external_exports.string().max(100).optional(),
+    displayValue: external_exports.string().max(100).optional(),
+    normalizedValue: external_exports.string().max(100).nullable().optional(),
+    displayPrecision: external_exports.number().int().min(0).max(20).nullable().optional(),
+    multiplier: external_exports.number().positive().optional(),
+    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+    timeRange: external_exports.string().max(100).nullable().optional(),
+    timeRangeSource: external_exports.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
+    timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+    bindingKind: external_exports.enum(["CARD", "TABLE", "MANUAL"]).optional(),
+    componentPath: external_exports.string().max(300).optional(),
+    rowIdentity: external_exports.string().max(200).optional(),
+    calibrationSignature: external_exports.string().max(500).optional(),
+    validationStatus: external_exports.enum(metricValidationStatuses).optional(),
+    validationReasons: external_exports.array(external_exports.string().max(100)).max(20).optional()
   });
   var metricKeySchema = external_exports.enum(metricKeys);
   var visibleMetricSchema = external_exports.object({
@@ -4768,6 +4812,18 @@
     extractedFields: external_exports.array(external_exports.string().max(100)).max(100),
     visibleRegions: external_exports.array(external_exports.string().max(100)).max(50),
     renderModes: external_exports.array(external_exports.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
+    tableBindings: external_exports.array(external_exports.object({
+      tableIndex: external_exports.number().int().min(0).max(3),
+      headers: external_exports.array(external_exports.string().max(100)).min(1).max(100),
+      identityColumn: external_exports.string().max(100).nullable(),
+      identityColumnIndex: external_exports.number().int().min(0).max(99).nullable().optional(),
+      timeRange: external_exports.string().max(100).nullable().optional(),
+      timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+      componentPath: external_exports.string().max(300).nullable().optional(),
+      bindingSignature: external_exports.string().min(1).max(500),
+      validationStatus: external_exports.enum(metricValidationStatuses),
+      validationReasons: external_exports.array(external_exports.string().max(100)).max(20)
+    })).max(4).optional(),
     tabState: external_exports.enum(captureTabStates),
     originalBytes: external_exports.number().int().min(0),
     acceptedBytes: external_exports.number().int().min(0),
@@ -4803,10 +4859,8 @@
     localCollectedAt: external_exports.string().datetime(),
     collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
     routeKey: external_exports.enum(collectionRouteKeys).optional(),
-    captureMeta: captureMetaSchema.optional(),
-    detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
+    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
+    captureMeta: captureMetaSchema.optional()
   });
   var createExtensionPairingCodeSchema = external_exports.object({
     accountProfileId: external_exports.string().min(1, "\u8BF7\u9009\u62E9\u8981\u7ED1\u5B9A\u7684\u5E73\u53F0\u8D26\u53F7"),
@@ -4830,10 +4884,6 @@
     routeKey: external_exports.enum(collectionRouteKeys).optional(),
     collectable: external_exports.boolean(),
     tabState: external_exports.enum(captureTabStates),
-    detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional(),
-    accountMatchStatus: external_exports.enum(accountMatchStatuses),
     lastError: external_exports.string().trim().max(500).nullable().optional(),
     observedAt: external_exports.string().datetime()
   });
@@ -4858,10 +4908,7 @@
     tabState: external_exports.enum(captureTabStates),
     metrics: external_exports.array(visibleMetricSchema).max(32),
     captureMeta: captureMetaSchema,
-    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
-    detectedAccountId: external_exports.string().trim().max(200).nullable().optional(),
-    detectedAccountName: external_exports.string().trim().max(200).nullable().optional(),
-    accountMatchEvidence: accountMatchEvidenceSchema.nullable().optional()
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional()
   });
   var manualCheckItemSchema = external_exports.object({
     title: external_exports.string().min(1),
@@ -4919,6 +4966,14 @@
     metricSource: external_exports.enum(metricSources),
     confidence: external_exports.number().min(0).max(1),
     rawEvidence: external_exports.unknown().optional(),
+    displayValue: external_exports.string().nullable().optional(),
+    normalizedValue: external_exports.string().nullable().optional(),
+    fieldLabel: external_exports.string().nullable().optional(),
+    displayPrecision: external_exports.number().int().min(0).nullable().optional(),
+    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).nullable().optional(),
+    bindingLocation: external_exports.string().nullable().optional(),
+    bindingStatus: external_exports.enum(metricValidationStatuses).nullable().optional(),
+    bindingReasons: external_exports.array(external_exports.string()).optional(),
     pageType: external_exports.string().nullable().optional(),
     scope: external_exports.string().nullable().optional(),
     timeRange: external_exports.string().nullable().optional(),
@@ -4926,7 +4981,9 @@
     reviewedAt: external_exports.string().nullable().optional()
   });
   var reviewMetricInputSchema = external_exports.object({
+    expectedSnapshotUpdatedAt: external_exports.string().datetime(),
     reviewedValue: external_exports.string().optional(),
+    timeRange: external_exports.string().trim().min(1).max(100).optional(),
     reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
   }).superRefine((value, ctx) => {
     if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -4940,7 +4997,9 @@
   var bulkReviewMetricInputSchema = external_exports.object({
     items: external_exports.array(external_exports.object({
       metricId: external_exports.string().min(1),
+      expectedSnapshotUpdatedAt: external_exports.string().datetime(),
       reviewedValue: external_exports.string().optional(),
+      timeRange: external_exports.string().trim().min(1).max(100).optional(),
       reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
     }).superRefine((value, ctx) => {
       if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -4951,6 +5010,20 @@
         });
       }
     })).min(1)
+  });
+  var confirmAllReviewMetricsInputSchema = external_exports.object({
+    snapshotVersions: external_exports.array(external_exports.object({
+      snapshotId: external_exports.string().min(1),
+      expectedSnapshotUpdatedAt: external_exports.string().datetime()
+    })).min(1).max(100).superRefine((versions, ctx) => {
+      const seen = /* @__PURE__ */ new Set();
+      for (const [index, version] of versions.entries()) {
+        if (seen.has(version.snapshotId)) {
+          ctx.addIssue({ code: external_exports.ZodIssueCode.custom, path: [index, "snapshotId"], message: "snapshotId must be unique" });
+        }
+        seen.add(version.snapshotId);
+      }
+    })
   });
   var actionProposalDTOSchema = external_exports.object({
     id: external_exports.string().optional(),
@@ -5106,7 +5179,6 @@
   var createAccountProfileSchema = external_exports.object({
     workspaceId: external_exports.string().min(1).optional(),
     platform: external_exports.enum(accountPlatforms).default("DOUYIN_LOCAL_LIFE"),
-    platformAccountId: external_exports.string().trim().max(200).optional().nullable(),
     accountName: external_exports.string().trim().min(1, "\u8BF7\u586B\u5199\u5E73\u53F0\u8D26\u53F7\u540D\u79F0").max(100, "\u8D26\u53F7\u540D\u79F0\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57"),
     merchantName: external_exports.string().trim().max(100).optional().nullable(),
     storeName: external_exports.string().trim().max(100).optional().nullable(),
@@ -5134,27 +5206,6 @@
     sourceUrl: external_exports.string().trim().url("\u8BF7\u8F93\u5165\u5B8C\u6574\u7684\u9875\u9762\u5730\u5740\uFF0C\u4F8B\u5982 https://example.com/page").max(snapshotSafetyLimits.urlChars).optional(),
     pageTitle: external_exports.string().trim().max(100).optional(),
     routeSources: external_exports.array(collectionRouteSourceInputSchema).max(10).optional()
-  });
-  var confirmSnapshotAccountSchema = external_exports.object({
-    confirmed: external_exports.literal(true),
-    expectedUpdatedAt: external_exports.string().datetime(),
-    note: external_exports.string().trim().max(500).optional()
-  });
-  var confirmSnapshotAccountsSchema = external_exports.object({
-    confirmed: external_exports.literal(true),
-    snapshots: external_exports.array(external_exports.object({
-      snapshotId: external_exports.string().min(1),
-      expectedUpdatedAt: external_exports.string().datetime()
-    })).min(1).max(20).superRefine((snapshots, context) => {
-      const seen = /* @__PURE__ */ new Set();
-      snapshots.forEach((snapshot, index) => {
-        if (seen.has(snapshot.snapshotId)) {
-          context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "\u5FEB\u7167\u4E0D\u80FD\u91CD\u590D\u786E\u8BA4", path: [index, "snapshotId"] });
-        }
-        seen.add(snapshot.snapshotId);
-      });
-    }),
-    note: external_exports.string().trim().max(500).optional()
   });
   var confirmSnapshotRouteSchema = external_exports.object({
     confirmed: external_exports.literal(true),
@@ -5196,11 +5247,7 @@
   var MESSAGE = {
     START_COLLECTION: "AI_DIAGNOSIS_START_COLLECTION",
     GET_PAGE_CONTEXT: "AI_DIAGNOSIS_GET_PAGE_CONTEXT",
-    SNAPSHOT_CAPTURED: "AI_DIAGNOSIS_SNAPSHOT_CAPTURED",
-    METRIC_PULSE_CAPTURED: "AI_DIAGNOSIS_METRIC_PULSE_CAPTURED",
     PAGE_ACTIVITY: "AI_DIAGNOSIS_PAGE_ACTIVITY",
-    GET_PATROL_STATE: "AI_DIAGNOSIS_GET_PATROL_STATE",
-    SYNC_PATROL_STATE: "AI_DIAGNOSIS_SYNC_PATROL_STATE",
     CAPTURE_AND_UPLOAD: "AI_DIAGNOSIS_CAPTURE_AND_UPLOAD",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
@@ -5209,10 +5256,7 @@
     CANCEL_PAIRING: "AI_DIAGNOSIS_CANCEL_PAIRING",
     SELECT_TASK: "AI_DIAGNOSIS_SELECT_TASK",
     CLEAR_PAIRING: "AI_DIAGNOSIS_CLEAR_PAIRING",
-    UPLOAD_SNAPSHOT: "AI_DIAGNOSIS_UPLOAD_SNAPSHOT",
     CLEAR_SNAPSHOT: "AI_DIAGNOSIS_CLEAR_SNAPSHOT",
-    START_PATROL: "AI_DIAGNOSIS_START_PATROL",
-    STOP_PATROL: "AI_DIAGNOSIS_STOP_PATROL",
     OPEN_SIDE_PANEL: "AI_DIAGNOSIS_OPEN_SIDE_PANEL"
   };
   var STORAGE = {
@@ -5220,9 +5264,7 @@
     TOKEN: "douyinLocalLifeDiagnosisToken",
     LATEST_SNAPSHOT: "douyinLocalLifeDiagnosisLatestSnapshot",
     LOGS: "douyinLocalLifeDiagnosisLogs",
-    PATROL: "douyinLocalLifeDiagnosisPatrol",
     ROUTE_UPLOAD_STATE: "douyinLocalLifeDiagnosisRouteUploadState",
-    LATEST_SIGNALS: "douyinLocalLifeDiagnosisLatestSignals",
     PAGE_ACTIVITY: "douyinLocalLifeDiagnosisPageActivity",
     CONTEXT: "douyinLocalLifeDiagnosisContext",
     ACTIVE_COLLECTION_SESSION: "douyinLocalLifeDiagnosisActiveCollectionSession",
@@ -5242,32 +5284,75 @@
     }
   }
   function isSupportedExtensionCollectionUrl(value) {
-    try {
-      const url = new URL(value);
-      if (url.protocol !== "https:") return false;
-      if (url.hostname === "eos.douyin.com") return url.pathname === "/dp/liveScreen";
-      if (url.hostname !== "localads.chengzijianzhan.cn") return false;
-      return url.pathname === "/lamp/pc/liveboard2" || url.pathname === "/lamp/pc/promotion/roi2";
-    } catch {
-      return false;
-    }
+    return isTrustedExtensionCollectionUrl(value);
   }
 
-  // src/account-identity.ts
-  function compareAccountIdentity(expected, detected) {
-    const expectedId = normalizeAccountValue(expected.platformAccountId);
-    const detectedId = normalizeAccountValue(detected.detectedAccountId);
-    if (expectedId) {
-      if (!detectedId) return "UNVERIFIED";
-      return expectedId === detectedId ? "MATCHED" : "MISMATCHED";
+  // src/extension-context.ts
+  function checkExtensionContextProtocol(value, supportedVersion) {
+    if (!isRecord(value)) return { ok: false, code: "INVALID_CONTEXT" };
+    const version = value.collectionProtocolVersion;
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+      return Object.prototype.hasOwnProperty.call(value, "collectionProtocolVersion") ? { ok: false, code: "INVALID_CONTEXT" } : { ok: false, code: "SERVICE_UPDATE_REQUIRED" };
     }
-    const expectedName = normalizeAccountValue(expected.accountName);
-    const detectedName = normalizeAccountValue(detected.detectedAccountName);
-    if (expectedName && detectedName && expectedName !== detectedName) return "MISMATCHED";
-    return "UNVERIFIED";
+    if (version < supportedVersion) return { ok: false, code: "SERVICE_UPDATE_REQUIRED" };
+    if (version > supportedVersion) return { ok: false, code: "EXTENSION_UPDATE_REQUIRED" };
+    return { ok: true, version };
   }
-  function normalizeAccountValue(value) {
-    return String(value || "").trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, "");
+  function parseExtensionContext(value) {
+    if (!isRecord(value) || !isRecord(value.account)) return null;
+    const account = value.account;
+    const id = optionalString(account.id);
+    const accountName = optionalString(account.accountName);
+    const collectionProtocolVersion = value.collectionProtocolVersion;
+    if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1) return null;
+    const projects = [];
+    for (const item of account.projects) {
+      if (!isRecord(item)) return null;
+      const projectId = optionalString(item.id);
+      const projectName = optionalString(item.name);
+      if (!projectId || !projectName || !Array.isArray(item.tasks)) return null;
+      const tasks = [];
+      for (const taskItem of item.tasks) {
+        if (!isRecord(taskItem)) return null;
+        const taskId = optionalString(taskItem.id);
+        const pageTitle = optionalNullableString(taskItem.pageTitle);
+        if (!taskId || pageTitle === void 0 || !Array.isArray(taskItem.routeSources)) return null;
+        const routeSources = [];
+        for (const routeItem of taskItem.routeSources) {
+          if (!isRecord(routeItem)) return null;
+          const routeKey = optionalString(routeItem.routeKey);
+          if (!routeKey || typeof routeItem.required !== "boolean") return null;
+          routeSources.push({ routeKey, required: routeItem.required });
+        }
+        tasks.push({ id: taskId, pageTitle, routeSources });
+      }
+      projects.push({ id: projectId, name: projectName, tasks });
+    }
+    return { account: { id, accountName, projects }, collectionProtocolVersion };
+  }
+  function refreshConfigFromContext(config, context) {
+    const collectionTaskId = config.collectionTaskId?.trim();
+    if (!collectionTaskId) return null;
+    const project = context.account.projects.find((item) => item.tasks.some((task) => task.id === collectionTaskId));
+    if (!project) return null;
+    return {
+      ...config,
+      accountProfileId: context.account.id,
+      accountName: context.account.accountName,
+      collectionTaskId,
+      projectId: project.id,
+      projectName: project.name
+    };
+  }
+  function isRecord(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+  function optionalString(value) {
+    return typeof value === "string" && value.trim() ? value : null;
+  }
+  function optionalNullableString(value) {
+    if (value === null) return null;
+    return typeof value === "string" ? value : void 0;
   }
 
   // src/single-flight.ts
@@ -5292,29 +5377,20 @@
   // src/service-worker.ts
   var uploadQueue = Promise.resolve();
   var captureSingleFlight = createKeyedSingleFlight();
-  var patrolSingleFlight = createKeyedSingleFlight();
   chrome.runtime.onInstalled.addListener(() => {
     void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).then(() => appendLog("extension.installed"));
   });
   void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === MESSAGE.SNAPSHOT_CAPTURED) {
-      void saveSnapshot(message.payload, sender.tab?.id).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.METRIC_PULSE_CAPTURED) {
-      void uploadMetricPulse(message.payload).then(sendResponse);
-      return true;
-    }
     if (message?.type === MESSAGE.PAGE_ACTIVITY) {
       void savePageActivity(message.payload, sender.tab?.id).then(sendResponse);
       return true;
     }
-    if (message?.type === MESSAGE.GET_PATROL_STATE) {
-      void getPatrolState().then(sendResponse);
-      return true;
-    }
     if (message?.type === MESSAGE.CAPTURE_AND_UPLOAD) {
+      if (!isPopupSender(sender)) {
+        sendResponse({ ok: false, error: "\u91C7\u96C6\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+        return false;
+      }
       void captureAndUploadSingleFlight(message.payload || {}).then(sendResponse);
       return true;
     }
@@ -5362,26 +5438,6 @@
       void clearPairing().then(sendResponse);
       return true;
     }
-    if (message?.type === MESSAGE.UPLOAD_SNAPSHOT) {
-      void uploadLatestSnapshot().then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.START_PATROL) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u542F\u52A8\u5DE1\u68C0\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void patrolActionSingleFlight("start", message.payload || {}).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.STOP_PATROL) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u505C\u6B62\u5DE1\u68C0\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void patrolActionSingleFlight("stop", message.payload || {}).then(sendResponse);
-      return true;
-    }
     if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
       if (!isPopupSender(sender)) {
         sendResponse({ ok: false, error: "\u6E05\u7A7A\u672C\u5730\u5FEB\u7167\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
@@ -5392,7 +5448,7 @@
     }
     return false;
   });
-  async function saveSnapshot(snapshot, tabId, options = {}) {
+  async function saveSnapshot(snapshot, tabId) {
     const safeSnapshot = sanitizeSnapshotPayload(snapshot);
     await chrome.storage.local.set({
       [STORAGE.LATEST_SNAPSHOT]: {
@@ -5404,12 +5460,6 @@
       }
     });
     await appendLog("snapshot.saved", { sourceUrl: safeSnapshot.sourceUrl, metricCount: safeSnapshot.visibleMetricsJson.length, pageType: safeSnapshot.pageType });
-    const local = await chrome.storage.local.get([STORAGE.PATROL]);
-    const patrol = local[STORAGE.PATROL] || {};
-    if (options.autoUpload !== false && patrol.enabled && patrol.collectionRunId && safeSnapshot.collectionRunId === patrol.collectionRunId) {
-      const upload = await enqueueSnapshotUpload(safeSnapshot);
-      return { ok: true, upload };
-    }
     return { ok: true };
   }
   async function requestPairingConfirmation(payload) {
@@ -5429,6 +5479,16 @@
       if (!preview?.account || !preview.expiresAt) return { ok: false, error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u53EF\u6838\u5BF9\u7684\u914D\u5BF9\u4FE1\u606F\u3002" };
       const expiresAt = new Date(preview.expiresAt).getTime();
       if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return { ok: false, error: "\u914D\u5BF9\u7801\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5728\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u3002" };
+      const existing = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN]);
+      const existingConfig = existing[STORAGE.CONFIG] || {};
+      if (existing[STORAGE.TOKEN] && existingConfig.accountProfileId === preview.account.id && existingConfig.collectionTaskId === preview.task?.id) {
+        return {
+          ok: true,
+          paired: true,
+          boundTaskId: existingConfig.collectionTaskId,
+          message: "\u63D2\u4EF6\u5DF2\u914D\u5BF9\u5E76\u7ED1\u5B9A\u5F53\u524D\u4EFB\u52A1\uFF0C\u65E0\u9700\u91CD\u590D\u786E\u8BA4\u3002"
+        };
+      }
       const confirmation = {
         apiBaseUrl,
         code,
@@ -5468,7 +5528,10 @@
       const contextResponse = await fetch(`${confirmation.apiBaseUrl}/extension/context`, { headers: { Authorization: `Bearer ${token}` } });
       const contextBody = await contextResponse.json();
       if (!contextResponse.ok) return { ok: false, error: contextBody?.error?.message || "\u65E0\u6CD5\u8BFB\u53D6\u7ED1\u5B9A\u8D26\u53F7\u3002" };
-      const context = contextBody.data;
+      const protocolCheck = checkExtensionContextProtocol(contextBody.data, extensionCollectionProtocolVersion);
+      if (!protocolCheck.ok) return { ok: false, error: protocolErrorMessage(protocolCheck.code) };
+      const context = parseExtensionContext(contextBody.data);
+      if (!context) return { ok: false, error: "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u4EFB\u52A1\u4E0A\u4E0B\u6587\u65E0\u6548\uFF0C\u5DF2\u505C\u6B62\u914D\u5BF9\u3002" };
       const suggestedTaskId = body?.data?.suggestedTask?.id;
       const suggestedProject = suggestedTaskId ? context.account.projects.find((project) => project.tasks.some((task) => task.id === suggestedTaskId)) : void 0;
       const suggestedTask = suggestedProject?.tasks.find((task) => task.id === suggestedTaskId);
@@ -5476,7 +5539,6 @@
         apiBaseUrl: confirmation.apiBaseUrl,
         accountProfileId: context.account.id,
         accountName: context.account.accountName,
-        platformAccountId: context.account.platformAccountId,
         ...suggestedProject && suggestedTask ? {
           collectionTaskId: suggestedTask.id,
           projectId: suggestedProject.id,
@@ -5514,12 +5576,12 @@
     return { ok: true, config: nextConfig };
   }
   async function clearPairing() {
-    await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.PATROL, STORAGE.LATEST_SIGNALS, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION]);
+    await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION]);
     await appendLog("extension.unpaired");
     return { ok: true };
   }
   async function getState() {
-    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS, STORAGE.PATROL, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SIGNALS, STORAGE.PAGE_ACTIVITY, STORAGE.TOKEN, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION]);
+    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.PAGE_ACTIVITY, STORAGE.TOKEN, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION]);
     const pending = local[STORAGE.PENDING_PAIRING_CONFIRMATION];
     if (pending && new Date(pending.expiresAt).getTime() <= Date.now()) {
       await chrome.storage.local.remove(STORAGE.PENDING_PAIRING_CONFIRMATION);
@@ -5529,9 +5591,7 @@
       config: local[STORAGE.CONFIG] || {},
       latestSnapshot: local[STORAGE.LATEST_SNAPSHOT] || null,
       logs: local[STORAGE.LOGS] || [],
-      patrol: local[STORAGE.PATROL] || { enabled: false },
       routeUploadState: local[STORAGE.ROUTE_UPLOAD_STATE] || {},
-      latestSignals: local[STORAGE.LATEST_SIGNALS] || [],
       pageActivity: local[STORAGE.PAGE_ACTIVITY] || null,
       activeCollectionSession: local[STORAGE.ACTIVE_COLLECTION_SESSION] || null,
       context: local[STORAGE.CONTEXT] || null,
@@ -5550,7 +5610,7 @@
       boundTaskId: config.collectionTaskId || null,
       protocolVersion: extensionBridgeProtocolVersion,
       extensionVersion: chrome.runtime.getManifest().version,
-      buildFingerprint: "0d6a167e1cb6",
+      buildFingerprint: "d1c80aee42ea",
       message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u914D\u5BF9\u5E76\u7ED1\u5B9A\u5F53\u524D\u4EFB\u52A1" : "\u63D2\u4EF6\u5DF2\u914D\u5BF9\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
     };
   }
@@ -5569,20 +5629,12 @@
     const heartbeat = await reportExtensionHeartbeat(activity);
     return { ok: true, heartbeatReported: heartbeat.ok };
   }
-  async function getPatrolState() {
-    const local = await chrome.storage.local.get([STORAGE.PATROL]);
-    const patrol = local[STORAGE.PATROL] || {};
-    return {
-      enabled: Boolean(patrol.enabled),
-      collectionRunId: patrol.collectionRunId || null,
-      requiredRoutes: patrol.requiredRoutes || [],
-      intervalMs: patrol.intervalMs || collectionFreshnessPolicy.patrolIntervalMs
-    };
-  }
   async function captureAndUpload(payload, routeHint = "UNKNOWN") {
     const tabId = Number(payload.tabId);
     if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u6807\u7B7E\u9875\uFF0C\u8BF7\u5173\u95ED\u63D2\u4EF6\u5F39\u7A97\u540E\u91CD\u8BD5\u3002" };
     if (!isSupportedExtensionCollectionUrl(payload.currentUrl || "")) return { ok: false, error: "\u5F53\u524D\u9875\u9762\u4E0D\u5728\u5DF2\u6388\u6743\u7684\u7CBE\u786E\u91C7\u96C6\u8DEF\u7EBF\u4E2D\u3002" };
+    const refreshedContext = await refreshBoundContext();
+    if (!refreshedContext.ok) return refreshedContext;
     const routeOverride = normalizeCollectionRouteKey(payload.routeOverride);
     if (payload.routeOverride) {
       const allowedRoutes = await currentTaskRouteKeys();
@@ -5614,12 +5666,16 @@
       );
       return { ok: false, error: captureResponse?.error || "\u9875\u9762\u91C7\u96C6\u5931\u8D25\uFF0C\u8BF7\u7B49\u5F85\u9875\u9762\u52A0\u8F7D\u5B8C\u6210\u540E\u91CD\u8BD5\u3002" };
     }
-    const snapshot = { ...captureResponse.snapshot, collectionRunId: session.session.collectionRunId };
+    const snapshot = {
+      ...captureResponse.snapshot,
+      collectionRunId: session.session.collectionRunId,
+      captureProtocolVersion: extensionCollectionProtocolVersion
+    };
     if (!snapshot.routeKey || snapshot.routeKey === "UNKNOWN") {
       await reportCaptureFailure(session.session.collectionRunId, routeHint, "ROUTE_UNVERIFIED", "Captured route was not verified");
       return { ok: false, error: "\u65E0\u6CD5\u786E\u8BA4\u5F53\u524D\u5206\u680F\uFF0C\u8BF7\u5728\u63D2\u4EF6\u4E2D\u4E3A\u672C\u6B21\u91C7\u96C6\u9009\u62E9\u201C\u6982\u89C8\u3001\u5546\u54C1\u6216\u6D41\u91CF\u201D\u540E\u91CD\u8BD5\u3002" };
     }
-    await saveSnapshot(snapshot, tabId, { autoUpload: false });
+    await saveSnapshot(snapshot, tabId);
     const upload = await enqueueSnapshotUpload(snapshot);
     if (!upload.ok) {
       await reportExtensionHeartbeat({
@@ -5628,9 +5684,6 @@
         routeKey: snapshot.routeKey,
         collectable: true,
         tabState: "VISIBLE",
-        detectedAccountId: snapshot.detectedAccountId || null,
-        detectedAccountName: snapshot.detectedAccountName || null,
-        accountMatchEvidence: snapshot.accountMatchEvidence || null,
         observedAt: (/* @__PURE__ */ new Date()).toISOString(),
         lastError: upload.error || "\u5FEB\u7167\u4E0A\u4F20\u5931\u8D25"
       });
@@ -5642,9 +5695,6 @@
       routeKey: snapshot.routeKey,
       collectable: true,
       tabState: "VISIBLE",
-      detectedAccountId: snapshot.detectedAccountId || null,
-      detectedAccountName: snapshot.detectedAccountName || null,
-      accountMatchEvidence: snapshot.accountMatchEvidence || null,
       observedAt: (/* @__PURE__ */ new Date()).toISOString(),
       lastError: null
     }, tabId);
@@ -5655,7 +5705,6 @@
       routeKey: snapshot.routeKey || "UNKNOWN",
       metricCount: serverSnapshot?.normalizedMetrics?.length || snapshot.visibleMetricsJson.length,
       coverageRatio: snapshot.captureMeta?.coverageRatio ?? null,
-      accountMatchStatus: serverSnapshot?.accountMatchStatus || "UNVERIFIED",
       uploadedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
   }
@@ -5717,9 +5766,6 @@
   async function reportExtensionHeartbeat(activity) {
     const api = await apiContext();
     if (!api.ok) return { ok: false, skipped: true, error: api.error };
-    const local = await chrome.storage.local.get([STORAGE.CONFIG]);
-    const config = local[STORAGE.CONFIG] || {};
-    const accountMatchStatus = compareAccountIdentity(config, activity);
     try {
       const response = await fetch(`${api.apiBaseUrl}/extension/heartbeat`, {
         method: "POST",
@@ -5728,16 +5774,12 @@
           collectionTaskId: api.collectionTaskId,
           extensionVersion: chrome.runtime.getManifest().version,
           bridgeProtocolVersion: extensionBridgeProtocolVersion,
-          buildFingerprint: "0d6a167e1cb6",
+          buildFingerprint: "d1c80aee42ea",
           currentUrl: activity.currentUrl,
           pageType: activity.pageType,
           routeKey: activity.routeKey,
           collectable: activity.collectable,
           tabState: activity.tabState,
-          detectedAccountId: activity.detectedAccountId || null,
-          detectedAccountName: activity.detectedAccountName || null,
-          accountMatchEvidence: activity.accountMatchEvidence || null,
-          accountMatchStatus,
           lastError: activity.lastError || null,
           observedAt: activity.observedAt
         })
@@ -5750,38 +5792,6 @@
     } catch {
       return { ok: false, error: "\u63D2\u4EF6\u72B6\u6001\u6682\u65F6\u65E0\u6CD5\u540C\u6B65\u5230\u7F51\u9875\u3002" };
     }
-  }
-  async function uploadMetricPulse(pulse) {
-    const context = await apiContext();
-    if (!context.ok) return context;
-    if (pulse.tabState !== "VISIBLE") return { ok: true, skipped: true, reason: "PAGE_INACTIVE" };
-    try {
-      const response = await fetch(`${context.apiBaseUrl}/collection-tasks/${context.collectionTaskId}/metric-pulses`, {
-        method: "POST",
-        headers: { "content-type": "application/json", Authorization: `Bearer ${context.token}` },
-        body: JSON.stringify(pulse)
-      });
-      const body = await response.json();
-      if (!response.ok) return { ok: false, error: body?.error?.message || `HTTP ${response.status}` };
-      const signals = body?.data?.signals || [];
-      await chrome.storage.local.set({ [STORAGE.LATEST_SIGNALS]: signals, [STORAGE.PAGE_ACTIVITY]: { tabState: pulse.tabState, observedAt: pulse.localCapturedAt } });
-      return { ok: true, signals };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "\u5B9E\u65F6\u6307\u6807\u4E0A\u4F20\u5931\u8D25" };
-    }
-  }
-  async function uploadLatestSnapshot() {
-    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT]);
-    const session = await chrome.storage.local.get([STORAGE.TOKEN]);
-    const config = local[STORAGE.CONFIG] || {};
-    const snapshot = local[STORAGE.LATEST_SNAPSHOT];
-    const token = session[STORAGE.TOKEN];
-    if (!config.apiBaseUrl || !config.collectionTaskId) return { ok: false, error: "\u8BF7\u5148\u914D\u5BF9\u8D26\u53F7\u5E76\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1\u3002" };
-    const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
-    if (!apiBaseUrl) return { ok: false, error: "\u670D\u52A1\u5668\u5730\u5740\u4E0D\u53D7\u652F\u6301\u3002" };
-    if (!token) return { ok: false, error: "\u63D2\u4EF6\u6388\u6743\u5DF2\u4E22\u5931\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
-    if (!snapshot) return { ok: false, error: "\u6682\u65E0\u53EF\u4E0A\u4F20\u7684\u672C\u5730\u5FEB\u7167\u3002" };
-    return enqueueSnapshotUpload(snapshot);
   }
   function enqueueSnapshotUpload(snapshot) {
     const next = uploadQueue.then(() => uploadSnapshot(snapshot));
@@ -5797,18 +5807,10 @@
     const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
     if (!apiBaseUrl) return { ok: false, error: "\u670D\u52A1\u5668\u5730\u5740\u4E0D\u53D7\u652F\u6301\u3002" };
     if (!token) return { ok: false, error: "\u63D2\u4EF6\u6388\u6743\u5DF2\u4E22\u5931\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
-    const localMatch = compareAccountIdentity(config, snapshot);
-    if (localMatch === "MISMATCHED") {
-      await appendLog("snapshot.account_mismatch_blocked", { accountProfileId: config.accountProfileId, detectedAccountId: snapshot.detectedAccountId || null, detectedAccountName: snapshot.detectedAccountName || null });
-      return { ok: false, error: `\u5F53\u524D\u9875\u9762\u8D26\u53F7\u4E0E\u4EFB\u52A1\u8D26\u53F7\u201C${config.accountName || "\u672A\u547D\u540D\u8D26\u53F7"}\u201D\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u963B\u6B62\u4E0A\u4F20\u3002` };
-    }
     const routeKey = snapshot.routeKey || snapshot.pageType || "UNKNOWN";
     const routeState = local[STORAGE.ROUTE_UPLOAD_STATE] || {};
     const fingerprint = snapshotFingerprint(snapshot);
     const previous = routeState[routeKey];
-    if (previous?.fingerprint === fingerprint && Date.now() - previous.lastUploadAt < collectionFreshnessPolicy.heartbeatUploadMs) {
-      return { ok: true, skipped: true, reason: "UNCHANGED" };
-    }
     let response;
     try {
       response = await fetch(`${apiBaseUrl}/collection-tasks/${config.collectionTaskId}/snapshots`, {
@@ -5854,87 +5856,6 @@
     }
     return response.ok ? { ok: true, data: payload } : { ok: false, error: payload?.error?.message || "\u5FEB\u7167\u4E0A\u4F20\u5931\u8D25\u3002" };
   }
-  async function startPatrol(payload) {
-    const context = await apiContext();
-    if (!context.ok) return context;
-    const configuredRoutes = await currentTaskRouteKeys();
-    const calibratedRoutes = /* @__PURE__ */ new Set([
-      "LOCAL_PROMOTION_DASHBOARD",
-      "LIVE_DATA_SCREEN",
-      "LIVE_PRODUCT_TAB",
-      "LIVE_TRAFFIC_TAB",
-      "TASK_TABLE"
-    ]);
-    const requiredRoutes = [...new Set((payload.requiredRoutes?.length ? payload.requiredRoutes : defaultRequiredCollectionRoutes).map(normalizeCollectionRouteKey).filter((route) => route !== "UNKNOWN"))];
-    if (!requiredRoutes.length || requiredRoutes.some((route) => !configuredRoutes.includes(route) || !calibratedRoutes.has(route))) {
-      return { ok: false, error: "\u5DE1\u68C0\u8DEF\u7EBF\u5FC5\u987B\u6765\u81EA\u5F53\u524D\u4EFB\u52A1\u5DF2\u914D\u7F6E\u4E14\u5DF2\u6821\u51C6\u7684\u9875\u9762\u3002" };
-    }
-    const response = await fetch(`${context.apiBaseUrl}/collection-tasks/${context.collectionTaskId}/collection-runs`, {
-      method: "POST",
-      headers: { "content-type": "application/json", Authorization: `Bearer ${context.token}` },
-      body: JSON.stringify({ requiredRoutes })
-    });
-    const body = await response.json();
-    if (!response.ok) return { ok: false, error: body?.error?.message || "\u65E0\u6CD5\u542F\u52A8\u5DE1\u68C0\u3002" };
-    const run = body?.data;
-    const patrol = {
-      enabled: true,
-      collectionRunId: run.id,
-      requiredRoutes,
-      intervalMs: Math.max(3e4, payload.intervalMs || collectionFreshnessPolicy.patrolIntervalMs),
-      startedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    await chrome.storage.local.set({
-      [STORAGE.PATROL]: patrol,
-      [STORAGE.ROUTE_UPLOAD_STATE]: {},
-      [STORAGE.ACTIVE_COLLECTION_SESSION]: {
-        taskId: context.collectionTaskId,
-        collectionRunId: run.id,
-        requiredRoutes,
-        startedAt: patrol.startedAt
-      }
-    });
-    await syncPatrolToTab(payload.tabId, patrol);
-    await appendLog("patrol.started", { collectionRunId: run.id, requiredRoutes });
-    return { ok: true, patrol, run };
-  }
-  async function stopPatrol(payload = {}) {
-    const local = await chrome.storage.local.get([STORAGE.PATROL]);
-    const patrol = local[STORAGE.PATROL] || {};
-    const context = await apiContext();
-    if (patrol.collectionRunId && context.ok) {
-      await fetch(`${context.apiBaseUrl}/collection-runs/${patrol.collectionRunId}/stop`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${context.token}` }
-      });
-    }
-    const stopped = {
-      enabled: false,
-      collectionRunId: null,
-      requiredRoutes: patrol.requiredRoutes || [...defaultRequiredCollectionRoutes],
-      intervalMs: patrol.intervalMs || collectionFreshnessPolicy.patrolIntervalMs,
-      startedAt: null
-    };
-    await chrome.storage.local.set({ [STORAGE.PATROL]: stopped });
-    await syncPatrolToTab(payload.tabId, stopped);
-    await appendLog("patrol.stopped", { collectionRunId: patrol.collectionRunId || null });
-    return { ok: true, patrol: stopped };
-  }
-  async function patrolActionSingleFlight(action, payload) {
-    const local = await chrome.storage.local.get([STORAGE.CONFIG]);
-    const config = local[STORAGE.CONFIG] || {};
-    const key = `${config.collectionTaskId || "unbound"}:${action}`;
-    if (action === "start") return patrolSingleFlight.run(key, () => startPatrol(payload));
-    return patrolSingleFlight.run(key, () => stopPatrol(payload));
-  }
-  async function syncPatrolToTab(tabId, patrol) {
-    const normalizedTabId = Number(tabId);
-    if (!Number.isInteger(normalizedTabId) || normalizedTabId <= 0) return;
-    try {
-      await chrome.tabs.sendMessage(normalizedTabId, { type: MESSAGE.SYNC_PATROL_STATE, payload: patrol });
-    } catch {
-    }
-  }
   async function currentTaskRouteKeys() {
     const api = await apiContext();
     if (!api.ok) return [];
@@ -5942,6 +5863,42 @@
     const context = local[STORAGE.CONTEXT];
     const task = context?.account.projects.flatMap((project) => project.tasks).find((item) => item.id === api.collectionTaskId);
     return [...new Set((task?.routeSources || []).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => route !== "UNKNOWN"))];
+  }
+  async function refreshBoundContext() {
+    const api = await apiContext();
+    if (!api.ok) return api;
+    try {
+      const response = await fetch(`${api.apiBaseUrl}/extension/context`, {
+        headers: { Authorization: `Bearer ${api.token}` }
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = body && typeof body === "object" && "error" in body ? body.error?.message : null;
+        return { ok: false, error: typeof message === "string" ? message : "\u65E0\u6CD5\u5237\u65B0\u5F53\u524D\u8D26\u53F7\u4FE1\u606F\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u540E\u91CD\u8BD5\u3002" };
+      }
+      const payload = body && typeof body === "object" && "data" in body ? body.data : null;
+      const protocolCheck = checkExtensionContextProtocol(payload, extensionCollectionProtocolVersion);
+      if (!protocolCheck.ok) return { ok: false, error: protocolErrorMessage(protocolCheck.code) };
+      const context = parseExtensionContext(payload);
+      if (!context) return { ok: false, error: "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u8D26\u53F7\u4E0A\u4E0B\u6587\u65E0\u6548\uFF0C\u5DF2\u505C\u6B62\u672C\u6B21\u91C7\u96C6\u3002" };
+      const local = await chrome.storage.local.get([STORAGE.CONFIG]);
+      const config = local[STORAGE.CONFIG] || {};
+      const refreshedConfig = refreshConfigFromContext(config, context);
+      if (!refreshedConfig) return { ok: false, error: "\u5F53\u524D\u4EFB\u52A1\u5DF2\u4E0D\u5C5E\u4E8E\u7ED1\u5B9A\u8D26\u53F7\uFF0C\u8BF7\u5728\u63D2\u4EF6\u4E2D\u91CD\u65B0\u9009\u62E9\u4EFB\u52A1\u3002" };
+      await chrome.storage.local.set({ [STORAGE.CONFIG]: refreshedConfig, [STORAGE.CONTEXT]: context });
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "\u65E0\u6CD5\u5237\u65B0\u5F53\u524D\u8D26\u53F7\u4FE1\u606F\uFF0C\u8BF7\u68C0\u67E5\u8BCA\u65AD\u670D\u52A1\u540E\u91CD\u8BD5\u3002" };
+    }
+  }
+  function protocolErrorMessage(code) {
+    if (code === "SERVICE_UPDATE_REQUIRED") {
+      return "\u672C\u5730\u670D\u52A1\u9700\u66F4\u65B0\uFF1A\u5F53\u524D API \u4E0D\u652F\u6301\u6B64\u91C7\u96C6\u534F\u8BAE\u3002\u8BF7\u5148\u66F4\u65B0\u5E76\u91CD\u542F\u672C\u5730\u670D\u52A1\uFF0C\u518D\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u3002";
+    }
+    if (code === "EXTENSION_UPDATE_REQUIRED") {
+      return "\u91C7\u96C6\u63D2\u4EF6\u9700\u66F4\u65B0\uFF1A\u5F53\u524D\u63D2\u4EF6\u7248\u672C\u4F4E\u4E8E\u670D\u52A1\u8981\u6C42\u3002\u8BF7\u66F4\u65B0\u63D2\u4EF6\u5E76\u5728\u6269\u5C55\u7BA1\u7406\u9875\u91CD\u65B0\u52A0\u8F7D\u3002";
+    }
+    return "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u91C7\u96C6\u534F\u8BAE\u65E0\u6548\uFF0C\u5DF2\u505C\u6B62\u672C\u6B21\u91C7\u96C6\u3002";
   }
   async function apiContext() {
     const local = await chrome.storage.local.get([STORAGE.CONFIG]);

@@ -11,9 +11,8 @@
     "128": "icons/icon128.png"
   },
   "host_permissions": [
-    "https://eos.douyin.com/dp/liveScreen*",
-    "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-    "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*",
+    "https://eos.douyin.com/*",
+    "https://localads.chengzijianzhan.cn/*",
     "https://api.pxxis.cn/*",
     "https://www.pxxis.cn/*"
   ],
@@ -37,9 +36,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://eos.douyin.com/dp/liveScreen*",
-        "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2*",
-        "https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2*"
+        "https://eos.douyin.com/*",
+        "https://localads.chengzijianzhan.cn/*"
       ],
       "js": ["content.js"],
       "run_at": "document_start"

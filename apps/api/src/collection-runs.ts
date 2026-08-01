@@ -26,7 +26,6 @@ export const reportCollectionRouteFailureSchema = z.object({
     "CONTENT_SCRIPT_UNAVAILABLE",
     "PAGE_NOT_READY",
     "ROUTE_UNVERIFIED",
-    "ACCOUNT_UNVERIFIED",
     "UPLOAD_NETWORK_ERROR",
     "UPLOAD_HTTP_ERROR",
     "UNKNOWN"
@@ -49,7 +48,6 @@ export function assessCollectionRunQuality(
     pageTitle?: string | null;
     localCollectedAt: Date | string;
     id?: string;
-    accountMatchStatus?: string | null;
     routeVerificationStatus?: string | null;
     captureMetaJson?: Prisma.JsonValue | null;
   }>,
@@ -91,7 +89,6 @@ export function assessCollectionRunQuality(
       snapshot: snapshot ? {
         id: snapshot.id,
         localCollectedAt: snapshot.localCollectedAt,
-        accountMatchStatus: snapshot.accountMatchStatus,
         routeVerificationStatus: snapshot.routeVerificationStatus,
         captureMeta: readCaptureMeta(snapshot.captureMetaJson)
       } : null,
@@ -144,7 +141,6 @@ export async function hydrateCurrentRunSnapshots<T extends { id: string; taskId:
       routeKey: true,
       pageType: true,
       localCollectedAt: true,
-      accountMatchStatus: true,
       routeVerificationStatus: true,
       captureMetaJson: true
     }
@@ -224,7 +220,15 @@ export async function refreshCollectionRunStatus(tx: Prisma.TransactionClient, c
     }
   });
   if (!run || run.status === "STOPPED") return run;
-  const snapshots = (await hydrateCurrentRunSnapshots(tx, [run]))[0]?.snapshots || [];
+  const [hydratedRun, latestSnapshot] = await Promise.all([
+    hydrateCurrentRunSnapshots(tx, [run]),
+    tx.dataSnapshot.findFirst({
+      where: { collectionRunId: run.id },
+      orderBy: [{ localCollectedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      select: { localCollectedAt: true }
+    })
+  ]);
+  const snapshots = hydratedRun[0]?.snapshots || [];
   const quality = assessCollectionRunQuality(run.requiredRoutesJson, snapshots, run.routeHealth, {
     startedAt: run.startedAt,
     status: run.status
@@ -238,7 +242,8 @@ export async function refreshCollectionRunStatus(tx: Prisma.TransactionClient, c
     where: { id: run.id },
     data: {
       status,
-      lastSnapshotAt: snapshots[0]?.localCollectedAt || run.lastSnapshotAt,
+      // Freshness must reflect the newest evidence in the run, including optional routes.
+      lastSnapshotAt: latestSnapshot?.localCollectedAt || run.lastSnapshotAt,
       completedAt: status === "COMPLETED" ? run.completedAt || new Date() : null
     }
   });

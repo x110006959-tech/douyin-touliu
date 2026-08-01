@@ -24,7 +24,6 @@ describe("extension task presence", () => {
         routeKey: "LIVE_DATA_SCREEN",
         collectable: true,
         tabState: "VISIBLE",
-        accountMatchStatus: "MATCHED",
         observedAt: new Date().toISOString()
       }
     });
@@ -48,7 +47,6 @@ describe("extension task presence", () => {
         routeKey: "LOCAL_PROMOTION_DASHBOARD",
         collectable: true,
         tabState: "VISIBLE",
-        accountMatchStatus: "MATCHED",
         observedAt: new Date().toISOString()
       }
     });
@@ -65,7 +63,6 @@ describe("extension task presence", () => {
       routeKey: "UNKNOWN" as const,
       collectable: true,
       tabState: "VISIBLE" as const,
-      accountMatchStatus: "MATCHED" as const,
       observedAt: new Date().toISOString()
     };
     const statusInput = { collectionTaskId: "task-1", taskTitle: "直播大屏", accountProfileId: "account-1", activeCredentialIds: ["credential-3"], expectedVersion: "0.2.2" };

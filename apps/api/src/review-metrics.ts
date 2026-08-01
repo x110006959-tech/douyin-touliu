@@ -7,6 +7,8 @@ import {
 import {
   identifyMetricKey,
   metricKeyLabels,
+  metricValueSemantic,
+  metricValueText,
   standardizeMetricKey,
   type MetricKey,
   type ReviewCoverage,
@@ -15,6 +17,7 @@ import {
 } from "@douyin-local-life/shared";
 import { prisma } from "./prisma.js";
 import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
+import { isConfirmableMetricEvidence } from "./metric-validation.js";
 
 export const unreviewedDataManualCheck = "当前数据未经过人工复核，请确认关键指标后再进行投流决策。";
 
@@ -92,7 +95,29 @@ export function currentReviewedMetrics(task: TaskReviewInput) {
   return (task.reviewedMetrics || []).filter((metric) => metric.snapshotId !== null && currentSnapshotIds.has(metric.snapshotId));
 }
 
+export function validateCurrentReviewedMetricSnapshot(
+  snapshots: Array<{
+    id: string;
+    updatedAt: Date;
+    routeVerificationStatus: string;
+    routeKey?: string | null;
+    captureMetaJson?: Prisma.JsonValue | null;
+  }>,
+  snapshotId: string | null,
+  expectedSnapshotUpdatedAt: string
+) {
+  const snapshot = snapshotId ? snapshots.find((item) => item.id === snapshotId) : null;
+  if (!snapshot || snapshot.updatedAt.toISOString() !== expectedSnapshotUpdatedAt) {
+    return { ok: false as const, error: "SNAPSHOT_NOT_CURRENT" as const };
+  }
+  if (snapshot.routeVerificationStatus !== "VERIFIED") {
+    return { ok: false as const, error: "SNAPSHOT_UNVERIFIED" as const };
+  }
+  return { ok: true as const, snapshot };
+}
+
 export function toReviewedMetricDTO(metric: ReviewedMetric): ReviewedMetricDTO {
+  const evidence = toMetricRawEvidence(metric.rawEvidence);
   return {
     id: metric.id,
     taskId: metric.taskId,
@@ -106,9 +131,17 @@ export function toReviewedMetricDTO(metric: ReviewedMetric): ReviewedMetricDTO {
     metricSource: metric.metricSource,
     confidence: metric.confidence,
     rawEvidence: metric.rawEvidence,
+    displayValue: evidence?.displayValue || null,
+    normalizedValue: metric.originalValue,
+    fieldLabel: evidence?.fieldLabel || null,
+    displayPrecision: evidence?.displayPrecision ?? null,
+    unitSource: evidence?.unitSource || null,
+    bindingLocation: evidence?.componentPath || evidence?.columnName || null,
+    bindingStatus: evidence?.validationStatus || null,
+    bindingReasons: evidence?.validationReasons || [],
     pageType: metric.pageType,
     scope: metric.scope,
-    timeRange: metric.timeRange,
+    timeRange: evidence?.timeRange || metric.timeRange,
     reviewStatus: metric.reviewStatus,
     reviewedAt: metric.reviewedAt?.toISOString() || null
   };
@@ -125,7 +158,10 @@ export function reviewCoverage(metrics: Array<Pick<ReviewedMetric, "reviewStatus
 }
 
 export function selectedReviewedMetrics(metrics: ReviewedMetric[]) {
-  return metrics.filter((metric) => metric.reviewStatus === "CONFIRMED" || metric.reviewStatus === "MODIFIED");
+  return metrics.filter((metric) => (
+    (metric.reviewStatus === "CONFIRMED" || metric.reviewStatus === "MODIFIED")
+    && isConfirmableMetricEvidence(metric.rawEvidence)
+  ));
 }
 
 export function reviewedMetricsToVisibleMetrics(metrics: ReviewedMetric[]): VisibleMetric[] {
@@ -137,7 +173,7 @@ export function reviewedMetricsToVisibleMetrics(metrics: ReviewedMetric[]): Visi
       {
         key,
         name: key === "unknown" ? metric.metricName : metricKeyLabels[key],
-        value: parseMaybeNumber(value),
+        value: normalizedMetricValue(value, metric.rawEvidence, key),
         unit: metric.metricUnit,
         source: legacySourceFromMetricSource(metric.metricSource),
         metricSource: metric.metricSource,
@@ -155,7 +191,7 @@ export function normalizedMetricsToVisibleMetrics(metrics: NormalizedMetricLike[
     return {
       key,
       name: key === "unknown" ? metric.metricName : metricKeyLabels[key],
-      value: parseMaybeNumber(metric.metricValue),
+      value: normalizedMetricValue(metric.metricValue, metric.rawEvidence, key),
       unit: metric.metricUnit,
       source: legacySourceFromMetricSource(metricSource),
       metricSource,
@@ -185,15 +221,25 @@ export function defaultConfidence(source: PrismaMetricSource, key: MetricKey = "
   return 0.5;
 }
 
-export function normalizeReviewPatch(metric: ReviewedMetric, input: { reviewedValue?: string; reviewStatus: PrismaMetricReviewStatus }) {
+export function normalizeReviewPatch(metric: ReviewedMetric, input: { reviewedValue?: string; timeRange?: string; reviewStatus: PrismaMetricReviewStatus }) {
   const reviewedValue = input.reviewedValue?.trim();
+  const evidence = toMetricRawEvidence(metric.rawEvidence);
+  const timeRange = input.timeRange?.trim() || evidence?.timeRange?.trim() || (metric.timeRange && metric.timeRange !== "UNKNOWN" ? metric.timeRange.trim() : "");
   if (input.reviewStatus === "CONFIRMED") {
-    return { reviewedValue: reviewedValue || metric.originalValue || "", reviewStatus: input.reviewStatus };
+    return { reviewedValue: reviewedValue || metric.originalValue || "", timeRange, reviewStatus: input.reviewStatus };
   }
   if (input.reviewStatus === "MODIFIED") {
-    return { reviewedValue: reviewedValue || "", reviewStatus: input.reviewStatus };
+    return { reviewedValue: reviewedValue || "", timeRange, reviewStatus: input.reviewStatus };
   }
-  return { reviewedValue: reviewedValue || metric.reviewedValue, reviewStatus: input.reviewStatus };
+  return { reviewedValue: reviewedValue || metric.reviewedValue, timeRange, reviewStatus: input.reviewStatus };
+}
+
+export function canConfirmMetric(metric: Pick<ReviewedMetric, "rawEvidence">) {
+  return isConfirmableMetricEvidence(metric.rawEvidence);
+}
+
+export function canModifyMetric(patch: ReturnType<typeof normalizeReviewPatch>) {
+  return patch.reviewStatus !== "MODIFIED" || Boolean(patch.timeRange);
 }
 
 function toReviewedMetricCreate(taskId: string, snapshot: SnapshotLike, metric: NormalizedMetricLike): Prisma.ReviewedMetricCreateManyInput {
@@ -212,7 +258,7 @@ function toReviewedMetricCreate(taskId: string, snapshot: SnapshotLike, metric: 
     rawEvidence: (metric.rawEvidence ?? Prisma.JsonNull) as Prisma.InputJsonValue,
     pageType: snapshot.pageType || "UNKNOWN",
     scope: "UNKNOWN",
-    timeRange: "UNKNOWN",
+    timeRange: toMetricRawEvidence(metric.rawEvidence)?.timeRange || "UNKNOWN",
     reviewStatus: "PENDING"
   };
 }
@@ -224,11 +270,9 @@ function legacySourceFromMetricSource(source: PrismaMetricSource): VisibleMetric
   return "dom";
 }
 
-function parseMaybeNumber(value: string): number | string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const numeric = Number(trimmed.replace(/,/g, ""));
-  return Number.isFinite(numeric) ? numeric : value;
+function normalizedMetricValue(value: string, rawEvidence: unknown, key: MetricKey) {
+  const evidence = toMetricRawEvidence(rawEvidence);
+  return metricValueText({ value, rawEvidence: evidence }, metricValueSemantic(key)) || value;
 }
 
 function toMetricRawEvidence(value: unknown): VisibleMetric["rawEvidence"] | null {

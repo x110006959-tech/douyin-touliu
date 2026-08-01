@@ -6,24 +6,27 @@ import {
   runDecisionRules
 } from "@douyin-local-life/decision-engine";
 import {
+  collectionFreshnessPolicy,
   decisionEngineInputSchema,
   generatedDecisionEngineOutputSchema,
+  metricValueSemantic,
+  metricValueToRuleNumber,
   normalizeCollectionRouteKey,
-  projectRawTableData,
-  structuredCollectionDataSchema,
   type ActionProposalDTO,
   type DecisionEngineInput,
   type DecisionEngineOutput
 } from "@douyin-local-life/shared";
+import { structureTaskCollectionTables } from "@douyin-local-life/decision-engine";
 import { assessCollectionRunQuality } from "./collection-runs.js";
 import { proposalExpiresAfterMs } from "./proposal-lifecycle.js";
 import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 import {
-  normalizedMetricsToVisibleMetrics,
   reviewedMetricsToVisibleMetrics,
   reviewCoverage,
   selectedReviewedMetrics
 } from "./review-metrics.js";
+import { isConfirmableMetricEvidence } from "./metric-validation.js";
+import { applyTableCellReviews, projectSnapshotTables } from "./table-cell-reviews.js";
 
 export const strategyVersion = decisionRuleVersion;
 
@@ -54,6 +57,7 @@ export function buildDecisionInput(task: {
     rawDomText: string | null;
     rawNetworkJson: Prisma.JsonValue | null;
     rawTableData: Prisma.JsonValue | null;
+    captureMetaJson?: Prisma.JsonValue | null;
     structuredDataJson?: Prisma.JsonValue | null;
     normalizedMetrics: Array<{
       id: string;
@@ -64,6 +68,14 @@ export function buildDecisionInput(task: {
       metricSource: string;
       confidence?: number | null;
       rawEvidence?: Prisma.JsonValue | null;
+    }>;
+    tableCellReviews?: Array<{
+      tableIndex: number;
+      rowIndex: number;
+      columnIndex: number;
+      originalValue: string | null;
+      reviewedValue: string | null;
+      reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED";
     }>;
   }>;
   reviewedMetrics?: Array<{
@@ -104,12 +116,19 @@ export function buildDecisionInput(task: {
   }
   const latestCollectionRun = task.collectionRuns?.[0];
   const collectionRun = latestCollectionRun;
-  const selectedSnapshots = selectLatestSnapshotsByRoute(task.snapshots, collectionRun?.id)
-    .filter((snapshot) => snapshot.routeVerificationStatus !== "MANUAL_PENDING");
+  const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, collectionRun?.id);
   const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
   const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
   const usableReviewedMetrics = selectedReviewedMetrics(latestReviewedMetrics);
-  const useReviewedMetrics = usableReviewedMetrics.length > 0;
+  const hasPendingMetrics = latestReviewedMetrics.some((metric) => metric.reviewStatus === "PENDING");
+  const tableReview = assessTableReviewState(selectedSnapshots);
+  const hasUsableTableCells = tableReview.confirmedCount + tableReview.modifiedCount > 0;
+  const hasUntrustedEvidence = selectedSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
+    || latestReviewedMetrics.some((metric) => !isConfirmableMetricEvidence(metric.rawEvidence));
+  const useReviewedEvidence = (usableReviewedMetrics.length > 0 || hasUsableTableCells)
+    && !hasPendingMetrics
+    && tableReview.pendingCount === 0
+    && !hasUntrustedEvidence;
   const collectionQuality = collectionRun
     ? assessCollectionRunQuality(collectionRun.requiredRoutesJson, collectionRun.snapshots, collectionRun.routeHealth)
     : undefined;
@@ -130,26 +149,173 @@ export function buildDecisionInput(task: {
     },
     pageTitle: task.pageTitle || "",
     sourceUrl: task.sourceUrl || "",
-    metrics: useReviewedMetrics
-      ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics)
-      : normalizedMetricsToVisibleMetrics(selectedSnapshots.flatMap((snapshot) => snapshot.normalizedMetrics)),
-    tables: selectedSnapshots.flatMap((snapshot) => projectRawTableData(snapshot.rawTableData, {
-      routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
-      pageType: snapshot.pageType || "UNKNOWN"
-    })),
-    structuredCollectionData: selectedSnapshots.flatMap((snapshot) => {
-      const parsed = structuredCollectionDataSchema.safeParse(snapshot.structuredDataJson);
-      return parsed.success ? [parsed.data] : [];
-    }),
-    visibleText: selectedSnapshots.map((snapshot) => snapshot.rawDomText || "").filter(Boolean).join("\n\n"),
-    networkJsonSummary: selectedSnapshots.flatMap((snapshot) => Array.isArray(snapshot.rawNetworkJson)
-      ? (snapshot.rawNetworkJson.slice(0, 20) as DecisionEngineInput["networkJsonSummary"])
-      : []).slice(0, 50),
-    dataReviewStatus: useReviewedMetrics ? "REVIEWED" : "UNREVIEWED",
-    reviewCoverage: latestReviewedMetrics.length ? reviewCoverage(latestReviewedMetrics) : undefined,
-    metricLayer: useReviewedMetrics ? "REVIEWED_METRIC" : "NORMALIZED_METRIC",
+    metrics: useReviewedEvidence ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics).map((metric) => ({
+      ...metric,
+      value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value
+    })) : [],
+    tables: useReviewedEvidence ? selectedSnapshots.flatMap((snapshot) => projectDecisionTables(snapshot)) : [],
+    structuredCollectionData: useReviewedEvidence ? selectedSnapshots.flatMap((snapshot) => {
+      const routeKey = normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType);
+      const structured = structureTaskCollectionTables(projectDecisionTables(snapshot), {
+        routeKey,
+        capturedAt: snapshot.localCollectedAt?.toISOString() || new Date(0).toISOString()
+      });
+      return structured ? [structured] : [];
+    }) : [],
+    visibleText: "",
+    networkJsonSummary: [],
+    dataReviewStatus: useReviewedEvidence ? "REVIEWED" : "UNREVIEWED",
+    reviewCoverage: latestReviewedMetrics.length || tableReview.totalCount
+      ? mergeReviewCoverage(reviewCoverage(latestReviewedMetrics), tableReview)
+      : undefined,
+    metricLayer: "REVIEWED_METRIC",
     collectionQuality
   };
+}
+
+export function hasUntrustedCurrentEvidence(task: {
+  snapshots: Array<{
+    id: string;
+    collectionRunId?: string | null;
+    routeKey?: string | null;
+    pageType?: string | null;
+    routeVerificationStatus?: "VERIFIED" | "MANUAL_PENDING";
+    localCollectedAt?: Date;
+    createdAt?: Date;
+    rawTableData: Prisma.JsonValue | null;
+    normalizedMetrics: Array<{ rawEvidence?: Prisma.JsonValue | null }>;
+    captureMetaJson?: Prisma.JsonValue | null;
+  }>;
+  reviewedMetrics?: Array<{ snapshotId: string | null; rawEvidence: Prisma.JsonValue | null }>;
+  collectionRuns?: Array<{ id: string }>;
+}) {
+  const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, task.collectionRuns?.[0]?.id);
+  const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
+  return selectedSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
+    || (task.reviewedMetrics || []).some((metric) => (
+      metric.snapshotId !== null
+      && selectedSnapshotIds.has(metric.snapshotId)
+      && !isConfirmableMetricEvidence(metric.rawEvidence)
+    ));
+}
+
+function selectFreshVerifiedSnapshots<T extends {
+  id: string;
+  collectionRunId?: string | null;
+  routeKey?: string | null;
+  pageType?: string | null;
+  routeVerificationStatus?: "VERIFIED" | "MANUAL_PENDING";
+  localCollectedAt?: Date;
+  createdAt?: Date;
+}>(snapshots: T[], collectionRunId?: string | null) {
+  return selectLatestSnapshotsByRoute(snapshots, collectionRunId)
+    .filter((snapshot) => snapshot.routeVerificationStatus === "VERIFIED"
+      // Formal decisions must not use evidence that is stale at input construction time.
+      && snapshotIsFresh(snapshot));
+}
+
+function hasUntrustedSnapshotEvidence(snapshot: {
+  rawTableData: Prisma.JsonValue | null;
+  normalizedMetrics: Array<{ rawEvidence?: Prisma.JsonValue | null }>;
+  captureMetaJson?: Prisma.JsonValue | null;
+}) {
+  return snapshot.normalizedMetrics.some((metric) => !isConfirmableMetricEvidence(metric.rawEvidence))
+    || hasUntrustedTableBinding(snapshot.rawTableData, snapshot.captureMetaJson);
+}
+
+function hasUntrustedTableBinding(rawTableData: Prisma.JsonValue | null, value: Prisma.JsonValue | null | undefined) {
+  const tableCount = projectSnapshotTables(rawTableData, { routeKey: "UNKNOWN", pageType: "UNKNOWN" }).length;
+  if (!tableCount) return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+  const tableBindings = (value as Record<string, unknown>).tableBindings;
+  if (!Array.isArray(tableBindings)) return true;
+  return Array.from({ length: tableCount }, (_, tableIndex) => tableIndex).some((tableIndex) => {
+    const binding = tableBindings.find((candidate) => (
+      Boolean(candidate)
+      && typeof candidate === "object"
+      && !Array.isArray(candidate)
+      && (candidate as Record<string, unknown>).tableIndex === tableIndex
+    ));
+    return !binding || (binding as Record<string, unknown>).validationStatus !== "TRUSTED";
+  });
+}
+
+function snapshotIsFresh(snapshot: { localCollectedAt?: Date }, now = Date.now()) {
+  const collectedAt = snapshot.localCollectedAt?.getTime();
+  return typeof collectedAt === "number"
+    && Number.isFinite(collectedAt)
+    && now - collectedAt < collectionFreshnessPolicy.staleAfterMs;
+}
+
+function assessTableReviewState(snapshots: Array<{
+  rawTableData: Prisma.JsonValue | null;
+  routeKey?: string | null;
+  pageType?: string | null;
+  tableCellReviews?: Array<{ tableIndex: number; rowIndex: number; columnIndex: number; reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED" }>;
+}>) {
+  let totalCount = 0;
+  let pendingCount = 0;
+  let confirmedCount = 0;
+  let modifiedCount = 0;
+  let ignoredCount = 0;
+  for (const snapshot of snapshots) {
+    const tables = projectSnapshotTables(snapshot.rawTableData, {
+      routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
+      pageType: snapshot.pageType || "UNKNOWN"
+    });
+    const reviews = new Map((snapshot.tableCellReviews || []).map((review) => [
+      `${review.tableIndex}:${review.rowIndex}:${review.columnIndex}`,
+      review.reviewStatus
+    ]));
+    for (const [tableIndex, table] of tables.entries()) {
+      for (const [rowIndex, row] of table.rows.entries()) {
+        for (const [columnIndex] of row.entries()) {
+          totalCount += 1;
+          const status = reviews.get(`${tableIndex}:${rowIndex}:${columnIndex}`) || "PENDING";
+          if (status === "PENDING") pendingCount += 1;
+          else if (status === "CONFIRMED") confirmedCount += 1;
+          else if (status === "MODIFIED") modifiedCount += 1;
+          else ignoredCount += 1;
+        }
+      }
+    }
+  }
+  return { totalCount, pendingCount, confirmedCount, modifiedCount, ignoredCount };
+}
+
+function mergeReviewCoverage(
+  metrics: ReturnType<typeof reviewCoverage>,
+  cells: ReturnType<typeof assessTableReviewState>
+) {
+  return {
+    confirmedCount: metrics.confirmedCount + cells.confirmedCount,
+    modifiedCount: metrics.modifiedCount + cells.modifiedCount,
+    ignoredCount: metrics.ignoredCount + cells.ignoredCount,
+    pendingCount: metrics.pendingCount + cells.pendingCount,
+    totalCount: metrics.totalCount + cells.totalCount
+  };
+}
+
+function projectDecisionTables(snapshot: {
+  rawTableData: Prisma.JsonValue | null;
+  routeKey?: string | null;
+  pageType?: string | null;
+  tableCellReviews?: Array<{
+    tableIndex: number;
+    rowIndex: number;
+    columnIndex: number;
+    originalValue: string | null;
+    reviewedValue: string | null;
+    reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED";
+  }>;
+}) {
+  return applyTableCellReviews(
+    projectSnapshotTables(snapshot.rawTableData, {
+      routeKey: normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType),
+      pageType: snapshot.pageType || "UNKNOWN"
+    }),
+    snapshot.tableCellReviews || []
+  );
 }
 
 export function runDecisionEngine(input: DecisionEngineInput) {

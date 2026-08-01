@@ -222,6 +222,11 @@ enum MetricReviewStatus {
   IGNORED
 }
 
+enum CollectionBindingKind {
+  METRIC
+  TABLE
+}
+
 enum ExtensionCredentialScope {
   COLLECT
   READ_DIAGNOSIS
@@ -242,8 +247,10 @@ model User {
   approvalRecords ApprovalRecord[]
   executionLogs   ExecutionLog[]
   reviewedMetrics ReviewedMetric[]
+  tableCellReviews TableCellReview[]
   actionOutcomes  ActionOutcome[]
   metricAliasesCreated MetricAliasOverride[] @relation("MetricAliasCreatedBy")
+  collectionBindingCalibrations CollectionBindingCalibration[] @relation("CollectionBindingConfirmedBy")
   metricDriftsResolved MetricDriftEvent[] @relation("MetricDriftResolvedBy")
   snapshotAccountConfirmations DataSnapshot[] @relation("SnapshotAccountConfirmedBy")
   snapshotRouteConfirmations   DataSnapshot[] @relation("SnapshotRouteConfirmedBy")
@@ -317,6 +324,7 @@ model Workspace {
   accountProfiles AccountProfile[]
   auditLogs AuditLog[]
   metricAliasOverrides MetricAliasOverride[]
+  collectionBindingCalibrations CollectionBindingCalibration[]
   extensionPairingCodes ExtensionPairingCode[]
   extensionCredentials ExtensionCredential[]
 
@@ -543,6 +551,7 @@ model DataSnapshot {
   task               CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   normalizedMetrics  NormalizedMetric[]
   reviewedMetrics    ReviewedMetric[]
+  tableCellReviews   TableCellReview[]
   collectionRun      CollectionRun?     @relation(fields: [collectionRunId], references: [id], onDelete: SetNull)
   metricDriftEvents  MetricDriftEvent[]
   accountConfirmedBy User? @relation("SnapshotAccountConfirmedBy", fields: [accountConfirmedById], references: [id], onDelete: SetNull)
@@ -604,6 +613,30 @@ model ReviewedMetric {
   @@index([metricKey])
   @@index([metricSource])
   @@index([reviewStatus])
+  @@index([reviewerId])
+}
+
+model TableCellReview {
+  id            String             @id @default(cuid())
+  taskId        String
+  snapshotId    String
+  tableIndex    Int
+  rowIndex      Int
+  columnIndex   Int
+  originalValue String?
+  reviewedValue String?
+  reviewStatus  MetricReviewStatus @default(PENDING)
+  reviewerId    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  task          CollectionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  snapshot      DataSnapshot       @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  reviewer      User?              @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@unique([snapshotId, tableIndex, rowIndex, columnIndex])
+  @@index([taskId, snapshotId])
+  @@index([snapshotId, reviewStatus])
   @@index([reviewerId])
 }
 
@@ -798,6 +831,24 @@ model MetricAliasOverride {
   @@unique([workspaceId, aliasNormalized, pageType])
   @@index([workspaceId, active])
   @@index([metricKey])
+}
+
+model CollectionBindingCalibration {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  routeKey         String
+  pageFingerprint  String
+  bindingKind      CollectionBindingKind
+  bindingKey       String
+  bindingSignature String
+  confirmedById    String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  confirmedBy      User      @relation("CollectionBindingConfirmedBy", fields: [confirmedById], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, routeKey, pageFingerprint, bindingKind, bindingKey, bindingSignature], map: "CollectionBindingCalibration_binding_unique")
+  @@index([workspaceId, routeKey, pageFingerprint], map: "CollectionBindingCalibration_lookup_idx")
 }
 
 model MetricDriftEvent {

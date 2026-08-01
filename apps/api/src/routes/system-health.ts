@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createLlmProvider } from "@douyin-local-life/llm";
+import { DEFAULT_DEEPSEEK_MODEL } from "@douyin-local-life/llm";
 import { hydrateCurrentRunSnapshots, toCollectionRunDTO } from "../collection-runs.js";
 import { getAiCircuitStatus } from "../ai-circuit.js";
 import { prisma } from "../prisma.js";
@@ -11,7 +11,7 @@ export function createSystemHealthRouter() {
 
   router.get("/system-health", async (req, res) => {
     const user = currentUser(req);
-    const aiProvider = createLlmProvider("mock");
+    const aiProvider = { name: "deepseek", model: process.env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL };
     const [rawRuns, aiCircuit] = await Promise.all([
       prisma.collectionRun.findMany({
         where: { task: { project: { workspace: { ownerId: user.id } } } },

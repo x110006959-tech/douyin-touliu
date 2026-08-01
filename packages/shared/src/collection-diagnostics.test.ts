@@ -54,6 +54,45 @@ describe("collection route diagnostics", () => {
     expect(diagnostic.blocksStrongActions).toBe(true);
   });
 
+  it("keeps collected stale and unverified routes distinct from real upload failures", () => {
+    const staleSnapshot = {
+      localCollectedAt: new Date(now - collectionFreshnessPolicy.staleAfterMs),
+      accountMatchStatus: "MATCHED" as const,
+      captureMeta: { completeness: "COMPLETE" as const, coverageRatio: 1 }
+    };
+    const base = {
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      required: true,
+      runActive: true,
+      runStartedAt: new Date(now - collectionFreshnessPolicy.staleAfterMs),
+      heartbeat: {
+        consecutiveFailures: 0,
+        lastAttemptAt: staleSnapshot.localCollectedAt,
+        lastSuccessAt: staleSnapshot.localCollectedAt
+      }
+    };
+
+    const verified = evaluateCollectionRouteDiagnostic({
+      ...base,
+      snapshot: {
+        ...staleSnapshot,
+        routeVerificationStatus: "VERIFIED"
+      }
+    }, now);
+    const pending = evaluateCollectionRouteDiagnostic({
+      ...base,
+      snapshot: {
+        ...staleSnapshot,
+        routeVerificationStatus: "MANUAL_PENDING"
+      }
+    }, now);
+
+    expect(verified.summaryStatus).toBe("STALE");
+    expect(pending.summaryStatus).toBe("MANUAL_PENDING");
+    expect(verified.issues.map((issue) => issue.code)).toContain("COLLECTOR_STALLED");
+    expect(verified.blocksStrongActions).toBe(true);
+  });
+
   it("keeps partial coverage advisory-only while reporting missing fields and truncation", () => {
     const diagnostic = evaluateCollectionRouteDiagnostic({
       routeKey: "TASK_TABLE",
