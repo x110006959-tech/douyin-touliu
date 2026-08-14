@@ -5,11 +5,13 @@ import { currentReviewedMetrics, reviewCoverage } from "./review-metrics.js";
 import { requiredRoutesFromJson } from "./collection-runs.js";
 import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 import { hasUntrustedCurrentEvidence } from "./decision.js";
+import { hasUsableLiveOverviewRealtimeEvidence } from "./realtime-decision-evidence.js";
 import type { getTaskForDecision } from "./ownership.js";
 
 type DecisionTask = NonNullable<Awaited<ReturnType<typeof getTaskForDecision>>>;
 
-export function evaluateDecisionReadiness(task: DecisionTask, input: DecisionEngineInput) {
+export function evaluateDecisionReadiness(task: DecisionTask, input: DecisionEngineInput, options: { now?: number } = {}) {
+  const now = options.now ?? Date.now();
   const policy = evaluateDecisionPolicy(input);
   const latestRunId = task.collectionRuns[0]?.id || null;
   const currentSnapshots = selectLatestSnapshotsByRoute(task.snapshots, latestRunId);
@@ -24,18 +26,35 @@ export function evaluateDecisionReadiness(task: DecisionTask, input: DecisionEng
     routeKey,
     label: collectionRouteTemplates.find((route) => route.routeKey === routeKey)?.label || routeKey
   });
-  const missingRequiredRoutes = requiredRoutes.filter((route) => !latestByRoute.has(normalizeCollectionRouteKey(route.routeKey)));
+  const realtimeCoveredRoutes = new Set(requiredRoutes
+    .map((route) => normalizeCollectionRouteKey(route.routeKey))
+    .filter((routeKey) => hasUsableLiveOverviewRealtimeEvidence(input, routeKey, now)));
+  const missingRequiredRoutes = requiredRoutes.filter((route) => {
+    const routeKey = normalizeCollectionRouteKey(route.routeKey);
+    return !realtimeCoveredRoutes.has(routeKey) && !latestByRoute.has(routeKey);
+  });
   const unverifiedRequiredRoutes = requiredRoutes.filter((route) => {
-    const snapshot = latestByRoute.get(normalizeCollectionRouteKey(route.routeKey));
+    const routeKey = normalizeCollectionRouteKey(route.routeKey);
+    if (realtimeCoveredRoutes.has(routeKey)) return false;
+    const snapshot = latestByRoute.get(routeKey);
     return snapshot && snapshot.routeVerificationStatus !== "VERIFIED";
   });
   const staleRequiredRoutes = requiredRoutes.filter((route) => {
-    const snapshot = latestByRoute.get(normalizeCollectionRouteKey(route.routeKey));
+    const routeKey = normalizeCollectionRouteKey(route.routeKey);
+    if (realtimeCoveredRoutes.has(routeKey)) return false;
+    const snapshot = latestByRoute.get(routeKey);
     return snapshot?.localCollectedAt
-      ? Date.now() - snapshot.localCollectedAt.getTime() > collectionFreshnessPolicy.staleAfterMs
+      ? now - snapshot.localCollectedAt.getTime() > collectionFreshnessPolicy.staleAfterMs
       : false;
   });
-  const currentMetricReviewCoverage = reviewCoverage(currentReviewedMetrics(task));
+  const currentSnapshotRouteById = new Map(currentSnapshots.map((snapshot) => [
+    snapshot.id,
+    normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)
+  ]));
+  const currentMetricReviewCoverage = reviewCoverage(currentReviewedMetrics(task).filter((metric) => {
+    const routeKey = metric.snapshotId ? currentSnapshotRouteById.get(metric.snapshotId) : null;
+    return !routeKey || !realtimeCoveredRoutes.has(routeKey);
+  }));
   const readiness = evaluateFormalDecisionReadiness({
     missingRequiredRouteLabels: missingRequiredRoutes.map((route) => route.label),
     unverifiedRequiredRouteLabels: unverifiedRequiredRoutes.map((route) => route.label),
@@ -44,7 +63,7 @@ export function evaluateDecisionReadiness(task: DecisionTask, input: DecisionEng
     reviewTotalCount: Math.max(input.reviewCoverage?.totalCount || 0, currentMetricReviewCoverage.totalCount),
     reviewPendingCount: Math.max(input.reviewCoverage?.pendingCount || 0, currentMetricReviewCoverage.pendingCount)
   });
-  const invalidEvidenceReason = hasUntrustedCurrentEvidence(task)
+  const invalidEvidenceReason = hasUntrustedCurrentEvidence(task, { coveredRoutes: realtimeCoveredRoutes })
     ? "当前快照存在未放行的字段绑定或表格行列证据，不能生成正式诊断"
     : null;
   const unsupportedBusinessModeReason = isManagedLiveGrowth(input)

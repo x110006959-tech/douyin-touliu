@@ -118,11 +118,21 @@ export const collectionFreshnessPolicy = {
   routeFailureThreshold: 3
 } as const;
 
-export const defaultRequiredCollectionRoutes: CollectionRouteKey[] = [
+export const primaryCollectionRouteKeys = [
   "LOCAL_PROMOTION_DASHBOARD",
-  "LIVE_DATA_SCREEN",
-  "TASK_TABLE"
-];
+  "LIVE_DATA_SCREEN"
+] as const satisfies readonly CollectionRouteKey[];
+export type PrimaryCollectionRouteKey = (typeof primaryCollectionRouteKeys)[number];
+
+export function isPrimaryCollectionRouteKey(value: unknown): value is PrimaryCollectionRouteKey {
+  return primaryCollectionRouteKeys.includes(value as PrimaryCollectionRouteKey);
+}
+
+export const defaultRequiredCollectionRoutes: CollectionRouteKey[] = [...primaryCollectionRouteKeys];
+
+export const defaultCollectionRouteTemplates: CollectionRouteTemplate[] = collectionRouteTemplates.filter((route) => (
+  defaultRequiredCollectionRoutes.includes(route.routeKey)
+));
 
 export type CollectionRouteHealth = {
   routeKey: CollectionRouteKey;

@@ -18,7 +18,13 @@ const registrationEmailIpRule: RateLimitRule = { windowMs: 60 * 60 * 1000, maxAt
 const registrationEmailRule: RateLimitRule = { windowMs: 60 * 60 * 1000, maxAttempts: 3 };
 const extensionPairingIpRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 10 };
 const extensionPairingCodeRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 5 };
-const metricPulseRule: RateLimitRule = { windowMs: 5 * 1000, maxAttempts: 1 };
+// The collector starts one pulse every five seconds, but each pulse performs
+// the platform request before it reaches this API.  A strict five-second
+// receive window therefore rejects healthy pulses whenever platform/network
+// latency changes between two cycles.  Keep a one-second scheduling margin
+// while still rejecting duplicate or burst uploads.
+export const metricPulseRateLimitWindowMs = 4 * 1000;
+const metricPulseRule: RateLimitRule = { windowMs: metricPulseRateLimitWindowMs, maxAttempts: 1 };
 const snapshotRule: RateLimitRule = { windowMs: 60 * 1000, maxAttempts: 30 };
 const decisionRule: RateLimitRule = { windowMs: 60 * 1000, maxAttempts: 6 };
 const aiExplanationRule: RateLimitRule = { windowMs: 60 * 60 * 1000, maxAttempts: 10 };
@@ -54,8 +60,11 @@ export async function checkExtensionPairingRateLimit(input: { ip?: string | null
   return checkCompositeRateLimit(entries);
 }
 
-export async function checkMetricPulseRateLimit(input: { credentialOrSessionId: string; taskId: string }) {
-  return checkRateLimit("collection:pulse", `${input.credentialOrSessionId}:${input.taskId}`, metricPulseRule);
+export async function checkMetricPulseRateLimit(
+  input: { credentialOrSessionId: string; taskId: string },
+  now = new Date()
+) {
+  return checkRateLimit("collection:pulse", `${input.credentialOrSessionId}:${input.taskId}`, metricPulseRule, now);
 }
 
 export async function checkSnapshotRateLimit(input: { credentialOrSessionId: string; taskId: string }) {

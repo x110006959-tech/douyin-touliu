@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/build.mjs --target=local",
-    "build": "node scripts/build.mjs --target=local",
+    "build": "node scripts/build.mjs --target=local --dist-only",
     "build:local": "node scripts/build.mjs --target=local",
     "build:production": "node scripts/build.mjs --target=production",
     "package:candidates": "node scripts/package-candidates.mjs",

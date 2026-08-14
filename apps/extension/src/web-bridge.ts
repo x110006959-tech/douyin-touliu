@@ -1,5 +1,12 @@
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
-import { extensionBridgeEvents, isAllowedBridgeApiBaseUrl, isAllowedBridgeOrigin, parseBridgeRequest, sanitizeBridgeResponse } from "./bridge-protocol";
+import {
+  isAllowedBridgeApiBaseUrl,
+  isAllowedBridgeOrigin,
+  parseBridgeRequest,
+  parseBridgeWindowMessage,
+  sanitizeBridgeResponse,
+  serializeBridgeWindowMessage
+} from "./bridge-protocol";
 import { MESSAGE } from "./messages";
 
 const markerAttribute = "data-pxxis-extension-version";
@@ -11,12 +18,19 @@ function announce() {
   document.documentElement.setAttribute(markerAttribute, chrome.runtime.getManifest().version);
   document.documentElement.setAttribute(protocolAttribute, String(extensionBridgeProtocolVersion));
   document.documentElement.setAttribute(buildAttribute, __PXXIS_EXTENSION_BUILD__);
-  window.dispatchEvent(new CustomEvent(extensionBridgeEvents.READY));
+  window.postMessage(serializeBridgeWindowMessage("READY"), window.location.origin);
 }
 
-window.addEventListener(extensionBridgeEvents.LEGACY_PING, announce);
-window.addEventListener(extensionBridgeEvents.REQUEST, (event) => {
-  void handleBridgeRequest((event as CustomEvent).detail);
+window.addEventListener("message", (event) => {
+  if (event.source !== window || event.origin !== window.location.origin) return;
+  const message = parseBridgeWindowMessage(event.data);
+  if (!message) return;
+  if (message.type === "PING") {
+    announce();
+    return;
+  }
+  if (message.type !== "REQUEST") return;
+  void handleBridgeRequest(message.payload);
 });
 announce();
 
@@ -66,7 +80,9 @@ async function handleBridgeRequest(rawRequest: unknown) {
 }
 
 function dispatchResponse(detail: ReturnType<typeof sanitizeBridgeResponse>) {
-  window.dispatchEvent(new CustomEvent(extensionBridgeEvents.RESPONSE, { detail }));
+  // postMessage reliably crosses Chrome's isolated-world boundary. The page
+  // receives only this sanitized JSON response, never extension credentials.
+  window.postMessage(serializeBridgeWindowMessage("RESPONSE", detail), window.location.origin);
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {

@@ -51,7 +51,10 @@ describe("extension task presence", () => {
       }
     });
     expect(getExtensionStatus({ collectionTaskId: "task-1", taskTitle: "任务", accountProfileId: "account-1", activeCredentialIds: ["credential-2"], expectedVersion: "0.2.2" }).state).toBe("BOUND_OTHER_TASK");
-    expect(getExtensionStatus({ collectionTaskId: "task-1", taskTitle: "任务", accountProfileId: "account-2", activeCredentialIds: ["credential-2"], expectedVersion: "0.2.2" }).state).toBe("PAIRED_NOT_CONNECTED");
+    expect(getExtensionStatus({ collectionTaskId: "task-1", taskTitle: "任务", accountProfileId: "account-2", activeCredentialIds: ["credential-2"], expectedVersion: "0.2.2" })).toMatchObject({
+      state: "PAIRED_NOT_CONNECTED",
+      message: expect.stringContaining("历史授权")
+    });
   });
 
   it("distinguishes an old background worker from an unknown live section", () => {
@@ -74,5 +77,32 @@ describe("extension task presence", () => {
       heartbeat: { ...baseHeartbeat, bridgeProtocolVersion: extensionBridgeProtocolVersion, buildFingerprint: "build-b" }
     });
     expect(getExtensionStatus(statusInput).state).toBe("ROUTE_UNVERIFIED");
+  });
+
+  it("treats a verified task-page heartbeat as connected while keeping collection unavailable", () => {
+    recordExtensionPresence({
+      credentialId: "credential-task-page",
+      accountProfileId: "account-1",
+      heartbeat: {
+        collectionTaskId: "task-1",
+        extensionVersion: "0.2.2",
+        bridgeProtocolVersion: extensionBridgeProtocolVersion,
+        buildFingerprint: "build-task-page",
+        currentUrl: "http://127.0.0.1:3300/tasks/task-1",
+        pageType: "TASK_TABLE",
+        routeKey: "UNKNOWN",
+        collectable: false,
+        tabState: "VISIBLE",
+        observedAt: new Date().toISOString()
+      }
+    });
+
+    expect(getExtensionStatus({
+      collectionTaskId: "task-1",
+      taskTitle: "任务",
+      accountProfileId: "account-1",
+      activeCredentialIds: ["credential-task-page"],
+      expectedVersion: "0.2.2"
+    })).toMatchObject({ state: "PAGE_UNSUPPORTED", boundTaskId: "task-1", collectable: false });
   });
 });

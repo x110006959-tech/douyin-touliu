@@ -95,7 +95,7 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
       routeVerificationStatus: snapshot?.routeVerificationStatus || null,
       completeness: captureMeta?.completeness || null,
       lastCapturedAt: diagnostic.lastCapturedAt || route.lastCapturedAt?.toISOString() || null,
-      metricCount: snapshot?.normalizedMetrics.length || 0,
+      metricCount: snapshot?.normalizedMetrics.filter((metric) => metric.metricValue.trim() !== "").length || 0,
       coverageRatio: captureMeta?.coverageRatio ?? null,
       lastError: diagnostic.issues.find((issue) => issue.code === "UPLOAD_FAILED")?.message || null,
       diagnostic
@@ -120,6 +120,7 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
         metricName: metric.metricName,
         metricValue: reviewed?.reviewStatus === "MODIFIED" ? reviewed.reviewedValue || metric.metricValue : metric.metricValue,
         displayValue: summaryDisplayValue(metric, reviewed),
+        originalValue: reviewed?.originalValue || null,
         metricUnit: metric.metricUnit,
         category: standardizedKey === "unknown" ? "UNKNOWN" : metricKeyCategories[standardizedKey],
         confidence: reviewed?.confidence ?? metric.confidence,
@@ -210,7 +211,7 @@ export function selectOverviewMetrics(metrics: CaptureSummaryMetricDTO[]) {
 
 export function summaryDisplayValue(
   metric: { metricValue: string; rawEvidence: unknown },
-  reviewed?: { reviewStatus: string; reviewedValue: string | null } | null
+  reviewed?: { reviewStatus: string; reviewedValue: string | null; originalValue?: string | null } | null
 ) {
   if (reviewed?.reviewStatus === "MODIFIED" && reviewed.reviewedValue) return reviewed.reviewedValue;
   if (!metric.rawEvidence || typeof metric.rawEvidence !== "object" || Array.isArray(metric.rawEvidence)) return null;

@@ -66,15 +66,6 @@ Codex 不得实现以下能力：
 * 自动绕过验证码
 * 自动模拟人工操作
 
-禁止采集以下敏感信息：
-
-* password
-* cookie
-* token
-* authorization
-* secret
-* refreshToken
-* accessToken
 
 执行规范：
 

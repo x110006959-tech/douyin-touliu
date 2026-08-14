@@ -3,6 +3,7 @@ import { Prisma, type DecisionRun } from "@prisma/client";
 import { guardAiCandidateActions } from "@douyin-local-life/decision-engine";
 import { diagnosisSkillSetVersion } from "@douyin-local-life/diagnosis-skills";
 import { LlmTransportError, type ChatTransport } from "@douyin-local-life/llm";
+import { collectionFreshnessPolicy, decisionEngineInputSchema, type AnalyzeOutput, type DecisionEngineInput } from "@douyin-local-life/shared";
 import type { DiagnosisFinalResult } from "@douyin-local-life/shared/diagnosis";
 import { buildDecisionInput, toActionProposalCreate } from "../decision.js";
 import { DecisionEvidenceChangedError, decisionEvidenceFingerprint } from "../decision-evidence.js";
@@ -12,7 +13,6 @@ import { getTaskForDecision } from "../ownership.js";
 import { prisma } from "../prisma.js";
 import { prepareActionProposals, proposalExpiresAfterMs, proposalLifecyclePolicy } from "../proposal-lifecycle.js";
 import { sanitizeDerivedPersistedJson } from "../persisted-input.js";
-import { collectionFreshnessPolicy } from "@douyin-local-life/shared";
 import { aiDiagnosisEnabled, aiDiagnosisTimeoutMs, createConfiguredDiagnosisTransport } from "./config.js";
 import {
   DiagnosisOrchestrationError,
@@ -105,7 +105,7 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
     const task = await getTaskForDecision(run.collectionTaskId);
     if (!task) throw new DiagnosisWorkerError("TASK_NOT_FOUND", "诊断任务已不存在");
     if (decisionEvidenceFingerprint(task) !== run.evidenceFingerprint) throw new DecisionEvidenceChangedError();
-    const decisionInput = buildDecisionInput(task);
+    const decisionInput: DecisionEngineInput = storedDecisionInput(run) || buildDecisionInput(task);
     const readiness = evaluateDecisionReadiness(task, decisionInput);
     if (!readiness.ready) throw new DiagnosisWorkerError("DECISION_NOT_READY", readiness.blockingReasons.join("；"));
     const transport = configuredTransport || createConfiguredDiagnosisTransport();
@@ -291,4 +291,40 @@ class DiagnosisWorkerError extends Error {
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function storedDecisionInput(run: DecisionRun): DecisionEngineInput | null {
+  const parsed = decisionEngineInputSchema.safeParse(run.inputJson);
+  if (!parsed.success || !isStoredLiveOverviewRealtimeInput(parsed.data)) return null;
+  return {
+    ...parsed.data,
+    latestAnalysis: isAnalyzeOutput(parsed.data.latestAnalysis) ? parsed.data.latestAnalysis : null,
+    networkJsonSummary: parsed.data.networkJsonSummary.map((record) => ({
+      url: record.url,
+      method: record.method,
+      status: record.status,
+      capturedAt: record.capturedAt,
+      responseJson: record.responseJson ?? null
+    }))
+  };
+}
+
+function isStoredLiveOverviewRealtimeInput(input: ReturnType<typeof decisionEngineInputSchema.parse>) {
+  const evidence = input.realtimeEvidence;
+  return input.metricLayer === "REALTIME_API"
+    && evidence?.source === "LIVE_SCREEN_INTERNAL_API"
+    && evidence.routeKey === "LIVE_DATA_SCREEN"
+    && evidence.pageType === "LIVE_DATA_SCREEN"
+    && evidence.metricCount > 0;
+}
+
+function isAnalyzeOutput(value: unknown): value is AnalyzeOutput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.summary === "string"
+    && typeof record.confidence === "number"
+    && typeof record.riskLevel === "string"
+    && Array.isArray(record.problems)
+    && Array.isArray(record.suggestions)
+    && Array.isArray(record.manualCheckItems);
 }

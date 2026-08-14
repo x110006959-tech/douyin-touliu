@@ -30,11 +30,17 @@ jobs:
       - run: corepack pnpm test
       - run: corepack pnpm build
       - run: corepack pnpm version:check
-      - name: Verify production artifact has no network interception
+      - name: Verify production archive has no network interception
         shell: bash
         run: |
-          test -z "$(find apps/extension/dist -name 'injected.js' -print)"
-          ! grep -R -E 'window\.fetch\s*=|XMLHttpRequest|PAGE_NETWORK_CAPTURED' apps/extension/dist
+          artifact="$(find apps/extension/release -maxdepth 1 -name 'collector-v*.zip' -print -quit)"
+          test -n "$artifact"
+          artifact_dir="$(mktemp -d)"
+          unzip -q "$artifact" -d "$artifact_dir"
+          test ! -e "$artifact_dir/injected.js"
+          ! grep -R -E 'window\.fetch\s*=|XMLHttpRequest|PAGE_NETWORK_CAPTURED' "$artifact_dir"
+      - name: Verify validation did not mutate authored source
+        run: git diff --exit-code -- . ':(exclude)apps/extension/release/**'
       - uses: actions/upload-artifact@v4
         with:
           name: extension-${{ github.sha }}

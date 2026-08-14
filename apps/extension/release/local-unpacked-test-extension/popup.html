@@ -14,13 +14,13 @@
         color: #172033;
         background: #f4f6fa;
       }
-      header { padding: 16px; color: #fff; background: #172554; }
+      header { padding: 11px 14px; color: #fff; background: #172554; }
       h1 { margin: 0; font-size: 17px; letter-spacing: 0; }
-      header p { margin: 4px 0 0; color: #bfdbfe; }
-      main { display: grid; gap: 10px; padding: 12px; }
-      .panel { border: 1px solid #dce2ec; border-radius: 8px; background: #fff; padding: 12px; }
-      .panel h2 { margin: 0 0 8px; font-size: 14px; }
-      .stack { display: grid; gap: 8px; }
+      header p { margin: 2px 0 0; color: #bfdbfe; font-size: 12px; }
+      main { display: grid; gap: 8px; padding: 9px 11px 11px; }
+      .panel { border: 1px solid #dce2ec; border-radius: 8px; background: #fff; padding: 10px; }
+      .panel h2 { margin: 0; font-size: 14px; }
+      .stack { display: grid; gap: 7px; }
       .row { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; align-items: start; }
       .value { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
       .muted { color: #667085; }
@@ -41,6 +41,11 @@
       button.danger { color: #b91c1c; }
       .capture-button { min-height: 44px; font-size: 14px; }
       .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .live-data { border-top: 1px solid #dbeafe; padding-top: 7px; }
+      .pulse-summary { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+      .pulse-summary span { color: #667085; font-size: 12px; text-align: right; }
+      .metric-missing { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; }
+      .helper { margin: 0; color: #667085; font-size: 12px; line-height: 1.5; }
       .hidden { display: none !important; }
       details { border-top: 1px solid #e5e7eb; padding-top: 9px; }
       summary { cursor: pointer; color: #475467; font-weight: 600; }
@@ -56,9 +61,22 @@
       <section class="panel stack">
         <div class="status-line"><span id="statusDot" class="status-dot"></span><strong id="status">正在检查插件状态</strong></div>
         <div class="row"><span class="muted">当前页面</span><span id="pageType" class="value">识别中</span></div>
-        <div class="row"><span class="muted">当前已识别路线</span><span id="routeKey" class="value">识别中</span></div>
-        <div class="row"><span class="muted">页面网址</span><span id="currentUrl" class="value">读取中</span></div>
-        <div class="row"><span class="muted">采集能力</span><span id="collectable" class="value">检查中</span></div>
+      </section>
+
+      <section id="livePulsePanel" class="panel stack hidden">
+        <h2>直播 API 采集</h2>
+        <button id="livePulseBtn" class="primary capture-button">开始 API 持续采集</button>
+        <div id="livePulseStatus" class="helper">检查中</div>
+        <div id="livePulseData" class="stack hidden">
+          <div class="live-data stack">
+            <div class="pulse-summary">
+              <strong id="livePulseCoverage">核心指标 0/7</strong>
+              <span id="livePulseUpdatedAt">等待首次上传</span>
+            </div>
+            <p id="livePulseMissing" class="metric-missing hidden">等待首轮指标</p>
+          </div>
+          <div id="livePulseErrorRow" class="live-data hidden"><span class="muted">最近错误</span><div id="livePulseLastError" class="value">-</div></div>
+        </div>
       </section>
 
       <section id="pairingPanel" class="panel stack">
@@ -87,39 +105,31 @@
       </section>
 
       <section id="boundPanel" class="panel stack hidden">
-        <h2>当前采集上下文</h2>
-        <div class="row"><span class="muted">账号</span><span id="accountName" class="value">未绑定</span></div>
-        <div class="row"><span class="muted">项目</span><span id="projectName" class="value">未绑定</span></div>
-        <div class="row"><span class="muted">任务</span><span id="taskId" class="value">未绑定</span></div>
-        <div class="row"><span class="muted">本轮待采集路线</span><span id="nextRoute" class="value">等待任务信息</span></div>
-        <span id="routeRecognitionHint" class="muted hidden"></span>
-        <div id="routeOverridePanel" class="stack hidden">
-          <label for="routeOverride"><strong>确认本次采集路线</strong></label>
-          <span class="muted">当前页面无法自动确定路线。该选择只用于本次采集，不会修改平台页面。</span>
-          <select id="routeOverride">
-            <option value="">请选择当前可见路线</option>
-          </select>
-        </div>
-        <button id="captureBtn" class="primary capture-button">采集并上传当前路线</button>
+        <h2>巨量本地推数据页</h2>
+        <div class="row"><span class="muted">采集记录</span><span id="nextRoute" class="value">等待任务信息</span></div>
+        <button id="captureBtn" class="primary capture-button">采集并上传数据总览</button>
+        <p class="helper">只采集当前打开的数据总览；任务或计划列表不再采集。</p>
       </section>
 
       <section id="captureResult" class="panel success hidden"></section>
-
-      <section class="panel notice">
-        插件只读取当前已打开页面的可见 DOM、真实表格和白名单指标，不会点击平台按钮、修改预算、暂停任务、创建计划或提交表单。
-      </section>
 
       <section id="advancedPanel" class="panel stack">
         <details>
           <summary>高级设置与故障排查</summary>
           <div class="stack" style="margin-top: 10px">
-            <div class="row"><span class="muted">授权</span><span id="hasToken" class="value">未配对</span></div>
+            <div class="row"><span class="muted">页面网址</span><span id="currentUrl" class="value">读取中</span></div>
+            <div class="row"><span class="muted">识别路线</span><span id="routeKey" class="value">识别中</span></div>
+            <div class="row"><span class="muted">账号</span><span id="accountName" class="value">未绑定</span></div>
+            <div class="row"><span class="muted">项目</span><span id="projectName" class="value">未绑定</span></div>
+            <div class="row"><span class="muted">任务</span><span id="taskId" class="value">未绑定</span></div>
+            <div class="row"><span class="muted">配对校验</span><span id="hasToken" class="value">未配对</span></div>
             <div class="row"><span class="muted">本次采集批次</span><span id="collectionRunId" class="value">-</span></div>
             <div class="row"><span class="muted">插件构建</span><span id="extensionBuild" class="value">读取中</span></div>
-            <button id="sidePanelBtn">查看网页决策状态</button>
+            <button id="sidePanelBtn">可选：打开采集状态侧栏</button>
             <button id="refreshBtn">刷新插件状态</button>
             <button id="clearBtn">清空本地快照</button>
             <button id="clearPairingBtn" class="danger">解除本地绑定</button>
+            <p id="collectionNotice" class="helper">插件只读取白名单指标，不会点击或修改平台内容。</p>
             <pre id="snapshot">暂无本地快照</pre>
           </div>
         </details>

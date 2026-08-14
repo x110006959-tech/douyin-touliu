@@ -7,6 +7,9 @@ ARG SCHEMA_VERSION="20260731_v035_ai_skill_diagnosis"
 ENV GIT_SHA=$GIT_SHA
 ENV BUILD_TIME=$BUILD_TIME
 ENV SCHEMA_VERSION=$SCHEMA_VERSION
+# Docker Desktop environments may publish unreachable IPv6 registry addresses.
+# Prefer IPv4 during the deterministic dependency install in this build stage.
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
 
 RUN apk add --no-cache openssl
 WORKDIR /app

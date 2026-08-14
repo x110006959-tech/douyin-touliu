@@ -5,6 +5,7 @@ import { diagnosisFeedbackInputSchema, diagnosisCaseStatusInputSchema } from "@d
 import { writeAuditLog } from "../audit.js";
 import { aiDiagnosisEnabled } from "../ai-diagnosis/config.js";
 import { diagnosisOrchestrationVersion, diagnosisPromptVersion } from "../ai-diagnosis/orchestrator.js";
+import { decisionEngineInputSchema } from "@douyin-local-life/shared";
 import { buildDecisionInput } from "../decision.js";
 import { decisionEvidenceFingerprint } from "../decision-evidence.js";
 import { caseCanBecomeEligible } from "../diagnosis-cases.js";
@@ -17,6 +18,7 @@ import { ensureReviewMetricsForTask } from "../review-metrics.js";
 import { checkDecisionRateLimit } from "../rate-limit.js";
 import { currentUser, toJson } from "../server-utils.js";
 import { readSafeOptionalText } from "../persisted-input.js";
+import { latestRealtimeMetricFrame } from "../realtime-signals.js";
 import { runSerializableTransaction } from "../transactions.js";
 
 export function createDecisionRunRouter() {
@@ -45,7 +47,8 @@ export function createDecisionRunRouter() {
       res.setHeader("Retry-After", String(limit.retryAfterSeconds));
       return sendError(res, 429, "RATE_LIMITED", "AI 诊断运行过于频繁，请稍后再试");
     }
-    if (!task.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const realtimeFrame = latestRealtimeMetricFrame(task.id);
+    if (!task.snapshots[0] && !realtimeFrame) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
 
     const initialized = await prisma.$transaction(async (tx) => {
       const result = await ensureReviewMetricsForTask(task, tx);
@@ -60,18 +63,21 @@ export function createDecisionRunRouter() {
       return result;
     });
     const refreshed = await getOwnedTask(currentUser(req).id, task.id);
-    if (!refreshed?.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const refreshedRealtimeFrame = latestRealtimeMetricFrame(task.id);
+    if (!refreshed?.snapshots[0] && !refreshedRealtimeFrame) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const refreshedTask = refreshed as NonNullable<typeof refreshed>;
     const decisionInput = buildDecisionInput({
-      ...refreshed,
-      reviewedMetrics: initialized.metrics.length ? initialized.metrics : refreshed.reviewedMetrics
-    });
-    const readiness = evaluateDecisionReadiness(refreshed, decisionInput);
+      ...refreshedTask,
+      reviewedMetrics: initialized.metrics.length ? initialized.metrics : refreshedTask.reviewedMetrics
+    }, { realtimeFrame: refreshedRealtimeFrame });
+    decisionEngineInputSchema.parse(decisionInput);
+    const readiness = evaluateDecisionReadiness(refreshedTask, decisionInput);
     if (!readiness.ready) {
       return sendError(res, 409, "DECISION_NOT_READY", `当前数据不能运行 AI 诊断：${readiness.blockingReasons.join("；")}`, {
         fieldErrors: { readiness: readiness.blockingReasons.join("；") }
       });
     }
-    const evidenceFingerprint = decisionEvidenceFingerprint(refreshed);
+    const evidenceFingerprint = decisionEvidenceFingerprint(refreshedTask);
     try {
       const created = await runSerializableTransaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${task.id}), hashtext('ai-diagnosis-create'))`;
@@ -103,7 +109,8 @@ export function createDecisionRunRouter() {
             engineVersion: "ai-skill-diagnosis-v1",
             evidenceFingerprint,
             strategyVersion: "managed-live-growth-skills-v1",
-            currentStage: "QUEUED"
+            currentStage: "QUEUED",
+            inputJson: toJson(decisionInput)
           },
           include: decisionRunInclude
         });

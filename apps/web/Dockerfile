@@ -1,5 +1,7 @@
 FROM node:22-alpine AS build
 
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
 WORKDIR /app
 RUN corepack enable
 

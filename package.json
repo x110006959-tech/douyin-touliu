@@ -3,6 +3,9 @@
   "version": "0.2.4",
   "private": true,
   "packageManager": "pnpm@11.9.0",
+  "pxxisMetadata": {
+    "schemaVersion": "20260731_v035_ai_skill_diagnosis"
+  },
   "scripts": {
     "dev": "corepack pnpm --parallel --filter @douyin-local-life/api --filter @douyin-local-life/web dev",
     "dev:web": "corepack pnpm --filter @douyin-local-life/web dev",

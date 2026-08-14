@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>实时投流信号</title>
+    <title>API 数据采集</title>
     <style>
       :root { color-scheme: light; font: 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; color:#172033; background:#f6f7f9; }
       body { margin:0; min-width:300px; }
@@ -13,22 +13,33 @@
       main { display:grid; gap:10px; }
       section { background:#fff; border:1px solid #dfe3ea; border-radius:8px; padding:10px; }
       .row { display:flex; justify-content:space-between; gap:8px; }
-      .muted { color:#667085; } .warning { color:#9a6700; } .critical { color:#b42318; }
-      .signal,.proposal { border-top:1px solid #eef0f3; padding:8px 0; } .signal:first-child,.proposal:first-child { border-top:0; }
-      .proposal a { display:inline-block; margin-top:8px; color:#185abc; font-weight:600; text-decoration:none; }
-      .proposal a:hover { text-decoration:underline; }
-      button { min-height:32px; border:1px solid #cfd5df; border-radius:6px; background:#fff; cursor:pointer; }
-      .actions { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+      .row span:last-child { overflow-wrap:anywhere; text-align:right; font-weight:600; }
+      .muted { color:#667085; }
+      .live-section { border-color:#93c5fd; background:#eff6ff; }
       footer { color:#667085; border-top:1px solid #dfe3ea; background:#fff; }
     </style>
   </head>
   <body>
-    <header><h1>实时投流信号</h1><div id="status" class="muted">正在连接</div></header>
+    <header><h1>API 数据采集</h1><div id="status" class="muted">正在连接</div></header>
     <main>
-      <section><div class="row"><span>当前账号</span><span id="accountName">-</span></div><div class="row"><span>当前项目</span><span id="projectName">-</span></div><div class="row"><span>采集任务</span><span id="taskId">-</span></div><div class="row"><span>插件版本</span><span id="version">-</span></div><div class="row"><span>页面状态</span><span id="activity">-</span></div><div class="row"><span>巡检批次</span><span id="runId">-</span></div></section>
-      <section><h2>正式建议</h2><div id="proposals" class="muted">暂无正式建议</div></section>
+      <section>
+        <div class="row"><span>当前账号</span><span id="accountName">-</span></div>
+        <div class="row"><span>当前项目</span><span id="projectName">-</span></div>
+        <div class="row"><span>采集任务</span><span id="taskId">-</span></div>
+        <div class="row"><span>插件版本</span><span id="version">-</span></div>
+        <div class="row"><span>页面状态</span><span id="activity">-</span></div>
+        <div class="row"><span>采集批次</span><span id="runId">-</span></div>
+      </section>
+      <section class="live-section">
+        <h2>API 持续采集状态</h2>
+        <div class="row"><span>当前状态</span><span id="liveStatus">请在直播页点击一次开始</span></div>
+        <div class="row"><span>最近成功上传</span><span id="liveUpdatedAt">尚未启动</span></div>
+        <div class="row"><span>成功上传次数</span><span id="liveSuccessCount">0</span></div>
+        <div class="row"><span>核心指标覆盖</span><span id="liveMetricCount">0/7</span></div>
+        <div class="row"><span>最近错误</span><span id="liveLastError">-</span></div>
+      </section>
     </main>
-    <footer>AI诊断仅供投流决策参考。所有平台操作必须由用户人工确认并在平台页面手动完成，本插件不会自动点击、改预算、暂停计划或提交表单。</footer>
+    <footer>本栏只显示插件采集运行状态；具体指标请在网页端实时数据栏查看。插件不会自动点击、改预算、暂停计划或提交表单。</footer>
     <script type="module" src="/src/sidepanel.ts"></script>
   </body>
 </html>

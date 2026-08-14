@@ -1,11 +1,8 @@
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
 
-const events = {
-  READY: "PXXIS_EXTENSION_READY",
-  LEGACY_PING: "PXXIS_EXTENSION_PING",
-  REQUEST: "PXXIS_EXTENSION_REQUEST",
-  RESPONSE: "PXXIS_EXTENSION_RESPONSE"
-} as const;
+const bridgeWindowMessageChannel = "PXXIS_EXTENSION_BRIDGE";
+type BridgeWindowMessageType = "READY" | "PING" | "REQUEST" | "RESPONSE";
+type BridgeWindowMessage = { channel: typeof bridgeWindowMessageChannel; type: BridgeWindowMessageType; payload?: unknown };
 
 export type WebExtensionBridgeResponse = {
   requestId: string;
@@ -51,12 +48,16 @@ export function readExtensionBridgeMarker(): WebExtensionBridgeMarker {
 }
 
 export function announceExtensionBridge() {
-  window.dispatchEvent(new CustomEvent(events.LEGACY_PING));
+  window.postMessage(serializeBridgeWindowMessage("PING"), window.location.origin);
 }
 
 export function onExtensionBridgeReady(listener: () => void) {
-  window.addEventListener(events.READY, listener);
-  return () => window.removeEventListener(events.READY, listener);
+  const onMessage = (event: MessageEvent<unknown>) => {
+    if (event.source !== window || event.origin !== window.location.origin) return;
+    if (parseBridgeWindowMessage(event.data)?.type === "READY") listener();
+  };
+  window.addEventListener("message", onMessage);
+  return () => window.removeEventListener("message", onMessage);
 }
 
 export function getExtensionBridgeStatus() {
@@ -75,20 +76,55 @@ function requestExtensionBridge(type: "GET_STATUS" | "PAIR_TASK", payload?: { co
   return new Promise<WebExtensionBridgeResponse>((resolve, reject) => {
     const cleanup = () => {
       window.clearTimeout(timer);
-      window.removeEventListener(events.RESPONSE, onResponse as EventListener);
+      window.removeEventListener("message", onResponse);
     };
-    const onResponse = (event: CustomEvent<WebExtensionBridgeResponse>) => {
-      if (event.detail?.requestId !== requestId) return;
+    const onResponse = (event: MessageEvent<unknown>) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const message = parseBridgeWindowMessage(event.data);
+      if (message?.type !== "RESPONSE") return;
+      const response = parseBridgeResponse(message.payload);
+      if (!response || response.requestId !== requestId) return;
       cleanup();
-      resolve(event.detail);
+      resolve(response);
     };
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new ExtensionBridgeError("插件后台未响应，请在扩展管理页重新加载插件", "BACKGROUND_UNRESPONSIVE"));
     }, 5_000);
-    window.addEventListener(events.RESPONSE, onResponse as EventListener);
-    window.dispatchEvent(new CustomEvent(events.REQUEST, {
-      detail: { requestId, protocolVersion: extensionBridgeProtocolVersion, type, payload }
-    }));
+    window.addEventListener("message", onResponse);
+    window.postMessage(
+      serializeBridgeWindowMessage("REQUEST", { requestId, protocolVersion: extensionBridgeProtocolVersion, type, payload }),
+      window.location.origin
+    );
   });
+}
+
+function serializeBridgeWindowMessage(type: BridgeWindowMessageType, payload?: unknown) {
+  return JSON.stringify({ channel: bridgeWindowMessageChannel, type, payload });
+}
+
+function parseBridgeWindowMessage(value: unknown): BridgeWindowMessage | null {
+  if (typeof value !== "string") return null;
+  try {
+    const candidate: unknown = JSON.parse(value);
+    if (!candidate || typeof candidate !== "object") return null;
+    const message = candidate as Partial<BridgeWindowMessage>;
+    if (message.channel !== bridgeWindowMessageChannel) return null;
+    if (message.type !== "READY" && message.type !== "PING" && message.type !== "REQUEST" && message.type !== "RESPONSE") return null;
+    return message as BridgeWindowMessage;
+  } catch {
+    return null;
+  }
+}
+
+function parseBridgeResponse(value: unknown): WebExtensionBridgeResponse | null {
+  if (!value || typeof value !== "object") return null;
+  const response = value as Partial<WebExtensionBridgeResponse>;
+  if (typeof response.requestId !== "string" || typeof response.ok !== "boolean") return null;
+  if (typeof response.protocolVersion !== "number" || typeof response.extensionVersion !== "string") return null;
+  if (typeof response.buildFingerprint !== "string" || typeof response.paired !== "boolean") return null;
+  if (typeof response.pendingConfirmation !== "boolean" || typeof response.message !== "string") return null;
+  if (response.boundTaskId !== null && typeof response.boundTaskId !== "string") return null;
+  if (response.errorCode !== null && typeof response.errorCode !== "string") return null;
+  return response as WebExtensionBridgeResponse;
 }

@@ -7,7 +7,10 @@ export const captureBudget = {
   maxCells: 50_000,
   maxTableTextBytes: 1_048_576,
   maxVisibleTextBytes: 1_048_576,
-  maxDurationMs: 100
+  // Real dashboard pages can legitimately contain tens of thousands of rendered
+  // nodes. Keep the capture bounded without turning ordinary pages into partial
+  // evidence before their visible cards and tables have been read.
+  maxDurationMs: 1_500
 } as const;
 
 export type CaptureBudgetState = {
@@ -19,6 +22,7 @@ export type CaptureBudgetState = {
   tableTextBytes: number;
   visibleTextBytes: number;
   reasons: Set<string>;
+  visibilityCache: WeakMap<Element, boolean>;
 };
 
 export function createCaptureBudgetState(now = performance.now()): CaptureBudgetState {
@@ -30,7 +34,8 @@ export function createCaptureBudgetState(now = performance.now()): CaptureBudget
     cells: 0,
     tableTextBytes: 0,
     visibleTextBytes: 0,
-    reasons: new Set()
+    reasons: new Set(),
+    visibilityCache: new WeakMap()
   };
 }
 
@@ -41,7 +46,7 @@ export function collectBudgetedVisibleText(document: Document, state: CaptureBud
     if (!consumeNode(state)) break;
     const text = walker.currentNode.textContent?.trim() || "";
     const parent = walker.currentNode.parentElement;
-    if (!text || !parent || !isCaptureVisibleElement(parent)) continue;
+    if (!text || !parent || !isCaptureVisibleElement(parent, state)) continue;
     const accepted = consumeText(state, text, "VISIBLE_TEXT_LIMIT", "visibleTextBytes", captureBudget.maxVisibleTextBytes);
     if (accepted) chunks.push(accepted);
     if (isTimedOut(state)) break;
@@ -52,7 +57,7 @@ export function collectBudgetedVisibleText(document: Document, state: CaptureBud
 export function collectBudgetedTables(document: Document, state: CaptureBudgetState) {
   const tables: string[][][] = [];
   for (const table of document.querySelectorAll('table,[role="table"],[role="grid"]')) {
-    if (!consumeNode(state) || !isCaptureVisibleElement(table)) break;
+    if (!consumeNode(state) || !isCaptureVisibleElement(table, state)) break;
     const rows: string[][] = [];
     const rowSelector = table.tagName === "TABLE" ? "tr" : '[role="row"]';
     const cellSelector = table.tagName === "TABLE"
@@ -71,7 +76,7 @@ export function collectBudgetedTables(document: Document, state: CaptureBudgetSt
           state.reasons.add(state.cells >= captureBudget.maxCells ? "TABLE_CELL_LIMIT" : "TABLE_COLUMN_LIMIT");
           break;
         }
-        if (!isCaptureVisibleElement(cell)) continue;
+        if (!isCaptureVisibleElement(cell, state)) continue;
         const text = consumeText(state, cell.textContent?.trim() || "", "TABLE_TEXT_LIMIT", "tableTextBytes", captureBudget.maxTableTextBytes);
         if (text) cells.push(text);
         state.cells += 1;
@@ -98,7 +103,6 @@ function belongsToRow(element: Element, row: Element) {
 }
 
 export function applyCaptureBudget(meta: CaptureMeta, state: CaptureBudgetState): CaptureMeta {
-  if (performance.now() - state.startedAt >= captureBudget.maxDurationMs) state.reasons.add("TIME_BUDGET_EXCEEDED");
   const truncationReasons = [...new Set([...meta.truncationReasons, ...state.reasons])];
   const truncatedFields = [...new Set([
     ...meta.truncatedFields,
@@ -158,14 +162,38 @@ function isTimedOut(state: CaptureBudgetState) {
   return true;
 }
 
-export function isCaptureVisibleElement(element: Element) {
+export function isCaptureVisibleElement(element: Element, state?: Pick<CaptureBudgetState, "visibilityCache">) {
+  const cached = state?.visibilityCache.get(element);
+  if (cached != null) return cached;
   let current: Element | null = element;
+  let visible = true;
   while (current) {
-    if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") return false;
-    if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(current.tagName)) return false;
-    const style = window.getComputedStyle(current);
-    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0") return false;
+    if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
+      visible = false;
+      break;
+    }
+    if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(current.tagName)) {
+      visible = false;
+      break;
+    }
+    const style = computedStyle(current);
+    if (style && (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0")) {
+      visible = false;
+      break;
+    }
     current = current.parentElement;
   }
-  return true;
+  state?.visibilityCache.set(element, visible);
+  return visible;
+}
+
+function computedStyle(element: Element) {
+  const view = element.ownerDocument?.defaultView || (typeof window === "undefined" ? null : window);
+  if (!view || typeof view.getComputedStyle !== "function") return null;
+  try {
+    return view.getComputedStyle(element);
+  } catch {
+    // Lightweight test doubles do not implement the full DOM Element contract.
+    return null;
+  }
 }

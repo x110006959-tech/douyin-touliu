@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
-import { isAllowedBridgeApiBaseUrl, isAllowedBridgeOrigin, parseBridgeRequest, sanitizeBridgeResponse } from "./bridge-protocol";
+import {
+  isAllowedBridgeApiBaseUrl,
+  isAllowedBridgeOrigin,
+  parseBridgeRequest,
+  parseBridgeWindowMessage,
+  sanitizeBridgeResponse,
+  serializeBridgeWindowMessage
+} from "./bridge-protocol";
 
 describe("extension web bridge protocol", () => {
   it("accepts only the product site and local development origins", () => {
@@ -16,6 +23,14 @@ describe("extension web bridge protocol", () => {
     expect(parseBridgeRequest({ requestId: "ok-1", protocolVersion: extensionBridgeProtocolVersion, type: "GET_STATUS" })).toEqual(expect.objectContaining({ type: "GET_STATUS" }));
     expect(parseBridgeRequest({ requestId: "ok-1", protocolVersion: extensionBridgeProtocolVersion - 1, type: "GET_STATUS" })).toBeNull();
     expect(parseBridgeRequest({ requestId: "<script>", protocolVersion: extensionBridgeProtocolVersion, type: "PAIR_TASK" })).toBeNull();
+  });
+
+  it("accepts only valid JSON postMessage envelopes", () => {
+    const request = { requestId: "json-1", protocolVersion: extensionBridgeProtocolVersion, type: "GET_STATUS" };
+    const envelope = serializeBridgeWindowMessage("REQUEST", request);
+    expect(parseBridgeWindowMessage(envelope)).toEqual(expect.objectContaining({ type: "REQUEST", payload: request }));
+    expect(parseBridgeWindowMessage(JSON.stringify({ channel: "other", type: "REQUEST", payload: request }))).toBeNull();
+    expect(parseBridgeWindowMessage("not-json")).toBeNull();
   });
 
   it("never exposes credentials through page events", () => {

@@ -5,6 +5,16 @@ import { decisionTableInputSchema, type DecisionTableInput } from "./decision-ta
 import { metricValidationStatuses, type MetricRawEvidence } from "./metric-value.js";
 import { collectionRouteDiagnosticSchema } from "./collection-diagnostics.js";
 import { structuredCollectionDataSchema } from "./collection-records.js";
+import { metricKeys, recordableMetricKeys } from "./metric-keys.js";
+import {
+  captureTabStates,
+  metricSources,
+  metricSourceStatuses,
+  networkRecordSchema,
+  pageTypes,
+  visibleMetricSchema,
+  type CaptureCompleteness, type CaptureTabState, type MetricSource, type MetricSourceStatus, type PageType
+} from "./collection-capture.js";
 export { failure, success, type ApiResponse } from "./api-response.js";
 export * from "./safety.js";
 export * from "./metric-value.js";
@@ -14,6 +24,9 @@ export * from "./collection-diagnostics.js";
 export * from "./collection-records.js";
 export * from "./decision-tables.js";
 export * from "./collection-dashboard.js";
+export * from "./collection-capture.js";
+export * from "./live-screen-internal-api.js";
+export { metricKeys } from "./metric-keys.js";
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
   "SUBJECT_PENDING",
@@ -53,7 +66,6 @@ export const routeVerificationStatuses = ["VERIFIED", "MANUAL_PENDING"] as const
 export const collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"] as const;
 export const riskLevels = ["LOW", "MEDIUM", "HIGH"] as const;
 export const analysisStatuses = ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"] as const;
-export const pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"] as const;
 export const actionTypes = [
   "OBSERVE",
   "INCREASE_BUDGET",
@@ -86,59 +98,12 @@ export const actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED
 export const approvalDecisions = ["APPROVE", "REJECT", "APPROVED", "REJECTED", "OBSERVE"] as const;
 export const executionModes = ["MANUAL"] as const;
 export const executionStatuses = ["PENDING", "MANUAL_EXECUTED", "FAILED"] as const;
-export const metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"] as const;
 export const metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"] as const;
 export const dataReviewStatuses = ["REVIEWED", "UNREVIEWED"] as const;
-export const metricLayers = ["REVIEWED_METRIC"] as const;
-export const metricKeys = [
-  "unknown",
-  "verify_roi",
-  "gross_profit_roi",
-  "pay_roi",
-  "full_domain_pay_roi",
-  "target_roi",
-  "spend",
-  "daily_budget",
-  "remaining_budget",
-  "recent_30m_spend",
-  "recent_30m_orders",
-  "live_duration_minutes",
-  "minutes_since_last_adjustment",
-  "orders",
-  "impressions",
-  "clicks",
-  "ctr",
-  "cpa",
-  "target_cpa",
-  "live_viewers",
-  "hourly_live_views",
-  "hourly_natural_live_views",
-  "hourly_commercial_live_views",
-  "gpm",
-  "gmv",
-  "gross_profit",
-  "merchant_subsidy",
-  "service_fee",
-  "store_rating",
-  "complaint_rate",
-  "refund_rate",
-  "fulfillment_exception_rate",
-  "inventory_capacity",
-  "wrong_price_promise_risk",
-  "activity_verified",
-  "platform_subsidy",
-  "ad_coupon",
-  "rebate_coupon",
-  "shelf_gmv",
-  "search_gmv",
-  "poi_visits",
-  "store_searches"
-] as const;
+export const metricLayers = ["REVIEWED_METRIC", "REALTIME_API"] as const;
 export const metricCategories = ["ROI", "COST", "CONVERSION", "TRAFFIC", "LIVE_ROOM", "FULL_DOMAIN", "SERVICE_PROVIDER", "RISK", "ACTIVITY", "TIMING", "UNKNOWN"] as const;
 export const observationWindows = ["30m", "2h", "1d", "custom"] as const;
 export const actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"] as const;
-export const captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"] as const;
-export const captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"] as const;
 export const extensionConnectionStates = [
   "UNPAIRED",
   "PAIRED_NOT_CONNECTED",
@@ -151,12 +116,24 @@ export const extensionConnectionStates = [
   "OFFLINE",
   "ERROR"
 ] as const;
-export const extensionBridgeProtocolVersion = 2 as const;
+// Bump alongside a local acceptance build whenever the task page must reject
+// a previously loaded unpacked extension before it can report a fresh capture.
+export const extensionBridgeProtocolVersion = 7 as const;
 // Bump this whenever the extension-to-API capture write contract changes.
 // Unlike the Web Bridge protocol, this protects the persisted evidence path.
-export const extensionCollectionProtocolVersion = 1 as const;
+export const extensionCollectionProtocolVersion = 8 as const;
 export const captureSummaryRouteStates = ["PENDING", "READY", "UPLOADED", "AGING", "PARTIAL", "UNVERIFIED", "MANUAL_PENDING", "STALE", "FAILED"] as const;
-export const realtimeSignalKinds = ["ROI_CHANGE", "SPEND_ACCELERATION", "ORDER_STALL", "TRAFFIC_CHANGE", "DATA_STALE", "PAGE_INACTIVE"] as const;
+export const realtimeSignalKinds = [
+  "ROI_CHANGE",
+  "SPEND_ACCELERATION",
+  "ORDER_STALL",
+  "TRAFFIC_CHANGE",
+  "CLICK_RATE_CHANGE",
+  "GPM_CHANGE",
+  "GMV_MOMENTUM",
+  "DATA_STALE",
+  "PAGE_INACTIVE"
+] as const;
 export const realtimeSignalSeverities = ["INFO", "WARNING", "CRITICAL"] as const;
 export const extensionCredentialScopes = ["COLLECT", "READ_DIAGNOSIS"] as const;
 
@@ -173,13 +150,11 @@ export type RouteVerificationStatus = (typeof routeVerificationStatuses)[number]
 export type CollectionTaskStatus = (typeof collectionTaskStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type AnalysisStatus = (typeof analysisStatuses)[number];
-export type PageType = (typeof pageTypes)[number];
 export type ActionType = (typeof actionTypes)[number];
 export type ActionProposalStatus = (typeof actionProposalStatuses)[number];
 export type ApprovalDecision = (typeof approvalDecisions)[number];
 export type ExecutionMode = (typeof executionModes)[number];
 export type ExecutionStatus = (typeof executionStatuses)[number];
-export type MetricSource = (typeof metricSources)[number];
 export type MetricReviewStatus = (typeof metricReviewStatuses)[number];
 export type DataReviewStatus = (typeof dataReviewStatuses)[number];
 export type MetricLayer = (typeof metricLayers)[number];
@@ -187,8 +162,6 @@ export type MetricKey = (typeof metricKeys)[number];
 export type MetricCategory = (typeof metricCategories)[number];
 export type ObservationWindow = (typeof observationWindows)[number];
 export type ActionOutcomeResult = (typeof actionOutcomeResults)[number];
-export type CaptureCompleteness = (typeof captureCompletenessValues)[number];
-export type CaptureTabState = (typeof captureTabStates)[number];
 export type ExtensionConnectionState = (typeof extensionConnectionStates)[number];
 export type CaptureSummaryRouteState = (typeof captureSummaryRouteStates)[number];
 export type RealtimeSignalKind = (typeof realtimeSignalKinds)[number];
@@ -344,6 +317,7 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   recent_30m_spend: "近 30 分钟消耗",
   recent_30m_orders: "近 30 分钟订单数",
   live_duration_minutes: "开播时长（分钟）",
+  average_watch_duration_seconds: "人均观看时长（秒）",
   minutes_since_last_adjustment: "距上次调价（分钟）",
   orders: "成交订单数",
   impressions: "曝光量",
@@ -352,6 +326,13 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   cpa: "订单成本",
   target_cpa: "目标 CPA",
   live_viewers: "直播间观看人数",
+  current_online_viewers: "当前在线人数",
+  exposure_users: "曝光人数",
+  click_users: "点击人数",
+  transaction_users: "成交人数",
+  product_click_rate: "商品点击率",
+  product_conversion_rate: "商品转化率",
+  live_room_click_rate: "直播间点击率",
   hourly_live_views: "小时看播次数",
   hourly_natural_live_views: "小时自然看播次数",
   hourly_commercial_live_views: "小时商业看播次数",
@@ -389,6 +370,7 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   recent_30m_spend: "TIMING",
   recent_30m_orders: "TIMING",
   live_duration_minutes: "TIMING",
+  average_watch_duration_seconds: "TIMING",
   minutes_since_last_adjustment: "TIMING",
   orders: "CONVERSION",
   impressions: "TRAFFIC",
@@ -397,6 +379,13 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   cpa: "COST",
   target_cpa: "COST",
   live_viewers: "LIVE_ROOM",
+  current_online_viewers: "LIVE_ROOM",
+  exposure_users: "TRAFFIC",
+  click_users: "TRAFFIC",
+  transaction_users: "CONVERSION",
+  product_click_rate: "TRAFFIC",
+  product_conversion_rate: "CONVERSION",
+  live_room_click_rate: "TRAFFIC",
   hourly_live_views: "TRAFFIC",
   hourly_natural_live_views: "TRAFFIC",
   hourly_commercial_live_views: "TRAFFIC",
@@ -434,14 +423,22 @@ export const metricAliases: Record<MetricKey, readonly string[]> = {
   recent_30m_spend: ["recent_30m_spend", "近30分钟消耗", "近 30 分钟消耗"],
   recent_30m_orders: ["recent_30m_orders", "近30分钟订单", "近 30 分钟订单数"],
   live_duration_minutes: ["live_duration_minutes", "开播时长", "直播时长", "已开播分钟"],
+  average_watch_duration_seconds: ["average_watch_duration_seconds", "人均观看时长", "平均观看时长"],
   minutes_since_last_adjustment: ["minutes_since_last_adjustment", "距上次调价", "距上次调整", "最近一次调价时间"],
-  orders: ["orders", "order_count", "conversions", "成交订单数", "成交人数", "支付订单", "支付订单数"],
-  impressions: ["impressions", "曝光量", "曝光次数", "商品曝光人数", "直播曝光人数", "直播曝光次数"],
-  clicks: ["clicks", "点击量", "点击人数", "商品点击人数"],
-  ctr: ["ctr", "CTR", "点击率", "商品点击率", "曝光点击率"],
+  orders: ["orders", "order_count", "conversions", "成交订单数", "支付订单", "支付订单数"],
+  impressions: ["impressions", "曝光量", "曝光次数", "直播曝光次数"],
+  clicks: ["clicks", "点击量", "点击次数", "全域商品点击次数"],
+  ctr: ["ctr", "CTR", "点击率", "曝光点击率"],
   cpa: ["cpa", "cost_per_order", "order_cost", "转化成本", "成交成本", "订单成本", "CPA"],
   target_cpa: ["target_cpa", "target_cost", "目标 CPA", "目标CPA", "目标成本"],
-  live_viewers: ["live_viewers", "viewers", "直播间观看人数", "观看人数", "看播人数", "累计在线人数"],
+  live_viewers: ["live_viewers", "viewers", "直播间观看人数", "观看人数", "看播人数", "整场累计看播人数"],
+  current_online_viewers: ["current_online_viewers", "当前在线人数", "实时在线人数", "在线人数"],
+  exposure_users: ["exposure_users", "曝光人数", "商品曝光人数", "直播曝光人数"],
+  click_users: ["click_users", "点击人数", "商品点击人数"],
+  transaction_users: ["transaction_users", "成交人数", "支付人数"],
+  product_click_rate: ["product_click_rate", "商品点击率"],
+  product_conversion_rate: ["product_conversion_rate", "商品转化率"],
+  live_room_click_rate: ["live_room_click_rate", "直播间点击率"],
   hourly_live_views: ["hourly_live_views", "小时看播次数"],
   hourly_natural_live_views: ["hourly_natural_live_views", "小时自然看播次数"],
   hourly_commercial_live_views: ["hourly_commercial_live_views", "小时商业看播次数"],
@@ -597,6 +594,11 @@ export type ReviewedMetricDTO = {
   bindingLocation?: string | null;
   bindingStatus?: import("./metric-value.js").MetricValidationStatus | null;
   bindingReasons?: string[];
+  sourceStatus?: MetricSourceStatus | null;
+  apiValue?: string | null;
+  domValue?: string | null;
+  selectionReason?: string | null;
+  manualSourceSelection?: "API" | "DOM" | "IGNORE" | null;
   pageType?: string | null;
   scope?: string | null;
   timeRange?: string | null;
@@ -607,6 +609,7 @@ export type ReviewedMetricDTO = {
 export type ReviewMetricInput = {
   reviewedValue?: string;
   timeRange?: string;
+  sourceSelection?: "API" | "DOM" | "IGNORE";
   reviewStatus: "CONFIRMED" | "MODIFIED" | "IGNORED";
 };
 
@@ -615,6 +618,7 @@ export type BulkReviewMetricInput = {
     metricId: string;
     reviewedValue?: string;
     timeRange?: string;
+    sourceSelection?: "API" | "DOM" | "IGNORE";
     reviewStatus: "CONFIRMED" | "MODIFIED" | "IGNORED";
   }>;
 };
@@ -660,6 +664,24 @@ export type CaptureMeta = {
     confidence: number;
     manuallyConfirmed: boolean;
     evidence: string[];
+  };
+  liveScreenInternalApi?: {
+    contractVersion: string;
+    adapterVersion: string;
+    enabled: boolean;
+    roomId?: string | null;
+    roomIdSource: "URL" | "DOM" | "URL_AND_DOM" | "MISSING" | "MISMATCH";
+    roomIdEvidence?: import("./live-screen-internal-api.js").LiveScreenRoomIdEvidence;
+    endpointStatuses: Array<{
+      endpoint: import("./live-screen-internal-api.js").LiveScreenInternalApiEndpointKey;
+      status: "SUCCESS" | "SKIPPED" | "FAILED" | "ABORTED";
+      acceptedBytes: number;
+      reason?: string;
+    }>;
+    minuteRows?: Array<{
+      intervalLabel: string;
+      liveViews: string;
+    }>;
   };
 };
 
@@ -717,6 +739,7 @@ export type CaptureSummaryMetricDTO = {
   metricName: string;
   metricValue: string;
   displayValue: string | null;
+  originalValue: string | null;
   metricUnit: string | null;
   category: MetricCategory;
   confidence: number;
@@ -790,6 +813,27 @@ export type MetricPulse = {
   metrics: VisibleMetric[];
   captureMeta: CaptureMeta;
   sourceUrl?: string | null;
+  captureProtocolVersion?: number;
+};
+
+export type RealtimeMetricFrame = {
+  collectionTaskId: string;
+  routeKey: import("./collection-routes.js").CollectionRouteKey;
+  pageType: PageType;
+  observedAt: string;
+  receivedAt: string;
+  metrics: VisibleMetric[];
+  successfulEndpoints: string[];
+};
+
+export type RealtimeEvidenceSummary = {
+  routeKey: import("./collection-routes.js").CollectionRouteKey;
+  pageType: PageType;
+  observedAt: string;
+  receivedAt: string;
+  metricCount: number;
+  successfulEndpoints: string[];
+  source: "LIVE_SCREEN_INTERNAL_API";
 };
 
 export type RealtimeSignal = {
@@ -801,6 +845,7 @@ export type RealtimeSignal = {
   observedAt: string;
   dataAgeMs: number;
   evidence: Record<string, number | string | null>;
+  suggestion?: string;
 };
 
 export type BuildMetadata = {
@@ -946,6 +991,7 @@ export type DecisionEngineInput = {
   reviewCoverage?: ReviewCoverage;
   metricLayer?: MetricLayer;
   collectionQuality?: import("./collection-routes.js").CollectionQuality;
+  realtimeEvidence?: RealtimeEvidenceSummary;
 };
 
 export type ActionProposalDTO = {
@@ -1048,58 +1094,19 @@ export type AnalyzeOutput = {
   confidence: number;
 };
 
-export const metricRawEvidenceSchema = z.object({
-  sourceType: z.string().min(1),
-  path: z.string().optional(),
-  selector: z.string().optional(),
-  tableIndex: z.number().int().optional(),
-  rowIndex: z.number().int().optional(),
-  columnName: z.string().optional(),
-  url: z.string().optional(),
-  method: z.string().optional(),
-  jsonPath: z.string().optional(),
-  textSnippet: z.string().max(500).optional(),
-  fieldLabel: z.string().max(100).optional(),
-  displayValue: z.string().max(100).optional(),
-  normalizedValue: z.string().max(100).nullable().optional(),
-  displayPrecision: z.number().int().min(0).max(20).nullable().optional(),
-  multiplier: z.number().positive().optional(),
-  unitSource: z.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
-  timeRange: z.string().max(100).nullable().optional(),
-  timeRangeSource: z.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
-  timeRangeLocation: z.string().max(300).nullable().optional(),
-  bindingKind: z.enum(["CARD", "TABLE", "MANUAL"]).optional(),
-  componentPath: z.string().max(300).optional(),
-  rowIdentity: z.string().max(200).optional(),
-  calibrationSignature: z.string().max(500).optional(),
-  validationStatus: z.enum(metricValidationStatuses).optional(),
-  validationReasons: z.array(z.string().max(100)).max(20).optional()
-});
-
 export const metricKeySchema = z.enum(metricKeys);
-
-export const visibleMetricSchema = z.object({
-  key: z.string().min(1),
-  name: z.string().min(1),
-  value: z.union([z.number(), z.string(), z.null()]),
-  unit: z.string().nullable().optional(),
-  source: z.enum(["dom", "table", "network", "manual"]),
-  metricSource: z.enum(metricSources).optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  rawEvidence: metricRawEvidenceSchema.nullable().optional()
-});
 
 export const createActionOutcomeInputSchema = z
   .object({
     observationWindow: z.enum(observationWindows),
     customWindow: z.string().trim().max(100).nullable().optional(),
     beforeMetrics: z.array(z.object({
-      metricKey: z.enum(metricKeys).exclude(["unknown"]),
+      metricKey: z.enum(recordableMetricKeys),
       value: z.number().finite(),
       unit: z.string().trim().max(30).nullable().optional()
     }).strict()).max(100).optional(),
     afterMetrics: z.array(z.object({
-      metricKey: z.enum(metricKeys).exclude(["unknown"]),
+      metricKey: z.enum(recordableMetricKeys),
       value: z.number().finite(),
       unit: z.string().trim().max(30).nullable().optional()
     }).strict()).max(100).optional(),
@@ -1117,50 +1124,6 @@ export const createActionOutcomeInputSchema = z
     }
   });
 
-export const networkRecordSchema = z.object({
-  url: z.string().url().max(snapshotSafetyLimits.urlChars),
-  method: z.string().min(1).max(16),
-  status: z.number().int().min(0).max(599),
-  responseJson: z.unknown(),
-  capturedAt: z.string().datetime()
-});
-
-export const captureMetaSchema = z.object({
-  adapterId: z.string().min(1).max(100),
-  adapterVersion: z.string().min(1).max(50),
-  pageFingerprint: z.string().min(1).max(128),
-  completeness: z.enum(captureCompletenessValues),
-  coverageRatio: z.number().min(0).max(1),
-  expectedFields: z.array(z.string().max(100)).max(100),
-  extractedFields: z.array(z.string().max(100)).max(100),
-  visibleRegions: z.array(z.string().max(100)).max(50),
-  renderModes: z.array(z.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
-  tableBindings: z.array(z.object({
-    tableIndex: z.number().int().min(0).max(3),
-    headers: z.array(z.string().max(100)).min(1).max(100),
-    identityColumn: z.string().max(100).nullable(),
-    identityColumnIndex: z.number().int().min(0).max(99).nullable().optional(),
-    timeRange: z.string().max(100).nullable().optional(),
-    timeRangeLocation: z.string().max(300).nullable().optional(),
-    componentPath: z.string().max(300).nullable().optional(),
-    bindingSignature: z.string().min(1).max(500),
-    validationStatus: z.enum(metricValidationStatuses),
-    validationReasons: z.array(z.string().max(100)).max(20)
-  })).max(4).optional(),
-  tabState: z.enum(captureTabStates),
-  originalBytes: z.number().int().min(0),
-  acceptedBytes: z.number().int().min(0),
-  truncatedFields: z.array(z.string().max(100)).max(100),
-  truncationReasons: z.array(z.string().max(200)).max(100),
-  routeDetection: z.object({
-    routeKey: z.enum(collectionRouteKeys),
-    source: z.enum(["MANUAL", "URL", "ACTIVE_TAB", "VISIBLE_CONTENT", "PAGE_TYPE", "UNKNOWN"]),
-    confidence: z.number().min(0).max(1),
-    manuallyConfirmed: z.boolean(),
-    evidence: z.array(z.string().max(200)).max(20)
-  }).optional()
-});
-
 export const subjectContextSchema = z.object({
   subjectType: z.enum(subjectTypes),
   operatorType: z.enum(operatorTypes),
@@ -1170,22 +1133,6 @@ export const subjectContextSchema = z.object({
   serviceProviderName: z.string().nullable().optional(),
   serviceMode: z.string().nullable().optional(),
   serviceFee: z.number().min(0).nullable().optional()
-});
-
-export const collectionSnapshotSchema = z.object({
-  pageType: z.enum(pageTypes).default("UNKNOWN"),
-  sourceUrl: z.string().url().max(snapshotSafetyLimits.urlChars),
-  pageTitle: z.string().max(snapshotSafetyLimits.pageTitleChars).default(""),
-  rawDomText: z.string().max(snapshotSafetyLimits.rawDomTextChars).default(""),
-  rawNetworkJson: z.array(networkRecordSchema).max(snapshotSafetyLimits.networkRecords).default([]),
-  rawTableData: z.array(z.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
-  visibleMetricsJson: z.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
-  screenshotUrl: z.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
-  localCollectedAt: z.string().datetime(),
-  collectionRunId: z.string().min(1).max(128).nullable().optional(),
-  routeKey: z.enum(collectionRouteKeys).optional(),
-  captureProtocolVersion: z.number().int().min(1).max(100).optional(),
-  captureMeta: captureMetaSchema.optional()
 });
 
 export const createExtensionPairingCodeSchema = z.object({
@@ -1232,17 +1179,6 @@ export const manualMetricsInputSchema = z.object({
   metrics: z.array(manualMetricItemSchema).min(1, "请至少填写一个指标").max(200, "单次最多录入 200 个指标")
 });
 
-export const metricPulseSchema = z.object({
-  collectionRunId: z.string().min(1).max(128).nullable().optional(),
-  routeKey: z.enum(collectionRouteKeys),
-  pageType: z.enum(pageTypes),
-  localCapturedAt: z.string().datetime(),
-  tabState: z.enum(captureTabStates),
-  metrics: z.array(visibleMetricSchema).max(32),
-  captureMeta: captureMetaSchema,
-  sourceUrl: z.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional()
-});
-
 export const manualCheckItemSchema = z.object({
   title: z.string().min(1),
   reason: z.string().min(1)
@@ -1278,6 +1214,15 @@ export const decisionDataQualitySchema = z.object({
     missingRoutes: z.array(z.enum(collectionRouteKeys)),
     staleRoutes: z.array(z.enum(collectionRouteKeys)),
     blocksStrongActions: z.boolean()
+  }).optional(),
+  liveScreenInternalApi: z.object({
+    contractVersion: z.string().max(50),
+    adapterVersion: z.string().max(50),
+    enabled: z.boolean(),
+    roomIdSource: z.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+    endpointStatuses: z.array(z.object({
+      endpoint: z.string().max(100), status: z.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]), acceptedBytes: z.number().int().nonnegative(), reason: z.string().max(200).optional()
+    })).max(10)
   }).optional()
 });
 
@@ -1310,6 +1255,11 @@ export const reviewedMetricDTOSchema = z.object({
   bindingLocation: z.string().nullable().optional(),
   bindingStatus: z.enum(metricValidationStatuses).nullable().optional(),
   bindingReasons: z.array(z.string()).optional(),
+  sourceStatus: z.enum(metricSourceStatuses).nullable().optional(),
+  apiValue: z.string().nullable().optional(),
+  domValue: z.string().nullable().optional(),
+  selectionReason: z.string().nullable().optional(),
+  manualSourceSelection: z.enum(["API", "DOM", "IGNORE"]).nullable().optional(),
   pageType: z.string().nullable().optional(),
   scope: z.string().nullable().optional(),
   timeRange: z.string().nullable().optional(),
@@ -1322,6 +1272,7 @@ export const reviewMetricInputSchema = z
     expectedSnapshotUpdatedAt: z.string().datetime(),
     reviewedValue: z.string().optional(),
     timeRange: z.string().trim().min(1).max(100).optional(),
+    sourceSelection: z.enum(["API", "DOM", "IGNORE"]).optional(),
     reviewStatus: z.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
   })
   .superRefine((value, ctx) => {
@@ -1343,6 +1294,7 @@ export const bulkReviewMetricInputSchema = z.object({
           expectedSnapshotUpdatedAt: z.string().datetime(),
           reviewedValue: z.string().optional(),
           timeRange: z.string().trim().min(1).max(100).optional(),
+          sourceSelection: z.enum(["API", "DOM", "IGNORE"]).optional(),
           reviewStatus: z.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
         })
         .superRefine((value, ctx) => {
@@ -1438,6 +1390,15 @@ export const decisionEngineInputSchema = z.object({
     missingRoutes: z.array(z.enum(collectionRouteKeys)),
     staleRoutes: z.array(z.enum(collectionRouteKeys)),
     blocksStrongActions: z.boolean()
+  }).optional(),
+  realtimeEvidence: z.object({
+    routeKey: z.enum(collectionRouteKeys),
+    pageType: z.enum(pageTypes),
+    observedAt: z.string().datetime(),
+    receivedAt: z.string().datetime(),
+    metricCount: z.number().int().nonnegative(),
+    successfulEndpoints: z.array(z.string().min(1)).max(20),
+    source: z.literal("LIVE_SCREEN_INTERNAL_API")
   }).optional()
 });
 

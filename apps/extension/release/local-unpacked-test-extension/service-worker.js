@@ -4178,36 +4178,36 @@
       return sanitizeVisibleText(inputUrl, snapshotSafetyLimits.urlChars);
     }
   }
-  function sanitizeCollectionSnapshotPayload(snapshot) {
-    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot;
+  function sanitizeCollectionSnapshotPayload(snapshot2) {
+    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot2;
     const truncatedFields = [
-      ...snapshot.rawDomText.length ? ["rawDomText"] : [],
-      ...snapshot.rawNetworkJson.length ? ["rawNetworkJson"] : [],
-      ...snapshot.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : [],
-      ...(snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : []
+      ...snapshot2.rawDomText.length ? ["rawDomText"] : [],
+      ...snapshot2.rawNetworkJson.length ? ["rawNetworkJson"] : [],
+      ...snapshot2.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : [],
+      ...(snapshot2.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : []
     ];
     const sanitized = {
       ...snapshotWithoutPageAccount,
-      sourceUrl: sanitizeCaptureUrl(snapshot.sourceUrl || ""),
-      pageTitle: sanitizeVisibleText(snapshot.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
+      sourceUrl: sanitizeCaptureUrl(snapshot2.sourceUrl || ""),
+      pageTitle: sanitizeVisibleText(snapshot2.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
       // Page text may be used in memory to derive allowlisted fields, but is never part of a snapshot payload.
       rawDomText: "",
       rawNetworkJson: [],
-      rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
-      visibleMetricsJson: (snapshot.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
-      screenshotUrl: snapshot.screenshotUrl ? sanitizeCaptureUrl(snapshot.screenshotUrl) : snapshot.screenshotUrl
+      rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot2.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
+      visibleMetricsJson: (snapshot2.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
+      screenshotUrl: snapshot2.screenshotUrl ? sanitizeCaptureUrl(snapshot2.screenshotUrl) : snapshot2.screenshotUrl
     };
-    if ("captureMeta" in snapshot && snapshot.captureMeta && typeof snapshot.captureMeta === "object") {
-      const meta = snapshot.captureMeta;
+    if ("captureMeta" in snapshot2 && snapshot2.captureMeta && typeof snapshot2.captureMeta === "object") {
+      const meta = snapshot2.captureMeta;
       sanitized.captureMeta = {
         ...meta,
         acceptedBytes: serializedLength({ rawDomText: sanitized.rawDomText, rawTableData: sanitized.rawTableData, visibleMetricsJson: sanitized.visibleMetricsJson }),
         truncatedFields: [.../* @__PURE__ */ new Set([...Array.isArray(meta.truncatedFields) ? meta.truncatedFields.map(String) : [], ...truncatedFields])],
         truncationReasons: [.../* @__PURE__ */ new Set([
           ...Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : [],
-          ...snapshot.rawDomText.length ? ["PAGE_TEXT_CAPTURE_DISABLED"] : [],
-          ...snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : [],
-          ...snapshot.rawTableData.length > snapshotSafetyLimits.tableItems || (snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["SNAPSHOT_SAFETY_LIMIT"] : []
+          ...snapshot2.rawDomText.length ? ["PAGE_TEXT_CAPTURE_DISABLED"] : [],
+          ...snapshot2.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : [],
+          ...snapshot2.rawTableData.length > snapshotSafetyLimits.tableItems || (snapshot2.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["SNAPSHOT_SAFETY_LIMIT"] : []
         ])]
       };
     }
@@ -4312,18 +4312,6 @@
     }
   ];
   var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
-  var trustedExtensionCollectionHosts = [
-    "eos.douyin.com",
-    "localads.chengzijianzhan.cn"
-  ];
-  function isTrustedExtensionCollectionUrl(value) {
-    try {
-      const url = new URL(value);
-      return url.protocol === "https:" && trustedExtensionCollectionHosts.includes(url.hostname.toLowerCase());
-    } catch {
-      return false;
-    }
-  }
   var collectionFreshnessPolicy = {
     agingAfterMs: 5 * 60 * 1e3,
     staleAfterMs: 10 * 60 * 1e3,
@@ -4331,11 +4319,12 @@
     heartbeatUploadMs: 5 * 60 * 1e3,
     routeFailureThreshold: 3
   };
-  var defaultRequiredCollectionRoutes = [
+  var primaryCollectionRouteKeys = [
     "LOCAL_PROMOTION_DASHBOARD",
-    "LIVE_DATA_SCREEN",
-    "TASK_TABLE"
+    "LIVE_DATA_SCREEN"
   ];
+  var defaultRequiredCollectionRoutes = [...primaryCollectionRouteKeys];
+  var defaultCollectionRouteTemplates = collectionRouteTemplates.filter((route) => defaultRequiredCollectionRoutes.includes(route.routeKey));
   function normalizeCollectionRouteKey(value) {
     return collectionRouteKeys.includes(value) ? value : "UNKNOWN";
   }
@@ -4478,6 +4467,379 @@
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
+  // ../../packages/shared/dist/metric-keys.js
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/dist/live-screen-internal-api.js
+  var liveScreenRoomIdSources = ["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"];
+  var liveScreenRoomIdPattern = /^\d{1,32}$/;
+  var liveScreenInternalApiEndpointKeys = [
+    "key_index",
+    "room_minute_indicator",
+    "room_info",
+    "follow_product",
+    "product_trend",
+    "conversion_funnel",
+    "portrait",
+    "marketing_data",
+    "comment_info",
+    "punish_info"
+  ];
+  var liveScreenApiEvidencePurposes = ["PULSE_ONLY", "SNAPSHOT_EVIDENCE", "SNAPSHOT_DISPLAY_ONLY"];
+  var liveScreenPulseCoreMetricKeys = [
+    "gmv",
+    "current_online_viewers",
+    "average_watch_duration_seconds",
+    "gpm",
+    "orders",
+    "transaction_users",
+    "product_conversion_rate"
+  ];
+  var requestSchema = external_exports.object({ room_id: external_exports.string().regex(/^\d{1,32}$/) }).strict();
+  var metricValueSchema = external_exports.union([external_exports.number().finite(), external_exports.string().trim().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?%?$/)]).nullable();
+  var responseSchema = external_exports.object({
+    code: external_exports.number().int(),
+    data: external_exports.record(external_exports.string(), external_exports.unknown())
+  }).passthrough();
+  var keyIndexResponseSchema = external_exports.object({
+    code: external_exports.number().int(),
+    // Field-level type checks happen only at the explicit approved paths below.
+    // Keeping the object opaque here lets a single invalid/missing metric remain
+    // a local projection miss instead of widening the whole endpoint contract.
+    data: external_exports.record(external_exports.string(), external_exports.unknown())
+  }).strip();
+  var roomMinuteIndicatorResponseSchema = external_exports.object({
+    code: external_exports.literal(0),
+    data: external_exports.object({
+      minute_rows: external_exports.array(external_exports.object({
+        interval_label: external_exports.string().trim().min(1).max(100),
+        live_views: metricValueSchema
+      }).strip()).max(120)
+    }).strip()
+  }).strip();
+  var roomInfoResponseSchema = external_exports.object({
+    code: external_exports.literal(0),
+    data: external_exports.object({
+      live_viewers: metricValueSchema.optional(),
+      impressions: metricValueSchema.optional(),
+      clicks: metricValueSchema.optional(),
+      orders: metricValueSchema.optional()
+    }).strip()
+  }).strip();
+  var clickRateResponseSchema = external_exports.object({
+    code: external_exports.literal(0),
+    data: external_exports.object({ product_click_rate: metricValueSchema.optional() }).strip()
+  }).strip();
+  function endpoint(key, fields, maxResponseBytes = 96 * 1024, endpointResponseSchema = responseSchema) {
+    return {
+      key,
+      path: `/life/api/live_screen/v5/${key}`,
+      method: "POST",
+      requestSchema,
+      responseSchema: endpointResponseSchema,
+      maxResponseBytes,
+      fields
+    };
+  }
+  var realtime = (metricKey, metricName, fieldPath, fieldLabel, unit, semanticScope, displayPrecision = 0) => ({
+    metricKey,
+    metricName,
+    fieldPath,
+    approvedFieldPaths: [fieldPath],
+    fieldLabel,
+    unit,
+    timeRange: "\u5B9E\u65F6",
+    semanticScope,
+    purpose: "PULSE_ONLY",
+    displayPrecision
+  });
+  var snapshot = (metricKey, metricName, fieldPath, fieldLabel, unit, semanticScope, displayPrecision = 0, rowPath, rowLabelPath) => ({
+    metricKey,
+    metricName,
+    fieldPath,
+    approvedFieldPaths: [fieldPath],
+    fieldLabel,
+    unit,
+    timeRange: "\u672C\u573A",
+    semanticScope,
+    purpose: "SNAPSHOT_EVIDENCE",
+    displayPrecision,
+    rowPath,
+    rowLabelPath
+  });
+  var liveScreenInternalApiContracts = {
+    key_index: endpoint("key_index", [
+      // The live page renders Object.keys(response.data), and every key-index item
+      // exposes its display number through item.value. Keep this whitelist aligned
+      // with the concrete data keys shipped by the platform bundle; never scan
+      // arbitrary response keys or retain the response body.
+      realtime("gmv", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "data.PayGmv.value", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "yuan", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", 2),
+      realtime("current_online_viewers", "\u5728\u7EBF\u4EBA\u6570", "data.CurrentUserCnt.value", "\u5728\u7EBF\u4EBA\u6570", null, "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570"),
+      realtime("average_watch_duration_seconds", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "data.ClientAvgWatchDuration.value", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "s", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", 2),
+      realtime("gpm", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "data.GPM.value", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "yuan", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", 2),
+      realtime("orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "data.PayOrderCnt.value", "\u6210\u4EA4\u8BA2\u5355\u6570", null, "\u6210\u4EA4\u8BA2\u5355\u6570"),
+      realtime("transaction_users", "\u6210\u4EA4\u4EBA\u6570", "data.PayUvAll.value", "\u6210\u4EA4\u4EBA\u6570", null, "\u6210\u4EA4\u4EBA\u6570"),
+      realtime("product_conversion_rate", "\u5546\u54C1\u8F6C\u5316\u7387", "data.GoodsCvr.value", "\u5546\u54C1\u8F6C\u5316\u7387", "%", "\u5546\u54C1\u8F6C\u5316\u7387", 2)
+    ], 64 * 1024, keyIndexResponseSchema),
+    room_minute_indicator: endpoint("room_minute_indicator", [
+      snapshot("hourly_live_views", "\u5206\u949F\u770B\u64AD\u6B21\u6570", "data.minute_rows[].live_views", "\u5206\u949F\u770B\u64AD\u6B21\u6570", null, "\u5206\u949F\u8D8B\u52BF", 0, "data.minute_rows", "interval_label")
+    ], 96 * 1024, roomMinuteIndicatorResponseSchema),
+    room_info: endpoint("room_info", [
+      snapshot("live_viewers", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570", "data.live_viewers", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570", null, "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570"),
+      snapshot("impressions", "\u66DD\u5149\u6B21\u6570", "data.impressions", "\u66DD\u5149\u6B21\u6570", null, "\u66DD\u5149\u6B21\u6570"),
+      snapshot("clicks", "\u70B9\u51FB\u6B21\u6570", "data.clicks", "\u70B9\u51FB\u6B21\u6570", null, "\u70B9\u51FB\u6B21\u6570"),
+      snapshot("orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "data.orders", "\u6210\u4EA4\u8BA2\u5355\u6570", null, "\u6210\u4EA4\u8BA2\u5355\u6570")
+    ], 64 * 1024, roomInfoResponseSchema),
+    follow_product: endpoint("follow_product", [
+      snapshot("product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "data.product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "%", "\u5546\u54C1\u70B9\u51FB\u7387", 2)
+    ], 64 * 1024, clickRateResponseSchema),
+    product_trend: endpoint("product_trend", []),
+    conversion_funnel: endpoint("conversion_funnel", [
+      snapshot("product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "data.product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "%", "\u5546\u54C1\u70B9\u51FB\u7387", 2)
+    ], 64 * 1024, clickRateResponseSchema),
+    portrait: endpoint("portrait", []),
+    marketing_data: endpoint("marketing_data", []),
+    // Comments and enforcement endpoints intentionally expose no free text or identity fields.
+    comment_info: endpoint("comment_info", []),
+    punish_info: endpoint("punish_info", [])
+  };
+  var liveScreenSnapshotEndpointKeys = liveScreenInternalApiEndpointKeys.filter((key) => liveScreenInternalApiContracts[key].fields.some((field) => field.purpose !== "PULSE_ONLY"));
+  function resolveLiveScreenRoomId(input) {
+    const evidence = {
+      urlRoomIds: normalizeRoomIds(input.urlRoomIds),
+      domRoomIds: normalizeRoomIds(input.domRoomIds)
+    };
+    if (evidence.urlRoomIds.length > 1 || evidence.domRoomIds.length > 1) {
+      return { value: null, source: "MISMATCH", evidence };
+    }
+    const urlRoomId = evidence.urlRoomIds[0] || null;
+    const domRoomId = evidence.domRoomIds[0] || null;
+    if (urlRoomId && domRoomId && urlRoomId !== domRoomId) {
+      return { value: null, source: "MISMATCH", evidence };
+    }
+    if (urlRoomId && domRoomId)
+      return { value: urlRoomId, source: "URL_AND_DOM", evidence };
+    if (urlRoomId)
+      return { value: urlRoomId, source: "URL", evidence };
+    if (domRoomId)
+      return { value: domRoomId, source: "DOM", evidence };
+    return { value: null, source: "MISSING", evidence };
+  }
+  function normalizeRoomIds(values) {
+    return [...new Set(values.map((value) => value?.trim() || "").filter((value) => liveScreenRoomIdPattern.test(value)))].slice(0, 2);
+  }
+
+  // ../../packages/shared/dist/collection-capture.js
+  var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
+  var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
+  var metricSourceStatuses = ["INTERNAL_API", "DOM_TEXT", "API_AND_DOM", "SOURCE_CONFLICT"];
+  var captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"];
+  var captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"];
+  var metricRawEvidenceSchema = external_exports.object({
+    sourceType: external_exports.string().min(1),
+    path: external_exports.string().optional(),
+    selector: external_exports.string().optional(),
+    tableIndex: external_exports.number().int().optional(),
+    rowIndex: external_exports.number().int().optional(),
+    columnName: external_exports.string().optional(),
+    url: external_exports.string().optional(),
+    method: external_exports.string().optional(),
+    jsonPath: external_exports.string().optional(),
+    textSnippet: external_exports.string().max(500).optional(),
+    fieldLabel: external_exports.string().max(100).optional(),
+    displayValue: external_exports.string().max(100).optional(),
+    normalizedValue: external_exports.string().max(100).nullable().optional(),
+    displayPrecision: external_exports.number().int().min(0).max(20).nullable().optional(),
+    multiplier: external_exports.number().positive().optional(),
+    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+    timeRange: external_exports.string().max(100).nullable().optional(),
+    timeRangeSource: external_exports.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
+    timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+    bindingKind: external_exports.enum(["CARD", "TABLE", "MANUAL"]).optional(),
+    componentPath: external_exports.string().max(300).optional(),
+    rowIdentity: external_exports.string().max(200).optional(),
+    calibrationSignature: external_exports.string().max(500).optional(),
+    validationStatus: external_exports.enum(metricValidationStatuses).optional(),
+    validationReasons: external_exports.array(external_exports.string().max(100)).max(20).optional(),
+    sourceStatus: external_exports.enum(metricSourceStatuses).optional(),
+    apiCandidate: external_exports.object({
+      value: external_exports.string().max(100),
+      displayValue: external_exports.string().max(100),
+      unit: external_exports.string().nullable(),
+      timeRange: external_exports.string().max(100),
+      displayPrecision: external_exports.number().int().min(0).max(20),
+      fieldPath: external_exports.string().max(300),
+      fieldLabel: external_exports.string().max(100)
+    }).optional(),
+    domCandidate: external_exports.object({
+      value: external_exports.string().max(100),
+      displayValue: external_exports.string().max(100),
+      unit: external_exports.string().nullable(),
+      timeRange: external_exports.string().max(100),
+      displayPrecision: external_exports.number().int().min(0).max(20),
+      fieldPath: external_exports.string().max(300),
+      fieldLabel: external_exports.string().max(100)
+    }).optional(),
+    selectionReason: external_exports.string().max(200).optional(),
+    manualSourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
+    semanticScope: external_exports.string().max(100).optional(),
+    apiContractVersion: external_exports.string().max(50).optional(),
+    apiAdapterVersion: external_exports.string().max(50).optional(),
+    endpointKey: external_exports.string().max(100).optional(),
+    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional()
+  });
+  var visibleMetricSchema = external_exports.object({
+    key: external_exports.string().min(1),
+    name: external_exports.string().min(1),
+    value: external_exports.union([external_exports.number(), external_exports.string(), external_exports.null()]),
+    unit: external_exports.string().nullable().optional(),
+    source: external_exports.enum(["dom", "table", "network", "manual"]),
+    metricSource: external_exports.enum(metricSources).optional(),
+    confidence: external_exports.number().min(0).max(1).optional(),
+    rawEvidence: metricRawEvidenceSchema.nullable().optional()
+  });
+  var networkRecordSchema = external_exports.object({
+    url: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
+    method: external_exports.string().min(1).max(16),
+    status: external_exports.number().int().min(0).max(599),
+    responseJson: external_exports.unknown(),
+    capturedAt: external_exports.string().datetime()
+  });
+  var captureMetaSchema = external_exports.object({
+    adapterId: external_exports.string().min(1).max(100),
+    adapterVersion: external_exports.string().min(1).max(50),
+    pageFingerprint: external_exports.string().min(1).max(128),
+    completeness: external_exports.enum(captureCompletenessValues),
+    coverageRatio: external_exports.number().min(0).max(1),
+    expectedFields: external_exports.array(external_exports.string().max(100)).max(100),
+    extractedFields: external_exports.array(external_exports.string().max(100)).max(100),
+    visibleRegions: external_exports.array(external_exports.string().max(100)).max(50),
+    renderModes: external_exports.array(external_exports.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
+    tableBindings: external_exports.array(external_exports.object({
+      tableIndex: external_exports.number().int().min(0).max(3),
+      headers: external_exports.array(external_exports.string().max(100)).min(1).max(100),
+      identityColumn: external_exports.string().max(100).nullable(),
+      identityColumnIndex: external_exports.number().int().min(0).max(99).nullable().optional(),
+      timeRange: external_exports.string().max(100).nullable().optional(),
+      timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+      componentPath: external_exports.string().max(300).nullable().optional(),
+      bindingSignature: external_exports.string().min(1).max(500),
+      validationStatus: external_exports.enum(metricValidationStatuses),
+      validationReasons: external_exports.array(external_exports.string().max(100)).max(20)
+    })).max(4).optional(),
+    tabState: external_exports.enum(captureTabStates),
+    originalBytes: external_exports.number().int().min(0),
+    acceptedBytes: external_exports.number().int().min(0),
+    truncatedFields: external_exports.array(external_exports.string().max(100)).max(100),
+    truncationReasons: external_exports.array(external_exports.string().max(200)).max(100),
+    routeDetection: external_exports.object({
+      routeKey: external_exports.enum(collectionRouteKeys),
+      source: external_exports.enum(["MANUAL", "URL", "ACTIVE_TAB", "VISIBLE_CONTENT", "PAGE_TYPE", "UNKNOWN"]),
+      confidence: external_exports.number().min(0).max(1),
+      manuallyConfirmed: external_exports.boolean(),
+      evidence: external_exports.array(external_exports.string().max(200)).max(20)
+    }).optional(),
+    liveScreenInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      roomId: external_exports.string().regex(liveScreenRoomIdPattern).nullable().optional(),
+      roomIdSource: external_exports.enum(liveScreenRoomIdSources),
+      roomIdEvidence: external_exports.object({
+        urlRoomIds: external_exports.array(external_exports.string().regex(liveScreenRoomIdPattern)).max(2),
+        domRoomIds: external_exports.array(external_exports.string().regex(liveScreenRoomIdPattern)).max(2)
+      }).optional(),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.enum(liveScreenInternalApiEndpointKeys),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().min(0).max(384 * 1024),
+        reason: external_exports.string().max(100).optional()
+      })).max(liveScreenInternalApiEndpointKeys.length),
+      minuteRows: external_exports.array(external_exports.object({
+        intervalLabel: external_exports.string().min(1).max(100),
+        liveViews: external_exports.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
+      })).max(120).optional()
+    }).optional()
+  });
+  var collectionSnapshotSchema = external_exports.object({
+    pageType: external_exports.enum(pageTypes).default("UNKNOWN"),
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
+    pageTitle: external_exports.string().max(snapshotSafetyLimits.pageTitleChars).default(""),
+    rawDomText: external_exports.string().max(snapshotSafetyLimits.rawDomTextChars).default(""),
+    rawNetworkJson: external_exports.array(networkRecordSchema).max(snapshotSafetyLimits.networkRecords).default([]),
+    rawTableData: external_exports.array(external_exports.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
+    visibleMetricsJson: external_exports.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
+    screenshotUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
+    localCollectedAt: external_exports.string().datetime(),
+    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
+    routeKey: external_exports.enum(collectionRouteKeys).optional(),
+    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
+    captureMeta: captureMetaSchema.optional()
+  });
+  var metricPulseSchema = external_exports.object({
+    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
+    routeKey: external_exports.enum(collectionRouteKeys),
+    pageType: external_exports.enum(pageTypes),
+    localCapturedAt: external_exports.string().datetime(),
+    tabState: external_exports.enum(captureTabStates),
+    metrics: external_exports.array(visibleMetricSchema).max(32),
+    captureMeta: captureMetaSchema,
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
+    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional()
+  });
+
   // ../../packages/shared/dist/collection-dashboard.js
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
@@ -4535,7 +4897,6 @@
   var accountPlatforms = ["DOUYIN_LOCAL_LIFE"];
   var collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"];
   var riskLevels = ["LOW", "MEDIUM", "HIGH"];
-  var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
   var actionTypes = [
     "OBSERVE",
     "INCREASE_BUDGET",
@@ -4565,60 +4926,13 @@
     "REQUEST_MANUAL_REVIEW"
   ];
   var actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "OBSERVING", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"];
-  var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"];
   var dataReviewStatuses = ["REVIEWED", "UNREVIEWED"];
-  var metricLayers = ["REVIEWED_METRIC"];
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
+  var metricLayers = ["REVIEWED_METRIC", "REALTIME_API"];
   var observationWindows = ["30m", "2h", "1d", "custom"];
   var actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"];
-  var captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"];
-  var captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"];
-  var extensionBridgeProtocolVersion = 2;
-  var extensionCollectionProtocolVersion = 1;
+  var extensionBridgeProtocolVersion = 7;
+  var extensionCollectionProtocolVersion = 8;
   var metricKeyLabels = {
     unknown: "\u672A\u77E5\u6307\u6807",
     verify_roi: "\u6838\u9500 ROI",
@@ -4632,6 +4946,7 @@
     recent_30m_spend: "\u8FD1 30 \u5206\u949F\u6D88\u8017",
     recent_30m_orders: "\u8FD1 30 \u5206\u949F\u8BA2\u5355\u6570",
     live_duration_minutes: "\u5F00\u64AD\u65F6\u957F\uFF08\u5206\u949F\uFF09",
+    average_watch_duration_seconds: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F\uFF08\u79D2\uFF09",
     minutes_since_last_adjustment: "\u8DDD\u4E0A\u6B21\u8C03\u4EF7\uFF08\u5206\u949F\uFF09",
     orders: "\u6210\u4EA4\u8BA2\u5355\u6570",
     impressions: "\u66DD\u5149\u91CF",
@@ -4640,6 +4955,13 @@
     cpa: "\u8BA2\u5355\u6210\u672C",
     target_cpa: "\u76EE\u6807 CPA",
     live_viewers: "\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570",
+    current_online_viewers: "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570",
+    exposure_users: "\u66DD\u5149\u4EBA\u6570",
+    click_users: "\u70B9\u51FB\u4EBA\u6570",
+    transaction_users: "\u6210\u4EA4\u4EBA\u6570",
+    product_click_rate: "\u5546\u54C1\u70B9\u51FB\u7387",
+    product_conversion_rate: "\u5546\u54C1\u8F6C\u5316\u7387",
+    live_room_click_rate: "\u76F4\u64AD\u95F4\u70B9\u51FB\u7387",
     hourly_live_views: "\u5C0F\u65F6\u770B\u64AD\u6B21\u6570",
     hourly_natural_live_views: "\u5C0F\u65F6\u81EA\u7136\u770B\u64AD\u6B21\u6570",
     hourly_commercial_live_views: "\u5C0F\u65F6\u5546\u4E1A\u770B\u64AD\u6B21\u6570",
@@ -4676,14 +4998,22 @@
     recent_30m_spend: ["recent_30m_spend", "\u8FD130\u5206\u949F\u6D88\u8017", "\u8FD1 30 \u5206\u949F\u6D88\u8017"],
     recent_30m_orders: ["recent_30m_orders", "\u8FD130\u5206\u949F\u8BA2\u5355", "\u8FD1 30 \u5206\u949F\u8BA2\u5355\u6570"],
     live_duration_minutes: ["live_duration_minutes", "\u5F00\u64AD\u65F6\u957F", "\u76F4\u64AD\u65F6\u957F", "\u5DF2\u5F00\u64AD\u5206\u949F"],
+    average_watch_duration_seconds: ["average_watch_duration_seconds", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u5E73\u5747\u89C2\u770B\u65F6\u957F"],
     minutes_since_last_adjustment: ["minutes_since_last_adjustment", "\u8DDD\u4E0A\u6B21\u8C03\u4EF7", "\u8DDD\u4E0A\u6B21\u8C03\u6574", "\u6700\u8FD1\u4E00\u6B21\u8C03\u4EF7\u65F6\u95F4"],
-    orders: ["orders", "order_count", "conversions", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u6210\u4EA4\u4EBA\u6570", "\u652F\u4ED8\u8BA2\u5355", "\u652F\u4ED8\u8BA2\u5355\u6570"],
-    impressions: ["impressions", "\u66DD\u5149\u91CF", "\u66DD\u5149\u6B21\u6570", "\u5546\u54C1\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u6B21\u6570"],
-    clicks: ["clicks", "\u70B9\u51FB\u91CF", "\u70B9\u51FB\u4EBA\u6570", "\u5546\u54C1\u70B9\u51FB\u4EBA\u6570"],
-    ctr: ["ctr", "CTR", "\u70B9\u51FB\u7387", "\u5546\u54C1\u70B9\u51FB\u7387", "\u66DD\u5149\u70B9\u51FB\u7387"],
+    orders: ["orders", "order_count", "conversions", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u652F\u4ED8\u8BA2\u5355", "\u652F\u4ED8\u8BA2\u5355\u6570"],
+    impressions: ["impressions", "\u66DD\u5149\u91CF", "\u66DD\u5149\u6B21\u6570", "\u76F4\u64AD\u66DD\u5149\u6B21\u6570"],
+    clicks: ["clicks", "\u70B9\u51FB\u91CF", "\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"],
+    ctr: ["ctr", "CTR", "\u70B9\u51FB\u7387", "\u66DD\u5149\u70B9\u51FB\u7387"],
     cpa: ["cpa", "cost_per_order", "order_cost", "\u8F6C\u5316\u6210\u672C", "\u6210\u4EA4\u6210\u672C", "\u8BA2\u5355\u6210\u672C", "CPA"],
     target_cpa: ["target_cpa", "target_cost", "\u76EE\u6807 CPA", "\u76EE\u6807CPA", "\u76EE\u6807\u6210\u672C"],
-    live_viewers: ["live_viewers", "viewers", "\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570", "\u89C2\u770B\u4EBA\u6570", "\u770B\u64AD\u4EBA\u6570", "\u7D2F\u8BA1\u5728\u7EBF\u4EBA\u6570"],
+    live_viewers: ["live_viewers", "viewers", "\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570", "\u89C2\u770B\u4EBA\u6570", "\u770B\u64AD\u4EBA\u6570", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570"],
+    current_online_viewers: ["current_online_viewers", "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", "\u5728\u7EBF\u4EBA\u6570"],
+    exposure_users: ["exposure_users", "\u66DD\u5149\u4EBA\u6570", "\u5546\u54C1\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u4EBA\u6570"],
+    click_users: ["click_users", "\u70B9\u51FB\u4EBA\u6570", "\u5546\u54C1\u70B9\u51FB\u4EBA\u6570"],
+    transaction_users: ["transaction_users", "\u6210\u4EA4\u4EBA\u6570", "\u652F\u4ED8\u4EBA\u6570"],
+    product_click_rate: ["product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387"],
+    product_conversion_rate: ["product_conversion_rate", "\u5546\u54C1\u8F6C\u5316\u7387"],
+    live_room_click_rate: ["live_room_click_rate", "\u76F4\u64AD\u95F4\u70B9\u51FB\u7387"],
     hourly_live_views: ["hourly_live_views", "\u5C0F\u65F6\u770B\u64AD\u6B21\u6570"],
     hourly_natural_live_views: ["hourly_natural_live_views", "\u5C0F\u65F6\u81EA\u7136\u770B\u64AD\u6B21\u6570"],
     hourly_commercial_live_views: ["hourly_commercial_live_views", "\u5C0F\u65F6\u5546\u4E1A\u770B\u64AD\u6B21\u6570"],
@@ -4732,54 +5062,17 @@
   var diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"];
   var recommendationPriorities = ["P0", "P1", "P2"];
   var decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"];
-  var metricRawEvidenceSchema = external_exports.object({
-    sourceType: external_exports.string().min(1),
-    path: external_exports.string().optional(),
-    selector: external_exports.string().optional(),
-    tableIndex: external_exports.number().int().optional(),
-    rowIndex: external_exports.number().int().optional(),
-    columnName: external_exports.string().optional(),
-    url: external_exports.string().optional(),
-    method: external_exports.string().optional(),
-    jsonPath: external_exports.string().optional(),
-    textSnippet: external_exports.string().max(500).optional(),
-    fieldLabel: external_exports.string().max(100).optional(),
-    displayValue: external_exports.string().max(100).optional(),
-    normalizedValue: external_exports.string().max(100).nullable().optional(),
-    displayPrecision: external_exports.number().int().min(0).max(20).nullable().optional(),
-    multiplier: external_exports.number().positive().optional(),
-    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
-    timeRange: external_exports.string().max(100).nullable().optional(),
-    timeRangeSource: external_exports.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
-    timeRangeLocation: external_exports.string().max(300).nullable().optional(),
-    bindingKind: external_exports.enum(["CARD", "TABLE", "MANUAL"]).optional(),
-    componentPath: external_exports.string().max(300).optional(),
-    rowIdentity: external_exports.string().max(200).optional(),
-    calibrationSignature: external_exports.string().max(500).optional(),
-    validationStatus: external_exports.enum(metricValidationStatuses).optional(),
-    validationReasons: external_exports.array(external_exports.string().max(100)).max(20).optional()
-  });
   var metricKeySchema = external_exports.enum(metricKeys);
-  var visibleMetricSchema = external_exports.object({
-    key: external_exports.string().min(1),
-    name: external_exports.string().min(1),
-    value: external_exports.union([external_exports.number(), external_exports.string(), external_exports.null()]),
-    unit: external_exports.string().nullable().optional(),
-    source: external_exports.enum(["dom", "table", "network", "manual"]),
-    metricSource: external_exports.enum(metricSources).optional(),
-    confidence: external_exports.number().min(0).max(1).optional(),
-    rawEvidence: metricRawEvidenceSchema.nullable().optional()
-  });
   var createActionOutcomeInputSchema = external_exports.object({
     observationWindow: external_exports.enum(observationWindows),
     customWindow: external_exports.string().trim().max(100).nullable().optional(),
     beforeMetrics: external_exports.array(external_exports.object({
-      metricKey: external_exports.enum(metricKeys).exclude(["unknown"]),
+      metricKey: external_exports.enum(recordableMetricKeys),
       value: external_exports.number().finite(),
       unit: external_exports.string().trim().max(30).nullable().optional()
     }).strict()).max(100).optional(),
     afterMetrics: external_exports.array(external_exports.object({
-      metricKey: external_exports.enum(metricKeys).exclude(["unknown"]),
+      metricKey: external_exports.enum(recordableMetricKeys),
       value: external_exports.number().finite(),
       unit: external_exports.string().trim().max(30).nullable().optional()
     }).strict()).max(100).optional(),
@@ -4795,48 +5088,6 @@
       });
     }
   });
-  var networkRecordSchema = external_exports.object({
-    url: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
-    method: external_exports.string().min(1).max(16),
-    status: external_exports.number().int().min(0).max(599),
-    responseJson: external_exports.unknown(),
-    capturedAt: external_exports.string().datetime()
-  });
-  var captureMetaSchema = external_exports.object({
-    adapterId: external_exports.string().min(1).max(100),
-    adapterVersion: external_exports.string().min(1).max(50),
-    pageFingerprint: external_exports.string().min(1).max(128),
-    completeness: external_exports.enum(captureCompletenessValues),
-    coverageRatio: external_exports.number().min(0).max(1),
-    expectedFields: external_exports.array(external_exports.string().max(100)).max(100),
-    extractedFields: external_exports.array(external_exports.string().max(100)).max(100),
-    visibleRegions: external_exports.array(external_exports.string().max(100)).max(50),
-    renderModes: external_exports.array(external_exports.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
-    tableBindings: external_exports.array(external_exports.object({
-      tableIndex: external_exports.number().int().min(0).max(3),
-      headers: external_exports.array(external_exports.string().max(100)).min(1).max(100),
-      identityColumn: external_exports.string().max(100).nullable(),
-      identityColumnIndex: external_exports.number().int().min(0).max(99).nullable().optional(),
-      timeRange: external_exports.string().max(100).nullable().optional(),
-      timeRangeLocation: external_exports.string().max(300).nullable().optional(),
-      componentPath: external_exports.string().max(300).nullable().optional(),
-      bindingSignature: external_exports.string().min(1).max(500),
-      validationStatus: external_exports.enum(metricValidationStatuses),
-      validationReasons: external_exports.array(external_exports.string().max(100)).max(20)
-    })).max(4).optional(),
-    tabState: external_exports.enum(captureTabStates),
-    originalBytes: external_exports.number().int().min(0),
-    acceptedBytes: external_exports.number().int().min(0),
-    truncatedFields: external_exports.array(external_exports.string().max(100)).max(100),
-    truncationReasons: external_exports.array(external_exports.string().max(200)).max(100),
-    routeDetection: external_exports.object({
-      routeKey: external_exports.enum(collectionRouteKeys),
-      source: external_exports.enum(["MANUAL", "URL", "ACTIVE_TAB", "VISIBLE_CONTENT", "PAGE_TYPE", "UNKNOWN"]),
-      confidence: external_exports.number().min(0).max(1),
-      manuallyConfirmed: external_exports.boolean(),
-      evidence: external_exports.array(external_exports.string().max(200)).max(20)
-    }).optional()
-  });
   var subjectContextSchema = external_exports.object({
     subjectType: external_exports.enum(subjectTypes),
     operatorType: external_exports.enum(operatorTypes),
@@ -4846,21 +5097,6 @@
     serviceProviderName: external_exports.string().nullable().optional(),
     serviceMode: external_exports.string().nullable().optional(),
     serviceFee: external_exports.number().min(0).nullable().optional()
-  });
-  var collectionSnapshotSchema = external_exports.object({
-    pageType: external_exports.enum(pageTypes).default("UNKNOWN"),
-    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
-    pageTitle: external_exports.string().max(snapshotSafetyLimits.pageTitleChars).default(""),
-    rawDomText: external_exports.string().max(snapshotSafetyLimits.rawDomTextChars).default(""),
-    rawNetworkJson: external_exports.array(networkRecordSchema).max(snapshotSafetyLimits.networkRecords).default([]),
-    rawTableData: external_exports.array(external_exports.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
-    visibleMetricsJson: external_exports.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
-    screenshotUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
-    localCollectedAt: external_exports.string().datetime(),
-    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
-    routeKey: external_exports.enum(collectionRouteKeys).optional(),
-    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
-    captureMeta: captureMetaSchema.optional()
   });
   var createExtensionPairingCodeSchema = external_exports.object({
     accountProfileId: external_exports.string().min(1, "\u8BF7\u9009\u62E9\u8981\u7ED1\u5B9A\u7684\u5E73\u53F0\u8D26\u53F7"),
@@ -4900,16 +5136,6 @@
     sourceLabel: external_exports.string().trim().max(100).default("\u7F51\u9875\u624B\u5DE5\u5F55\u5165"),
     metrics: external_exports.array(manualMetricItemSchema).min(1, "\u8BF7\u81F3\u5C11\u586B\u5199\u4E00\u4E2A\u6307\u6807").max(200, "\u5355\u6B21\u6700\u591A\u5F55\u5165 200 \u4E2A\u6307\u6807")
   });
-  var metricPulseSchema = external_exports.object({
-    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
-    routeKey: external_exports.enum(collectionRouteKeys),
-    pageType: external_exports.enum(pageTypes),
-    localCapturedAt: external_exports.string().datetime(),
-    tabState: external_exports.enum(captureTabStates),
-    metrics: external_exports.array(visibleMetricSchema).max(32),
-    captureMeta: captureMetaSchema,
-    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional()
-  });
   var manualCheckItemSchema = external_exports.object({
     title: external_exports.string().min(1),
     reason: external_exports.string().min(1)
@@ -4944,6 +5170,18 @@
       missingRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
+    }).optional(),
+    liveScreenInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      roomIdSource: external_exports.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.string().max(100),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().nonnegative(),
+        reason: external_exports.string().max(200).optional()
+      })).max(10)
     }).optional()
   });
   var reviewCoverageSchema = external_exports.object({
@@ -4974,6 +5212,11 @@
     bindingLocation: external_exports.string().nullable().optional(),
     bindingStatus: external_exports.enum(metricValidationStatuses).nullable().optional(),
     bindingReasons: external_exports.array(external_exports.string()).optional(),
+    sourceStatus: external_exports.enum(metricSourceStatuses).nullable().optional(),
+    apiValue: external_exports.string().nullable().optional(),
+    domValue: external_exports.string().nullable().optional(),
+    selectionReason: external_exports.string().nullable().optional(),
+    manualSourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).nullable().optional(),
     pageType: external_exports.string().nullable().optional(),
     scope: external_exports.string().nullable().optional(),
     timeRange: external_exports.string().nullable().optional(),
@@ -4984,6 +5227,7 @@
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
     reviewedValue: external_exports.string().optional(),
     timeRange: external_exports.string().trim().min(1).max(100).optional(),
+    sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
     reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
   }).superRefine((value, ctx) => {
     if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -5000,6 +5244,7 @@
       expectedSnapshotUpdatedAt: external_exports.string().datetime(),
       reviewedValue: external_exports.string().optional(),
       timeRange: external_exports.string().trim().min(1).max(100).optional(),
+      sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
       reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
     }).superRefine((value, ctx) => {
       if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -5088,6 +5333,15 @@
       missingRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
+    }).optional(),
+    realtimeEvidence: external_exports.object({
+      routeKey: external_exports.enum(collectionRouteKeys),
+      pageType: external_exports.enum(pageTypes),
+      observedAt: external_exports.string().datetime(),
+      receivedAt: external_exports.string().datetime(),
+      metricCount: external_exports.number().int().nonnegative(),
+      successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
+      source: external_exports.literal("LIVE_SCREEN_INTERNAL_API")
     }).optional()
   });
   var decisionEngineOutputSchema = external_exports.object({
@@ -5241,6 +5495,7 @@
   var isLocalBuild = true;
   var developmentLoopbackHostnames = typeof define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default === "undefined" ? [] : define_PXXIS_EXTENSION_LOCAL_DEVELOPMENT_HOSTS_default;
   var defaultApiBaseUrl = false ? "https://api.pxxis.cn" : "http://127.0.0.1:4300";
+  var localWebPort = false ? 0 : 3300;
   var apiBaseUrlGuidance = false ? "\u670D\u52A1\u5668\u5730\u5740\u5FC5\u987B\u4F7F\u7528 HTTPS\u3002" : "\u670D\u52A1\u5668\u5730\u5740\u5FC5\u987B\u4F7F\u7528 HTTPS\uFF0C\u672C\u5730\u5F00\u53D1\u53EF\u4EE5\u4F7F\u7528 localhost\u3002";
 
   // src/messages.ts
@@ -5249,7 +5504,12 @@
     GET_PAGE_CONTEXT: "AI_DIAGNOSIS_GET_PAGE_CONTEXT",
     PAGE_ACTIVITY: "AI_DIAGNOSIS_PAGE_ACTIVITY",
     CAPTURE_AND_UPLOAD: "AI_DIAGNOSIS_CAPTURE_AND_UPLOAD",
+    BEGIN_LIVE_PULSE_LOOP: "AI_DIAGNOSIS_BEGIN_LIVE_PULSE_LOOP",
+    SUBMIT_LIVE_PULSE: "AI_DIAGNOSIS_SUBMIT_LIVE_PULSE",
+    START_LIVE_PULSE: "AI_DIAGNOSIS_START_LIVE_PULSE",
+    STOP_LIVE_PULSE: "AI_DIAGNOSIS_STOP_LIVE_PULSE",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
+    VERIFY_BOUND_CONTEXT: "AI_DIAGNOSIS_VERIFY_BOUND_CONTEXT",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
     REQUEST_PAIRING_CONFIRMATION: "AI_DIAGNOSIS_REQUEST_PAIRING_CONFIRMATION",
     CONFIRM_PAIRING: "AI_DIAGNOSIS_CONFIRM_PAIRING",
@@ -5268,7 +5528,10 @@
     PAGE_ACTIVITY: "douyinLocalLifeDiagnosisPageActivity",
     CONTEXT: "douyinLocalLifeDiagnosisContext",
     ACTIVE_COLLECTION_SESSION: "douyinLocalLifeDiagnosisActiveCollectionSession",
-    PENDING_PAIRING_CONFIRMATION: "douyinLocalLifeDiagnosisPendingPairingConfirmation"
+    PENDING_PAIRING_CONFIRMATION: "douyinLocalLifeDiagnosisPendingPairingConfirmation",
+    LIVE_PULSE_LAST_OUTCOME: "douyinLocalLifeDiagnosisLivePulseLastOutcome",
+    LIVE_PULSE_STATE: "douyinLocalLifeDiagnosisLivePulseState",
+    LIVE_PULSE_ACTIVITY: "douyinLocalLifeDiagnosisLivePulseActivity"
   };
 
   // src/safety.ts
@@ -5284,7 +5547,14 @@
     }
   }
   function isSupportedExtensionCollectionUrl(value) {
-    return isTrustedExtensionCollectionUrl(value);
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:") return false;
+      if (url.hostname === "eos.douyin.com") return url.pathname === "/dp/liveScreen";
+      return url.hostname === "localads.chengzijianzhan.cn" && /^\/lamp\/pc\/liveboard2(?:\/|$)/.test(url.pathname);
+    } catch {
+      return false;
+    }
   }
 
   // src/extension-context.ts
@@ -5304,7 +5574,8 @@
     const id = optionalString(account.id);
     const accountName = optionalString(account.accountName);
     const collectionProtocolVersion = value.collectionProtocolVersion;
-    if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1) return null;
+    const liveScreenInternalApi = value.liveScreenInternalApi;
+    if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1 || !isRecord(liveScreenInternalApi) || typeof liveScreenInternalApi.enabled !== "boolean" || !optionalString(liveScreenInternalApi.contractVersion) || !optionalString(liveScreenInternalApi.adapterVersion)) return null;
     const projects = [];
     for (const item of account.projects) {
       if (!isRecord(item)) return null;
@@ -5328,7 +5599,15 @@
       }
       projects.push({ id: projectId, name: projectName, tasks });
     }
-    return { account: { id, accountName, projects }, collectionProtocolVersion };
+    return {
+      account: { id, accountName, projects },
+      collectionProtocolVersion,
+      liveScreenInternalApi: {
+        enabled: liveScreenInternalApi.enabled,
+        contractVersion: optionalString(liveScreenInternalApi.contractVersion),
+        adapterVersion: optionalString(liveScreenInternalApi.adapterVersion)
+      }
+    };
   }
   function refreshConfigFromContext(config, context) {
     const collectionTaskId = config.collectionTaskId?.trim();
@@ -5374,16 +5653,221 @@
     };
   }
 
+  // src/live-pulse-schedule.ts
+  var livePulseCadenceMs = 5e3;
+  var livePulseUploadSafetyIntervalMs = 4100;
+  function nextLivePulseAfter(pulseStartedAt, uploadCompletedAt = pulseStartedAt, cadenceMs = livePulseCadenceMs, uploadSafetyIntervalMs = livePulseUploadSafetyIntervalMs) {
+    if (!Number.isFinite(pulseStartedAt) || !Number.isFinite(uploadCompletedAt) || !Number.isInteger(cadenceMs) || cadenceMs <= 0 || !Number.isInteger(uploadSafetyIntervalMs) || uploadSafetyIntervalMs <= 0) {
+      throw new Error("LIVE_PULSE_CADENCE_INVALID");
+    }
+    return Math.max(pulseStartedAt + cadenceMs, uploadCompletedAt + uploadSafetyIntervalMs);
+  }
+  function nextLivePulseAfterRateLimit(now, retryAfterMs) {
+    if (!Number.isFinite(now) || !Number.isFinite(retryAfterMs) || retryAfterMs <= 0) throw new Error("LIVE_PULSE_RETRY_AFTER_INVALID");
+    return now + Math.ceil(retryAfterMs);
+  }
+
+  // src/live-pulse-status.ts
+  function normalizeLivePulseMetricKeys(value) {
+    if (!Array.isArray(value)) return [];
+    const supplied = new Set(value.filter((item) => typeof item === "string"));
+    return liveScreenPulseCoreMetricKeys.filter((key) => supplied.has(key));
+  }
+  function safeLivePulseFailureReason(value) {
+    if (typeof value !== "string") return void 0;
+    const reason = value.trim();
+    if (!reason || reason.length > 80) return void 0;
+    return /^(?:PULSE_(?:CAPTURE_FAILED|METRICS_MISSING|KEY_INDEX_NO_USABLE_METRICS|UPLOAD_(?:TIMEOUT|ABORTED)|NETWORK_ERROR)|REQUEST_FAILED|REQUEST_TIMEOUT|JSON_PARSE_FAILED|EMPTY_RESPONSE|BUSINESS_ERROR|HTTP_\d{3}|ABORTED)$/.test(reason) ? reason : void 0;
+  }
+  function parseLivePulseOutcome(value, context) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const candidate = value;
+    if (candidate.buildFingerprint !== context.buildFingerprint || candidate.collectionProtocolVersion !== context.collectionProtocolVersion) {
+      return null;
+    }
+    const endpoint2 = typeof candidate.endpoint === "string" && context.endpointKeys.includes(candidate.endpoint) ? candidate.endpoint : void 0;
+    const lastFailureReason = safeLivePulseFailureReason(candidate.lastFailureReason);
+    return typeof candidate.reason === "string" && candidate.reason.length > 0 && typeof candidate.taskId === "string" && candidate.taskId.length > 0 && typeof candidate.occurredAt === "string" && typeof candidate.failure === "boolean" ? {
+      taskId: candidate.taskId,
+      reason: candidate.reason,
+      ...endpoint2 ? { endpoint: endpoint2 } : {},
+      ...lastFailureReason ? { lastFailureReason } : {},
+      occurredAt: candidate.occurredAt,
+      failure: candidate.failure,
+      buildFingerprint: context.buildFingerprint,
+      collectionProtocolVersion: context.collectionProtocolVersion
+    } : null;
+  }
+
+  // src/live-pulse-failure.ts
+  function advanceLivePulseFailure(previousFailures, reason, endpoint2) {
+    const consecutiveFailures = Math.max(0, previousFailures) + 1;
+    return {
+      consecutiveFailures,
+      lastFailureReason: safeLivePulseFailureReason(reason) || "PULSE_CAPTURE_FAILED",
+      lastFailureEndpoint: endpoint2 || null,
+      shouldStop: consecutiveFailures >= 3
+    };
+  }
+
+  // src/request-timeout.ts
+  var extensionRequestTimeoutMs = 1e4;
+  var bridgeRecoveryRequestTimeoutMs = 1800;
+  async function fetchWithTimeout(input, init = {}, timeoutMs = extensionRequestTimeoutMs) {
+    const controller = new AbortController();
+    const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      globalThis.clearTimeout(timer);
+    }
+  }
+  function isRequestTimeout(error) {
+    return error instanceof Error && error.name === "AbortError";
+  }
+
+  // src/metric-pulse-upload.ts
+  var metricPulseUploadTimeoutMs = 4e3;
+  var maxMetricPulseRetryAfterMs = 15 * 60 * 1e3;
+  async function uploadMetricPulseRequest(input) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort();
+    if (input.signal?.aborted) controller.abort();
+    else input.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    const timer = globalThis.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, input.timeoutMs ?? metricPulseUploadTimeoutMs);
+    try {
+      const response = await fetch(input.url, {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${input.token}` },
+        body: JSON.stringify(input.pulse),
+        signal: controller.signal
+      });
+      if (response.ok) {
+        return { ok: true };
+      }
+      const body = await response.json().catch(() => null);
+      const retryAfterMs = response.status === 429 ? retryAfterMsFromHeader(response.headers.get("Retry-After")) : void 0;
+      return {
+        ok: false,
+        status: response.status,
+        error: apiError(body) || `HTTP_${response.status}`,
+        ...retryAfterMs ? { retryAfterMs } : {}
+      };
+    } catch {
+      if (timedOut) return { ok: false, error: "PULSE_UPLOAD_TIMEOUT" };
+      if (controller.signal.aborted) return { ok: false, error: "PULSE_UPLOAD_ABORTED" };
+      return { ok: false, error: "PULSE_NETWORK_ERROR" };
+    } finally {
+      globalThis.clearTimeout(timer);
+      input.signal?.removeEventListener("abort", abortFromCaller);
+    }
+  }
+  function retryAfterMsFromHeader(value, now = Date.now()) {
+    if (!value) return void 0;
+    const seconds = Number(value.trim());
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.min(maxMetricPulseRetryAfterMs, Math.ceil(seconds * 1e3));
+    }
+    const retryAt = Date.parse(value);
+    if (!Number.isFinite(retryAt) || retryAt <= now) return void 0;
+    return Math.min(maxMetricPulseRetryAfterMs, retryAt - now);
+  }
+  function apiError(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || !("error" in value)) return null;
+    const error = value.error;
+    if (!error || typeof error !== "object" || Array.isArray(error)) return null;
+    if ("code" in error && typeof error.code === "string" && error.code.trim()) return error.code;
+    if ("message" in error && typeof error.message === "string" && error.message.trim()) return error.message;
+    return null;
+  }
+
+  // src/task-page-bridge-recovery.ts
+  function taskIdFromBridgePageUrl(value) {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      const isProductionTaskPage = url.protocol === "https:" && url.hostname === "www.pxxis.cn";
+      const isLocalTaskPage = url.protocol === "http:" && developmentLoopbackHostnames.includes(url.hostname) && url.port === String(localWebPort);
+      if (!isProductionTaskPage && !isLocalTaskPage) return null;
+      const match = /^\/tasks\/([^/]+)\/?$/.exec(url.pathname);
+      return match?.[1] || null;
+    } catch {
+      return null;
+    }
+  }
+  function createTaskPageConnectionActivity(currentUrl, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+    return {
+      currentUrl,
+      pageType: "TASK_TABLE",
+      routeKey: "UNKNOWN",
+      collectable: false,
+      tabState: "VISIBLE",
+      observedAt
+    };
+  }
+  async function restoreTaskPageConnection(input) {
+    const refreshed = await input.refreshContext(input.timeoutMs);
+    if (!refreshed.ok) return refreshed;
+    const heartbeat = await input.reportHeartbeat(
+      createTaskPageConnectionActivity(input.taskPageUrl, input.observedAt),
+      input.timeoutMs
+    );
+    if (!heartbeat.ok) {
+      return { ok: false, error: heartbeat.error || "\u63D2\u4EF6\u8FDE\u63A5\u72B6\u6001\u6682\u65F6\u65E0\u6CD5\u540C\u6B65\u5230\u7F51\u9875\u3002" };
+    }
+    await input.appendLog("extension.connection_restored", { source: "task-page" });
+    return { ok: true };
+  }
+  async function restoreBoundTaskPageConnection(input) {
+    const taskPageUrl = input.sender.tab?.url || input.sender.url;
+    const taskPageTaskId = taskIdFromBridgePageUrl(taskPageUrl);
+    if (!input.paired || !input.boundTaskId || !taskPageUrl || taskPageTaskId !== input.boundTaskId) {
+      return { attempted: false };
+    }
+    return { attempted: true, result: await input.restore(taskPageUrl) };
+  }
+
+  // src/live-pulse-activity.ts
+  function livePulseActivityForTab(activity, tabId) {
+    if (!Number.isInteger(tabId) || tabId <= 0 || typeof activity.currentUrl !== "string" || !activity.currentUrl) return null;
+    return { ...activity, tabId };
+  }
+  function isLivePulseActivityReporter(livePulseTabId, reportingTabId) {
+    return Number.isInteger(livePulseTabId) && Number.isInteger(reportingTabId) && livePulseTabId === reportingTabId;
+  }
+
+  // src/live-screen-pulse-page.ts
+  function isExactLiveScreenPage(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && url.hostname === "eos.douyin.com" && url.pathname === "/dp/liveScreen";
+    } catch {
+      return false;
+    }
+  }
+
   // src/service-worker.ts
   var uploadQueue = Promise.resolve();
   var captureSingleFlight = createKeyedSingleFlight();
+  var livePulseState = null;
+  var latestLivePulseOutcome = null;
   chrome.runtime.onInstalled.addListener(() => {
     void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).then(() => appendLog("extension.installed"));
   });
   void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void stopLivePulseForTab(tabId, "TAB_CLOSED");
+  });
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    void stopLivePulseForTabUpdate(tabId, changeInfo);
+  });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === MESSAGE.PAGE_ACTIVITY) {
-      void savePageActivity(message.payload, sender.tab?.id).then(sendResponse);
+      void handlePageActivity(message.payload, sender.tab?.id).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.CAPTURE_AND_UPLOAD) {
@@ -5394,12 +5878,40 @@
       void captureAndUploadSingleFlight(message.payload || {}).then(sendResponse);
       return true;
     }
+    if (message?.type === MESSAGE.START_LIVE_PULSE) {
+      if (!isPopupSender(sender)) {
+        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5F00\u542F\u3002" });
+        return false;
+      }
+      void startLivePulse(message.payload || {}).then(sendResponse);
+      return true;
+    }
+    if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
+      if (!isPopupSender(sender)) {
+        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
+        return false;
+      }
+      void stopLivePulse("USER_STOPPED").then(() => sendResponse({ ok: true }));
+      return true;
+    }
+    if (message?.type === MESSAGE.SUBMIT_LIVE_PULSE) {
+      void submitLivePulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
+      return true;
+    }
     if (message?.type === MESSAGE.GET_STATE) {
       void getState().then(sendResponse);
       return true;
     }
+    if (message?.type === MESSAGE.VERIFY_BOUND_CONTEXT) {
+      if (!isPopupSender(sender)) {
+        sendResponse({ ok: false, error: "\u914D\u5BF9\u6821\u9A8C\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+        return false;
+      }
+      void verifyBoundContext().then(sendResponse);
+      return true;
+    }
     if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
-      void getBridgeStatus().then(sendResponse);
+      void getBridgeStatus(sender).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
@@ -5448,8 +5960,8 @@
     }
     return false;
   });
-  async function saveSnapshot(snapshot, tabId) {
-    const safeSnapshot = sanitizeSnapshotPayload(snapshot);
+  async function saveSnapshot(snapshot2, tabId) {
+    const safeSnapshot = sanitizeSnapshotPayload(snapshot2);
     await chrome.storage.local.set({
       [STORAGE.LATEST_SNAPSHOT]: {
         ...safeSnapshot,
@@ -5467,8 +5979,10 @@
     if (!apiBaseUrl) return { ok: false, error: apiBaseUrlGuidance };
     const code = String(payload.code || "").trim();
     if (!/^\d{6}$/.test(code)) return { ok: false, error: "\u8BF7\u8F93\u5165\u7F51\u9875\u751F\u6210\u7684 6 \u4F4D\u914D\u5BF9\u7801\u3002" };
+    const protocol = await checkPairingServiceProtocol(apiBaseUrl);
+    if (!protocol.ok) return protocol;
     try {
-      const response = await fetch(`${apiBaseUrl}/extension/pairing-codes/preview`, {
+      const response = await fetchWithTimeout(`${apiBaseUrl}/extension/pairing-codes/preview`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code })
@@ -5515,8 +6029,10 @@
       await chrome.storage.local.remove(STORAGE.PENDING_PAIRING_CONFIRMATION);
       return { ok: false, error: "\u5F85\u786E\u8BA4\u914D\u5BF9\u8BF7\u6C42\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u8FD4\u56DE\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u914D\u5BF9\u7801\u3002" };
     }
+    const protocol = await checkPairingServiceProtocol(confirmation.apiBaseUrl);
+    if (!protocol.ok) return protocol;
     try {
-      const response = await fetch(`${confirmation.apiBaseUrl}/extension/pairing-codes/exchange`, {
+      const response = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/pairing-codes/exchange`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code: confirmation.code, label: confirmation.label })
@@ -5525,7 +6041,9 @@
       if (!response.ok) return { ok: false, error: body?.error?.message || "\u914D\u5BF9\u5931\u8D25\uFF0C\u8BF7\u5728\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u914D\u5BF9\u7801\u3002" };
       const token = body?.data?.token;
       if (!token) return { ok: false, error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u63D2\u4EF6\u51ED\u8BC1\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
-      const contextResponse = await fetch(`${confirmation.apiBaseUrl}/extension/context`, { headers: { Authorization: `Bearer ${token}` } });
+      const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
+        headers: extensionContextRequestHeaders(token)
+      });
       const contextBody = await contextResponse.json();
       if (!contextResponse.ok) return { ok: false, error: contextBody?.error?.message || "\u65E0\u6CD5\u8BFB\u53D6\u7ED1\u5B9A\u8D26\u53F7\u3002" };
       const protocolCheck = checkExtensionContextProtocol(contextBody.data, extensionCollectionProtocolVersion);
@@ -5558,6 +6076,24 @@
     await chrome.storage.local.remove(STORAGE.PENDING_PAIRING_CONFIRMATION);
     return { ok: true, message: "\u5DF2\u53D6\u6D88\u5F85\u786E\u8BA4\u914D\u5BF9\u8BF7\u6C42\u3002" };
   }
+  async function checkPairingServiceProtocol(apiBaseUrl) {
+    try {
+      const response = await fetchWithTimeout(`${apiBaseUrl}/version`);
+      const body = await response.json().catch(() => null);
+      const payload = body && typeof body === "object" && "data" in body ? body.data : null;
+      const collectionProtocolVersion = payload && typeof payload === "object" && "collectionProtocolVersion" in payload ? payload.collectionProtocolVersion : void 0;
+      const protocolCheck = checkExtensionContextProtocol({ collectionProtocolVersion }, extensionCollectionProtocolVersion);
+      if (!response.ok || !protocolCheck.ok) {
+        return {
+          ok: false,
+          error: protocolCheck.ok ? "\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u670D\u52A1\u7248\u672C\uFF0C\u8BF7\u786E\u8BA4 API \u6B63\u5E38\u8FD0\u884C\u3002" : protocolErrorMessage(protocolCheck.code)
+        };
+      }
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u670D\u52A1\u7248\u672C\uFF0C\u8BF7\u786E\u8BA4 API \u6B63\u5E38\u8FD0\u884C\u3002" };
+    }
+  }
   async function selectTask(payload) {
     const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.TOKEN]);
     const config = local[STORAGE.CONFIG] || {};
@@ -5568,20 +6104,49 @@
     const project = context.account.projects.find((item) => item.tasks.some((task2) => task2.id === taskId));
     const task = project?.tasks.find((item) => item.id === taskId);
     if (!project || !task) return { ok: false, error: "\u6240\u9009\u4EFB\u52A1\u4E0D\u5C5E\u4E8E\u5F53\u524D\u7ED1\u5B9A\u8D26\u53F7\uFF0C\u5DF2\u963B\u6B62\u5207\u6362\u3002" };
+    await stopLivePulse("TASK_CHANGED");
     const nextConfig = { ...config, collectionTaskId: task.id, projectId: project.id, projectName: project.name };
     await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig });
-    await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
+    await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
+    latestLivePulseOutcome = null;
     await appendLog("task.selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
     await reportExtensionHeartbeatFromStoredActivity();
     return { ok: true, config: nextConfig };
   }
   async function clearPairing() {
-    await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION]);
+    await stopLivePulse("UNPAIRED");
+    await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
+    latestLivePulseOutcome = null;
     await appendLog("extension.unpaired");
     return { ok: true };
   }
   async function getState() {
-    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.LATEST_SNAPSHOT, STORAGE.LOGS, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.PAGE_ACTIVITY, STORAGE.TOKEN, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION]);
+    const local = await chrome.storage.local.get([
+      STORAGE.CONFIG,
+      STORAGE.LATEST_SNAPSHOT,
+      STORAGE.LOGS,
+      STORAGE.ROUTE_UPLOAD_STATE,
+      STORAGE.PAGE_ACTIVITY,
+      STORAGE.TOKEN,
+      STORAGE.CONTEXT,
+      STORAGE.ACTIVE_COLLECTION_SESSION,
+      STORAGE.PENDING_PAIRING_CONFIRMATION,
+      STORAGE.LIVE_PULSE_LAST_OUTCOME,
+      STORAGE.LIVE_PULSE_ACTIVITY,
+      STORAGE.LIVE_PULSE_STATE
+    ]);
+    const activeLivePulseState = await hydrateLivePulseState();
+    const rawLivePulseOutcome = local[STORAGE.LIVE_PULSE_LAST_OUTCOME];
+    const parsedLivePulseOutcome = parseLivePulseOutcome(rawLivePulseOutcome, {
+      buildFingerprint: "1a4bc20a9d72",
+      collectionProtocolVersion: extensionCollectionProtocolVersion,
+      endpointKeys: liveScreenInternalApiEndpointKeys
+    });
+    if (rawLivePulseOutcome && !parsedLivePulseOutcome) {
+      await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME).catch(() => void 0);
+    }
+    const storedLivePulseOutcome = latestLivePulseOutcome || parsedLivePulseOutcome;
+    const lastLivePulseOutcome = storedLivePulseOutcome?.taskId === local[STORAGE.CONFIG]?.collectionTaskId ? storedLivePulseOutcome : null;
     const pending = local[STORAGE.PENDING_PAIRING_CONFIRMATION];
     if (pending && new Date(pending.expiresAt).getTime() <= Date.now()) {
       await chrome.storage.local.remove(STORAGE.PENDING_PAIRING_CONFIRMATION);
@@ -5593,16 +6158,64 @@
       logs: local[STORAGE.LOGS] || [],
       routeUploadState: local[STORAGE.ROUTE_UPLOAD_STATE] || {},
       pageActivity: local[STORAGE.PAGE_ACTIVITY] || null,
+      livePulseActivity: local[STORAGE.LIVE_PULSE_ACTIVITY] || null,
       activeCollectionSession: local[STORAGE.ACTIVE_COLLECTION_SESSION] || null,
+      livePulse: activeLivePulseState ? {
+        active: true,
+        tabId: activeLivePulseState.tabId,
+        startedAt: activeLivePulseState.startedAt,
+        successCount: activeLivePulseState.successCount,
+        lastSuccessAt: activeLivePulseState.lastSuccessAt,
+        lastMetricCount: activeLivePulseState.lastMetricCount,
+        lastMetricKeys: activeLivePulseState.lastMetricKeys,
+        lastFailureReason: activeLivePulseState.lastFailureReason,
+        lastFailureEndpoint: activeLivePulseState.lastFailureEndpoint,
+        rateLimitedUntil: activeLivePulseState.rateLimitedUntil,
+        lastOutcome: null
+      } : { active: false, lastOutcome: lastLivePulseOutcome },
       context: local[STORAGE.CONTEXT] || null,
       hasToken: Boolean(local[STORAGE.TOKEN]),
       pendingPairingConfirmation: pending && new Date(pending.expiresAt).getTime() > Date.now() ? { apiBaseUrl: pending.apiBaseUrl, account: pending.account, task: pending.task, expiresAt: pending.expiresAt } : null
     };
   }
-  async function getBridgeStatus() {
+  async function verifyBoundContext() {
+    const verified = await refreshBoundContext();
+    if (!verified.ok) {
+      await appendLog("extension.binding_verification_failed", { error: verified.error });
+      return verified;
+    }
+    const state = await getState();
+    await appendLog("extension.binding_verified", {
+      accountProfileId: state.config.accountProfileId || null,
+      collectionTaskId: state.config.collectionTaskId || null
+    });
+    return { ok: true, state, verifiedAt: (/* @__PURE__ */ new Date()).toISOString() };
+  }
+  async function getBridgeStatus(sender) {
     const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN, STORAGE.PENDING_PAIRING_CONFIRMATION]);
     const config = local[STORAGE.CONFIG] || {};
     const paired = Boolean(local[STORAGE.TOKEN]);
+    const recovery = await restoreBoundTaskPageConnection({
+      paired,
+      boundTaskId: config.collectionTaskId,
+      sender,
+      restore: (taskPageUrl) => restoreTaskPageConnection({
+        taskPageUrl,
+        timeoutMs: bridgeRecoveryRequestTimeoutMs,
+        refreshContext: refreshBoundContext,
+        reportHeartbeat: reportExtensionHeartbeat,
+        appendLog
+      })
+    });
+    if (recovery.attempted && !recovery.result.ok) {
+      await appendLog("extension.connection_restore_failed", { error: recovery.result.error });
+      return {
+        ok: false,
+        paired,
+        boundTaskId: config.collectionTaskId,
+        error: recovery.result.error
+      };
+    }
     return {
       ok: true,
       paired,
@@ -5610,7 +6223,7 @@
       boundTaskId: config.collectionTaskId || null,
       protocolVersion: extensionBridgeProtocolVersion,
       extensionVersion: chrome.runtime.getManifest().version,
-      buildFingerprint: "d1c80aee42ea",
+      buildFingerprint: "1a4bc20a9d72",
       message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u914D\u5BF9\u5E76\u7ED1\u5B9A\u5F53\u524D\u4EFB\u52A1" : "\u63D2\u4EF6\u5DF2\u914D\u5BF9\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
     };
   }
@@ -5629,6 +6242,17 @@
     const heartbeat = await reportExtensionHeartbeat(activity);
     return { ok: true, heartbeatReported: heartbeat.ok };
   }
+  async function handlePageActivity(activity, tabId) {
+    const activeLivePulseState = livePulseState || await hydrateLivePulseState();
+    if (!isLivePulseActivityReporter(activeLivePulseState?.tabId, tabId)) return savePageActivity(activity, tabId);
+    if (shouldStopLivePulseForActivity(activity)) {
+      await stopLivePulse("PAGE_INACTIVE");
+      return savePageActivity(activity, tabId);
+    }
+    const liveActivity = livePulseActivityForTab(activity, tabId);
+    if (liveActivity) await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: liveActivity });
+    return savePageActivity(activity, tabId);
+  }
   async function captureAndUpload(payload, routeHint = "UNKNOWN") {
     const tabId = Number(payload.tabId);
     if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u6807\u7B7E\u9875\uFF0C\u8BF7\u5173\u95ED\u63D2\u4EF6\u5F39\u7A97\u540E\u91CD\u8BD5\u3002" };
@@ -5636,8 +6260,8 @@
     const refreshedContext = await refreshBoundContext();
     if (!refreshedContext.ok) return refreshedContext;
     const routeOverride = normalizeCollectionRouteKey(payload.routeOverride);
+    const allowedRoutes = await currentTaskRouteKeys();
     if (payload.routeOverride) {
-      const allowedRoutes = await currentTaskRouteKeys();
       if (routeOverride === "UNKNOWN" || !allowedRoutes.includes(routeOverride)) {
         return { ok: false, error: "\u672C\u6B21\u4EBA\u5DE5\u8DEF\u7EBF\u9009\u62E9\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u5F53\u524D\u4EFB\u52A1\u4E2D\u7684\u91C7\u96C6\u8DEF\u7EBF\u3002" };
       }
@@ -5650,7 +6274,8 @@
         type: MESSAGE.START_COLLECTION,
         payload: {
           collectionRunId: session.session.collectionRunId,
-          routeOverride: payload.routeOverride ? routeOverride : void 0
+          routeOverride: payload.routeOverride ? routeOverride : void 0,
+          liveScreenInternalApiEnabled: refreshedContext.context.liveScreenInternalApi.enabled
         }
       });
     } catch {
@@ -5666,22 +6291,27 @@
       );
       return { ok: false, error: captureResponse?.error || "\u9875\u9762\u91C7\u96C6\u5931\u8D25\uFF0C\u8BF7\u7B49\u5F85\u9875\u9762\u52A0\u8F7D\u5B8C\u6210\u540E\u91CD\u8BD5\u3002" };
     }
-    const snapshot = {
+    const snapshot2 = {
       ...captureResponse.snapshot,
       collectionRunId: session.session.collectionRunId,
       captureProtocolVersion: extensionCollectionProtocolVersion
     };
-    if (!snapshot.routeKey || snapshot.routeKey === "UNKNOWN") {
+    if (!snapshot2.routeKey || snapshot2.routeKey === "UNKNOWN") {
       await reportCaptureFailure(session.session.collectionRunId, routeHint, "ROUTE_UNVERIFIED", "Captured route was not verified");
-      return { ok: false, error: "\u65E0\u6CD5\u786E\u8BA4\u5F53\u524D\u5206\u680F\uFF0C\u8BF7\u5728\u63D2\u4EF6\u4E2D\u4E3A\u672C\u6B21\u91C7\u96C6\u9009\u62E9\u201C\u6982\u89C8\u3001\u5546\u54C1\u6216\u6D41\u91CF\u201D\u540E\u91CD\u8BD5\u3002" };
+      return { ok: false, error: "\u65E0\u6CD5\u786E\u8BA4\u5F53\u524D\u9875\u9762\u8DEF\u7EBF\uFF0C\u8BF7\u5728\u63D2\u4EF6\u4E2D\u9009\u62E9\u5F53\u524D\u4EFB\u52A1\u5141\u8BB8\u7684\u91C7\u96C6\u8DEF\u7EBF\u540E\u91CD\u8BD5\u3002" };
     }
-    await saveSnapshot(snapshot, tabId);
-    const upload = await enqueueSnapshotUpload(snapshot);
+    const snapshotRouteKey = normalizeCollectionRouteKey(snapshot2.routeKey);
+    if (!allowedRoutes.includes(snapshotRouteKey)) {
+      await reportCaptureFailure(session.session.collectionRunId, snapshotRouteKey, "ROUTE_UNVERIFIED", "Captured route is not enabled for the current task");
+      return { ok: false, error: `\u5F53\u524D\u4EFB\u52A1\u5DF2\u53D6\u6D88\u201C${routeLabel(snapshotRouteKey)}\u201D\u91C7\u96C6\u8DEF\u7EBF\uFF0C\u8BF7\u5237\u65B0\u63D2\u4EF6\u72B6\u6001\u540E\u91C7\u96C6\u4EFB\u52A1\u9875\u5217\u51FA\u7684\u8DEF\u7EBF\u3002` };
+    }
+    await saveSnapshot(snapshot2, tabId);
+    const upload = await enqueueSnapshotUpload(snapshot2);
     if (!upload.ok) {
       await reportExtensionHeartbeat({
-        currentUrl: snapshot.sourceUrl,
-        pageType: snapshot.pageType,
-        routeKey: snapshot.routeKey,
+        currentUrl: snapshot2.sourceUrl,
+        pageType: snapshot2.pageType,
+        routeKey: snapshot2.routeKey,
         collectable: true,
         tabState: "VISIBLE",
         observedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -5690,21 +6320,31 @@
       return upload;
     }
     await savePageActivity({
-      currentUrl: snapshot.sourceUrl,
-      pageType: snapshot.pageType,
-      routeKey: snapshot.routeKey,
+      currentUrl: snapshot2.sourceUrl,
+      pageType: snapshot2.pageType,
+      routeKey: snapshot2.routeKey,
       collectable: true,
       tabState: "VISIBLE",
       observedAt: (/* @__PURE__ */ new Date()).toISOString(),
       lastError: null
     }, tabId);
-    const serverSnapshot = upload.data?.data;
+    const recognizedMetricCount = snapshot2.visibleMetricsJson.length;
+    const metricCount = snapshot2.visibleMetricsJson.filter((metric) => metric.value != null && String(metric.value).trim() !== "").length;
+    const apiMeta = snapshot2.captureMeta?.liveScreenInternalApi;
+    const apiEndpointSuccessCount = apiMeta?.endpointStatuses.filter((status) => status.status === "SUCCESS").length || 0;
+    const hasApiMetric = snapshot2.visibleMetricsJson.some((metric) => metric.metricSource === "XHR_JSON" || ["INTERNAL_API", "API_AND_DOM", "SOURCE_CONFLICT"].includes(metric.rawEvidence?.sourceStatus || ""));
+    const hasDomMetric = snapshot2.visibleMetricsJson.some((metric) => metric.metricSource === "DOM_TEXT" || Boolean(metric.rawEvidence?.domCandidate));
+    const captureSource = hasApiMetric ? hasDomMetric ? "API_AND_DOM" : "API" : apiMeta?.enabled === true ? "API_FAILED_DOM_FALLBACK" : "DOM";
     return {
       ok: true,
       skipped: upload.skipped || false,
-      routeKey: snapshot.routeKey || "UNKNOWN",
-      metricCount: serverSnapshot?.normalizedMetrics?.length || snapshot.visibleMetricsJson.length,
-      coverageRatio: snapshot.captureMeta?.coverageRatio ?? null,
+      routeKey: snapshot2.routeKey || "UNKNOWN",
+      metricCount,
+      recognizedMetricCount,
+      missingMetricCount: recognizedMetricCount - metricCount,
+      captureSource,
+      apiEndpointSuccessCount,
+      coverageRatio: snapshot2.captureMeta?.coverageRatio ?? null,
       uploadedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
   }
@@ -5726,29 +6366,356 @@
     ].join(":");
     return captureSingleFlight.run(key, () => captureAndUpload(payload, routeKey));
   }
+  async function startLivePulse(payload) {
+    const tabId = Number(payload.tabId);
+    if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u6807\u7B7E\u9875\uFF0C\u8BF7\u5173\u95ED\u63D2\u4EF6\u5F39\u7A97\u540E\u91CD\u8BD5\u3002" };
+    if (!isExactLiveScreenPage(payload.currentUrl || "")) return { ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u4EC5\u652F\u6301\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u7684\u7CBE\u786E\u9875\u9762\u3002" };
+    const refreshedContext = await refreshBoundContext();
+    if (!refreshedContext.ok) return refreshedContext;
+    if (!refreshedContext.context.liveScreenInternalApi.enabled) {
+      return { ok: false, error: "\u670D\u52A1\u7AEF API \u5F00\u5173\u672A\u5F00\u542F\uFF1B\u672A\u542F\u52A8\u5B9E\u65F6\u8109\u51B2\uFF0C\u4E5F\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM\u3002" };
+    }
+    const session = await ensureCollectionSession();
+    if (!session.ok) return session;
+    const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
+    const initialLiveActivity = livePulseActivityForTab({
+      currentUrl: pageContext?.currentUrl || "",
+      pageType: pageContext?.pageType || "UNKNOWN",
+      routeKey: normalizeCollectionRouteKey(pageContext?.routeKey),
+      collectable: true,
+      tabState: pageContext?.tabState === "VISIBLE" ? "VISIBLE" : "HIDDEN",
+      observedAt: (/* @__PURE__ */ new Date()).toISOString()
+    }, tabId);
+    if (pageContext?.pageType !== "LIVE_DATA_SCREEN" || !isExactLiveScreenPage(pageContext?.currentUrl || "") || !initialLiveActivity || shouldStopLivePulseForActivity(initialLiveActivity)) {
+      return { ok: false, error: "\u5F53\u524D\u6807\u7B7E\u9875\u4E0D\u662F\u53EF\u7528\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u3002" };
+    }
+    if (pageContext?.livePulseEligible !== true) {
+      return { ok: false, error: "\u5F53\u524D\u76F4\u64AD\u9875\u672A\u63D0\u4F9B\u53EF\u4FE1 room_id\uFF1B\u672A\u542F\u52A8 API \u91C7\u96C6\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM\u3002" };
+    }
+    await stopLivePulse("REPLACED");
+    await clearLivePulseOutcome();
+    const api = await apiContext();
+    if (!api.ok) return api;
+    const roomId = typeof pageContext?.livePulseRoomId === "string" && pageContext.livePulseRoomId.trim() ? pageContext.livePulseRoomId.trim() : roomIdFromLiveScreenUrl(pageContext?.currentUrl || payload.currentUrl || "");
+    if (!roomId) {
+      return { ok: false, error: "\u5F53\u524D\u76F4\u64AD\u9875\u672A\u63D0\u4F9B\u53EF\u4FE1 room_id\uFF1B\u672A\u542F\u52A8 API \u91C7\u96C6\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM\u3002" };
+    }
+    await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: initialLiveActivity });
+    livePulseState = {
+      loopId: `${tabId}:${Date.now()}`,
+      tabId,
+      taskId: api.collectionTaskId,
+      roomId,
+      currentUrl: pageContext.currentUrl,
+      collectionRunId: session.session.collectionRunId,
+      startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      consecutiveFailures: 0,
+      successCount: 0,
+      lastSuccessAt: null,
+      lastMetricCount: 0,
+      lastMetricKeys: [],
+      lastFailureReason: null,
+      lastFailureEndpoint: null,
+      rateLimitedUntil: null,
+      uploadController: null
+    };
+    await persistLivePulseState();
+    await appendLog("live_pulse.started", { tabId, taskId: api.collectionTaskId });
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: MESSAGE.BEGIN_LIVE_PULSE_LOOP,
+        payload: {
+          collectionRunId: livePulseState.collectionRunId,
+          liveScreenInternalApiEnabled: refreshedContext.context.liveScreenInternalApi.enabled
+        }
+      });
+    } catch {
+      await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE");
+      return { ok: false, error: "\u63D2\u4EF6\u5C1A\u672A\u6CE8\u5165\u5F53\u524D\u9875\u9762\uFF0C\u8BF7\u5237\u65B0\u76EE\u6807\u7F51\u9875\u540E\u91CD\u8BD5\u3002" };
+    }
+    return { ok: true, nextRefreshAt: (/* @__PURE__ */ new Date()).toISOString() };
+  }
+  async function submitLivePulse(payload, tabId, senderUrl) {
+    const state = await hydrateLivePulseState();
+    if (!state || tabId !== state.tabId) return { ok: false, stop: true, error: "LIVE_PULSE_NOT_ACTIVE" };
+    const pulseStartedAt = Number.isFinite(payload.pulseStartedAt) ? Number(payload.pulseStartedAt) : Date.now();
+    const activityStore = await chrome.storage.local.get([STORAGE.LIVE_PULSE_ACTIVITY]);
+    const activity = activityStore[STORAGE.LIVE_PULSE_ACTIVITY];
+    if (!activity || activity.tabId !== state.tabId || shouldStopLivePulseForActivity(activity) || !isExactLiveScreenPage(senderUrl || activity.currentUrl)) {
+      await stopLivePulse("PAGE_INACTIVE");
+      return { ok: false, stop: true, error: "PAGE_INACTIVE" };
+    }
+    if (payload.error || !payload.snapshot) {
+      const failure2 = await handleLivePulseFailure(state, payload.error || "PULSE_CAPTURE_FAILED", void 0, void 0, void 0, pulseStartedAt);
+      return { ok: false, ...failure2 };
+    }
+    if (livePulseState !== state) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
+    const snapshot2 = payload.snapshot;
+    if (!isExactLiveScreenPage(snapshot2.sourceUrl || "") || livePulseRoomIdFromSnapshot(snapshot2) !== state.roomId) {
+      await stopLivePulse("PAGE_NAVIGATED");
+      return { ok: false, stop: true, error: "PAGE_NAVIGATED" };
+    }
+    const fatalEndpointStatus = snapshot2.captureMeta?.liveScreenInternalApi?.endpointStatuses.find((item) => ["HTTP_401", "HTTP_429", "SENSITIVE_RESPONSE", "BYTE_LIMIT", "TOTAL_BYTE_LIMIT", "SCHEMA_MISMATCH", "LIVE_ENDED"].includes(item.reason || ""));
+    if (fatalEndpointStatus) {
+      await stopLivePulse(fatalEndpointStatus.reason || "API_ABORTED", fatalEndpointStatus.endpoint);
+      return { ok: false, stop: true, error: fatalEndpointStatus.reason || "API_ABORTED" };
+    }
+    if (!snapshot2.captureMeta?.liveScreenInternalApi || snapshot2.visibleMetricsJson.length === 0) {
+      const endpointFailure = snapshot2.captureMeta?.liveScreenInternalApi?.endpointStatuses.find((item) => item.reason);
+      const failure2 = await handleLivePulseFailure(
+        state,
+        endpointFailure?.reason || "PULSE_METRICS_MISSING",
+        void 0,
+        endpointFailure?.endpoint
+      );
+      return { ok: false, ...failure2 };
+    }
+    const uploadController = new AbortController();
+    state.uploadController = uploadController;
+    const result = await uploadMetricPulse(snapshot2, uploadController.signal);
+    if (state.uploadController === uploadController) state.uploadController = null;
+    if (livePulseState !== state) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
+    if (!result.ok) {
+      const failure2 = await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, void 0, result.retryAfterMs, pulseStartedAt);
+      return { ok: false, ...failure2 };
+    }
+    const firstSuccess = state.successCount === 0;
+    state.consecutiveFailures = 0;
+    state.lastFailureReason = null;
+    state.lastFailureEndpoint = null;
+    state.rateLimitedUntil = null;
+    state.successCount += 1;
+    state.lastSuccessAt = (/* @__PURE__ */ new Date()).toISOString();
+    state.lastMetricCount = snapshot2.visibleMetricsJson.length;
+    const uploadedMetricKeys = new Set(snapshot2.visibleMetricsJson.map((metric) => String(metric.key)));
+    state.lastMetricKeys = liveScreenPulseCoreMetricKeys.filter((key) => uploadedMetricKeys.has(key));
+    if (firstSuccess) {
+      await appendLog("live_pulse.first_success", {
+        tabId: state.tabId,
+        metricCount: state.lastMetricCount
+      });
+    }
+    await persistLivePulseState();
+    return { ok: true, nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now()) - Date.now()) };
+  }
+  async function uploadMetricPulse(snapshot2, signal) {
+    const api = await apiContext();
+    if (!api.ok) return { ok: false, error: api.error };
+    const pulse = {
+      collectionRunId: snapshot2.collectionRunId || null,
+      routeKey: snapshot2.routeKey || "LIVE_DATA_SCREEN",
+      pageType: snapshot2.pageType,
+      localCapturedAt: snapshot2.localCollectedAt,
+      tabState: snapshot2.captureMeta?.tabState || "VISIBLE",
+      metrics: snapshot2.visibleMetricsJson,
+      captureMeta: snapshot2.captureMeta,
+      sourceUrl: snapshot2.sourceUrl,
+      captureProtocolVersion: extensionCollectionProtocolVersion
+    };
+    return uploadMetricPulseRequest({
+      url: `${api.apiBaseUrl}/collection-tasks/${api.collectionTaskId}/metric-pulses`,
+      token: api.token,
+      pulse,
+      signal
+    });
+  }
+  async function handleLivePulseFailure(state, error, status, endpoint2, retryAfterMs, pulseStartedAt = Date.now()) {
+    if (livePulseState !== state) return { stop: true, error: "LIVE_PULSE_REPLACED" };
+    if (status === 429 && error === "RATE_LIMITED" && retryAfterMs) {
+      const rateLimitedUntil = nextLivePulseAfterRateLimit(Date.now(), retryAfterMs);
+      state.consecutiveFailures = 0;
+      state.lastFailureReason = null;
+      state.lastFailureEndpoint = null;
+      state.rateLimitedUntil = new Date(rateLimitedUntil).toISOString();
+      await appendLog("live_pulse.rate_limited", {
+        tabId: state.tabId,
+        retryAfterMs
+      });
+      await persistLivePulseState();
+      return { nextDelayMs: Math.max(0, rateLimitedUntil - Date.now()), error: "RATE_LIMITED" };
+    }
+    if (status === 401 || status === 429 || /HTTP_401|HTTP_429|SCHEMA_MISMATCH|SENSITIVE_RESPONSE|BYTE_LIMIT|TOTAL_BYTE_LIMIT|LIVE_ENDED|PAGE_INACTIVE|LIVE_SCREEN_INTERNAL_API_(?:DISABLED|CONTRACT_MISMATCH|EVIDENCE_INVALID|PAGE_FORBIDDEN)|LIVE_SCREEN_(?:ROOM_ID_INVALID|PULSE_PURPOSE_INVALID)/.test(error)) {
+      await stopLivePulse(error);
+      return { stop: true, error };
+    }
+    const failure2 = advanceLivePulseFailure(state.consecutiveFailures, error, endpoint2);
+    state.consecutiveFailures = failure2.consecutiveFailures;
+    state.lastFailureReason = failure2.lastFailureReason;
+    state.lastFailureEndpoint = failure2.lastFailureEndpoint;
+    await appendLog("live_pulse.failure", {
+      tabId: state.tabId,
+      consecutiveFailures: failure2.consecutiveFailures,
+      ...failure2.lastFailureEndpoint ? { endpoint: failure2.lastFailureEndpoint } : {},
+      reason: failure2.lastFailureReason
+    });
+    if (failure2.shouldStop) {
+      await stopLivePulse(
+        "THREE_CONSECUTIVE_FAILURES",
+        state.lastFailureEndpoint || void 0,
+        state.lastFailureReason
+      );
+      return { stop: true, error: "THREE_CONSECUTIVE_FAILURES" };
+    }
+    await persistLivePulseState();
+    return { nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt) - Date.now()), error: failure2.lastFailureReason };
+  }
+  async function stopLivePulse(reason, endpoint2, lastFailureReason) {
+    const state = livePulseState || await hydrateLivePulseState();
+    livePulseState = null;
+    await chrome.storage.local.remove([STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]).catch(() => void 0);
+    if (!state) return;
+    state.uploadController?.abort();
+    state.uploadController = null;
+    await chrome.tabs.sendMessage(state.tabId, { type: MESSAGE.STOP_LIVE_PULSE }).catch(() => void 0);
+    await saveLivePulseOutcome({
+      taskId: state.taskId,
+      reason,
+      ...endpoint2 ? { endpoint: endpoint2 } : {},
+      ...lastFailureReason ? { lastFailureReason } : {},
+      occurredAt: (/* @__PURE__ */ new Date()).toISOString(),
+      failure: isLivePulseFailure(reason)
+    });
+    await appendLog("live_pulse.stopped", {
+      tabId: state.tabId,
+      reason,
+      ...endpoint2 ? { endpoint: endpoint2 } : {},
+      ...lastFailureReason ? { lastFailureReason } : {}
+    });
+  }
+  async function clearLivePulseOutcome() {
+    latestLivePulseOutcome = null;
+    await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME).catch(() => void 0);
+  }
+  async function persistLivePulseState() {
+    const state = livePulseState;
+    if (!state) {
+      await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE).catch(() => void 0);
+      return;
+    }
+    const stored = {
+      loopId: state.loopId,
+      tabId: state.tabId,
+      taskId: state.taskId,
+      roomId: state.roomId,
+      currentUrl: state.currentUrl,
+      collectionRunId: state.collectionRunId,
+      startedAt: state.startedAt,
+      consecutiveFailures: state.consecutiveFailures,
+      successCount: state.successCount,
+      lastSuccessAt: state.lastSuccessAt,
+      lastMetricCount: state.lastMetricCount,
+      lastMetricKeys: state.lastMetricKeys,
+      lastFailureReason: state.lastFailureReason,
+      lastFailureEndpoint: state.lastFailureEndpoint,
+      rateLimitedUntil: state.rateLimitedUntil,
+      buildFingerprint: "1a4bc20a9d72",
+      collectionProtocolVersion: extensionCollectionProtocolVersion
+    };
+    await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_STATE]: stored }).catch(() => void 0);
+  }
+  async function hydrateLivePulseState() {
+    if (livePulseState) return livePulseState;
+    const local = await chrome.storage.local.get([STORAGE.LIVE_PULSE_STATE]);
+    const parsed = parseStoredLivePulseState(local[STORAGE.LIVE_PULSE_STATE]);
+    if (!parsed) {
+      await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE).catch(() => void 0);
+      return null;
+    }
+    livePulseState = { ...parsed, uploadController: null };
+    return livePulseState;
+  }
+  function parseStoredLivePulseState(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const candidate = value;
+    if (candidate.buildFingerprint !== "1a4bc20a9d72" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || typeof candidate.taskId !== "string" || typeof candidate.roomId !== "string" || typeof candidate.currentUrl !== "string" || !isExactLiveScreenPage(candidate.currentUrl) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
+      return null;
+    }
+    const lastMetricKeys = normalizeLivePulseMetricKeys(candidate.lastMetricKeys);
+    if (lastMetricKeys.length !== candidate.lastMetricKeys.length) return null;
+    const endpoint2 = typeof candidate.lastFailureEndpoint === "string" && liveScreenInternalApiEndpointKeys.includes(candidate.lastFailureEndpoint) ? candidate.lastFailureEndpoint : null;
+    return {
+      loopId: candidate.loopId,
+      tabId: Number(candidate.tabId),
+      taskId: candidate.taskId,
+      roomId: candidate.roomId,
+      currentUrl: candidate.currentUrl,
+      collectionRunId: typeof candidate.collectionRunId === "string" ? candidate.collectionRunId : null,
+      startedAt: candidate.startedAt,
+      consecutiveFailures: Number.isSafeInteger(candidate.consecutiveFailures) ? Number(candidate.consecutiveFailures) : 0,
+      successCount: Number(candidate.successCount),
+      lastSuccessAt: typeof candidate.lastSuccessAt === "string" ? candidate.lastSuccessAt : null,
+      lastMetricCount: Number(candidate.lastMetricCount),
+      lastMetricKeys,
+      lastFailureReason: typeof candidate.lastFailureReason === "string" ? candidate.lastFailureReason : null,
+      lastFailureEndpoint: endpoint2,
+      rateLimitedUntil: typeof candidate.rateLimitedUntil === "string" ? candidate.rateLimitedUntil : null
+    };
+  }
+  async function saveLivePulseOutcome(outcome) {
+    const versionedOutcome = {
+      ...outcome,
+      buildFingerprint: "1a4bc20a9d72",
+      collectionProtocolVersion: extensionCollectionProtocolVersion
+    };
+    latestLivePulseOutcome = versionedOutcome;
+    await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_LAST_OUTCOME]: versionedOutcome }).catch(() => void 0);
+  }
+  function isLivePulseFailure(reason) {
+    return !["USER_STOPPED", "REPLACED"].includes(reason);
+  }
+  function shouldStopLivePulseForActivity(activity) {
+    return !isExactLiveScreenPage(activity.currentUrl) || activity.pageType !== "LIVE_DATA_SCREEN";
+  }
+  async function stopLivePulseForTab(tabId, reason) {
+    const state = livePulseState || await hydrateLivePulseState();
+    if (state?.tabId === tabId) await stopLivePulse(reason);
+  }
+  async function stopLivePulseForTabUpdate(tabId, changeInfo) {
+    const state = livePulseState || await hydrateLivePulseState();
+    if (state?.tabId !== tabId) return;
+    if (changeInfo.status === "loading" || changeInfo.url) await stopLivePulse("PAGE_NAVIGATED");
+  }
+  function roomIdFromLiveScreenUrl(value) {
+    try {
+      const url = new URL(value);
+      return resolveLiveScreenRoomId({
+        urlRoomIds: url.searchParams.getAll("room_id"),
+        domRoomIds: []
+      }).value;
+    } catch {
+      return null;
+    }
+  }
+  function livePulseRoomIdFromSnapshot(snapshot2) {
+    const apiMeta = snapshot2.captureMeta?.liveScreenInternalApi;
+    if (!apiMeta?.roomId || !apiMeta.roomIdEvidence) return null;
+    const resolved = resolveLiveScreenRoomId(apiMeta.roomIdEvidence);
+    return resolved.value === apiMeta.roomId ? apiMeta.roomId : null;
+  }
   async function ensureCollectionSession() {
     const api = await apiContext();
     if (!api.ok) return api;
     const local = await chrome.storage.local.get([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.CONTEXT]);
-    const existing = local[STORAGE.ACTIVE_COLLECTION_SESSION];
-    if (existing?.taskId === api.collectionTaskId && Date.now() - new Date(existing.startedAt).getTime() < 30 * 6e4) {
-      return { ok: true, session: existing };
-    }
     const context = local[STORAGE.CONTEXT];
     const task = context?.account.projects.flatMap((project) => project.tasks).find((item) => item.id === api.collectionTaskId);
-    const requiredRoutes = task?.routeSources.filter((route) => route.required).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => route !== "UNKNOWN");
+    const requiredRoutes = task?.routeSources.filter((route) => route.required).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => defaultRequiredCollectionRoutes.includes(route));
+    const desiredRequiredRoutes = requiredRoutes?.length ? requiredRoutes : [...defaultRequiredCollectionRoutes];
+    const existing = local[STORAGE.ACTIVE_COLLECTION_SESSION];
+    if (existing?.taskId === api.collectionTaskId && Date.now() - new Date(existing.startedAt).getTime() < 30 * 6e4 && sameRouteKeys(existing.requiredRoutes, desiredRequiredRoutes)) {
+      return { ok: true, session: existing };
+    }
     try {
       const response = await fetch(`${api.apiBaseUrl}/collection-tasks/${api.collectionTaskId}/collection-runs`, {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${api.token}` },
-        body: JSON.stringify({ requiredRoutes: requiredRoutes?.length ? requiredRoutes : defaultRequiredCollectionRoutes })
+        body: JSON.stringify({ requiredRoutes: desiredRequiredRoutes })
       });
       const body = await response.json();
       if (!response.ok || !body?.data?.id) return { ok: false, error: body?.error?.message || "\u65E0\u6CD5\u521B\u5EFA\u672C\u6B21\u91C7\u96C6\u6279\u6B21\u3002" };
       const session = {
         taskId: api.collectionTaskId,
         collectionRunId: body.data.id,
-        requiredRoutes: requiredRoutes?.length ? requiredRoutes : [...defaultRequiredCollectionRoutes],
+        requiredRoutes: desiredRequiredRoutes,
         startedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
       await chrome.storage.local.set({ [STORAGE.ACTIVE_COLLECTION_SESSION]: session });
@@ -5763,18 +6730,18 @@
     if (!activity) return { ok: false, skipped: true };
     return reportExtensionHeartbeat(activity);
   }
-  async function reportExtensionHeartbeat(activity) {
+  async function reportExtensionHeartbeat(activity, timeoutMs = extensionRequestTimeoutMs) {
     const api = await apiContext();
     if (!api.ok) return { ok: false, skipped: true, error: api.error };
     try {
-      const response = await fetch(`${api.apiBaseUrl}/extension/heartbeat`, {
+      const response = await fetchWithTimeout(`${api.apiBaseUrl}/extension/heartbeat`, {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${api.token}` },
         body: JSON.stringify({
           collectionTaskId: api.collectionTaskId,
           extensionVersion: chrome.runtime.getManifest().version,
           bridgeProtocolVersion: extensionBridgeProtocolVersion,
-          buildFingerprint: "d1c80aee42ea",
+          buildFingerprint: "1a4bc20a9d72",
           currentUrl: activity.currentUrl,
           pageType: activity.pageType,
           routeKey: activity.routeKey,
@@ -5789,16 +6756,16 @@
         return { ok: false, error: body?.error?.message || `\u72B6\u6001\u4E0A\u62A5\u5931\u8D25\uFF08${response.status}\uFF09` };
       }
       return { ok: true };
-    } catch {
-      return { ok: false, error: "\u63D2\u4EF6\u72B6\u6001\u6682\u65F6\u65E0\u6CD5\u540C\u6B65\u5230\u7F51\u9875\u3002" };
+    } catch (error) {
+      return { ok: false, error: isRequestTimeout(error) ? "\u672C\u673A API \u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u5730\u670D\u52A1\u662F\u5426\u4ECD\u5728\u8FD0\u884C\u3002" : "\u63D2\u4EF6\u72B6\u6001\u6682\u65F6\u65E0\u6CD5\u540C\u6B65\u5230\u7F51\u9875\u3002" };
     }
   }
-  function enqueueSnapshotUpload(snapshot) {
-    const next = uploadQueue.then(() => uploadSnapshot(snapshot));
+  function enqueueSnapshotUpload(snapshot2) {
+    const next = uploadQueue.then(() => uploadSnapshot(snapshot2));
     uploadQueue = next.then(() => void 0, () => void 0);
     return next;
   }
-  async function uploadSnapshot(snapshot) {
+  async function uploadSnapshot(snapshot2) {
     const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.ROUTE_UPLOAD_STATE]);
     const session = await chrome.storage.local.get([STORAGE.TOKEN]);
     const config = local[STORAGE.CONFIG] || {};
@@ -5807,9 +6774,9 @@
     const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
     if (!apiBaseUrl) return { ok: false, error: "\u670D\u52A1\u5668\u5730\u5740\u4E0D\u53D7\u652F\u6301\u3002" };
     if (!token) return { ok: false, error: "\u63D2\u4EF6\u6388\u6743\u5DF2\u4E22\u5931\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
-    const routeKey = snapshot.routeKey || snapshot.pageType || "UNKNOWN";
+    const routeKey = snapshot2.routeKey || snapshot2.pageType || "UNKNOWN";
     const routeState = local[STORAGE.ROUTE_UPLOAD_STATE] || {};
-    const fingerprint = snapshotFingerprint(snapshot);
+    const fingerprint = snapshotFingerprint(snapshot2);
     const previous = routeState[routeKey];
     let response;
     try {
@@ -5817,10 +6784,10 @@
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "Idempotency-Key": `snapshot:${config.collectionTaskId}:${snapshot.localCollectedAt}`.slice(0, 128),
+          "Idempotency-Key": `snapshot:${config.collectionTaskId}:${snapshot2.localCollectedAt}`.slice(0, 128),
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(sanitizeSnapshotPayload(snapshot))
+        body: JSON.stringify(sanitizeSnapshotPayload(snapshot2))
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "\u7F51\u7EDC\u4E0A\u4F20\u5931\u8D25";
@@ -5831,8 +6798,8 @@
       };
       await chrome.storage.local.set({ [STORAGE.ROUTE_UPLOAD_STATE]: routeState });
       await appendLog("snapshot.upload_failed", { routeKey, error: message });
-      if (snapshot.collectionRunId) {
-        await reportRouteFailure(apiBaseUrl, token, snapshot.collectionRunId, routeKey, "UPLOAD_NETWORK_ERROR", message);
+      if (snapshot2.collectionRunId) {
+        await reportRouteFailure(apiBaseUrl, token, snapshot2.collectionRunId, routeKey, "UPLOAD_NETWORK_ERROR", message);
       }
       return { ok: false, error: message };
     }
@@ -5844,11 +6811,11 @@
       consecutiveFailures: response.ok ? 0 : (previous?.consecutiveFailures || 0) + 1
     };
     await chrome.storage.local.set({ [STORAGE.ROUTE_UPLOAD_STATE]: routeState });
-    if (!response.ok && snapshot.collectionRunId) {
+    if (!response.ok && snapshot2.collectionRunId) {
       await reportRouteFailure(
         apiBaseUrl,
         token,
-        snapshot.collectionRunId,
+        snapshot2.collectionRunId,
         routeKey,
         "UPLOAD_HTTP_ERROR",
         payload?.error?.message || `HTTP ${response.status}`
@@ -5862,14 +6829,20 @@
     const local = await chrome.storage.local.get([STORAGE.CONTEXT]);
     const context = local[STORAGE.CONTEXT];
     const task = context?.account.projects.flatMap((project) => project.tasks).find((item) => item.id === api.collectionTaskId);
-    return [...new Set((task?.routeSources || []).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => route !== "UNKNOWN"))];
+    return [...new Set((task?.routeSources || []).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => route === "LOCAL_PROMOTION_DASHBOARD"))];
   }
-  async function refreshBoundContext() {
+  function sameRouteKeys(left, right) {
+    return [...new Set(left)].sort().join("|") === [...new Set(right)].sort().join("|");
+  }
+  function routeLabel(routeKey) {
+    return collectionRouteLabels[routeKey] || routeKey;
+  }
+  async function refreshBoundContext(timeoutMs = extensionRequestTimeoutMs) {
     const api = await apiContext();
     if (!api.ok) return api;
     try {
-      const response = await fetch(`${api.apiBaseUrl}/extension/context`, {
-        headers: { Authorization: `Bearer ${api.token}` }
+      const response = await fetchWithTimeout(`${api.apiBaseUrl}/extension/context`, {
+        headers: extensionContextRequestHeaders(api.token)
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
@@ -5886,10 +6859,16 @@
       const refreshedConfig = refreshConfigFromContext(config, context);
       if (!refreshedConfig) return { ok: false, error: "\u5F53\u524D\u4EFB\u52A1\u5DF2\u4E0D\u5C5E\u4E8E\u7ED1\u5B9A\u8D26\u53F7\uFF0C\u8BF7\u5728\u63D2\u4EF6\u4E2D\u91CD\u65B0\u9009\u62E9\u4EFB\u52A1\u3002" };
       await chrome.storage.local.set({ [STORAGE.CONFIG]: refreshedConfig, [STORAGE.CONTEXT]: context });
-      return { ok: true };
-    } catch {
-      return { ok: false, error: "\u65E0\u6CD5\u5237\u65B0\u5F53\u524D\u8D26\u53F7\u4FE1\u606F\uFF0C\u8BF7\u68C0\u67E5\u8BCA\u65AD\u670D\u52A1\u540E\u91CD\u8BD5\u3002" };
+      return { ok: true, context };
+    } catch (error) {
+      return { ok: false, error: isRequestTimeout(error) ? "\u672C\u673A API \u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u5730\u670D\u52A1\u662F\u5426\u4ECD\u5728\u8FD0\u884C\u3002" : "\u65E0\u6CD5\u5237\u65B0\u5F53\u524D\u8D26\u53F7\u4FE1\u606F\uFF0C\u8BF7\u68C0\u67E5\u8BCA\u65AD\u670D\u52A1\u540E\u91CD\u8BD5\u3002" };
     }
+  }
+  function extensionContextRequestHeaders(token) {
+    return {
+      Authorization: `Bearer ${token}`,
+      "x-pxxis-collection-protocol": String(extensionCollectionProtocolVersion)
+    };
   }
   function protocolErrorMessage(code) {
     if (code === "SERVICE_UPDATE_REQUIRED") {
@@ -5923,8 +6902,8 @@
     if (!context.ok) return;
     await reportRouteFailure(context.apiBaseUrl, context.token, collectionRunId, routeKey, errorCode, error);
   }
-  function snapshotFingerprint(snapshot) {
-    const value = JSON.stringify({ routeKey: snapshot.routeKey, metrics: snapshot.visibleMetricsJson, tables: snapshot.rawTableData });
+  function snapshotFingerprint(snapshot2) {
+    const value = JSON.stringify({ routeKey: snapshot2.routeKey, metrics: snapshot2.visibleMetricsJson, tables: snapshot2.rawTableData });
     let hash = 2166136261;
     for (let index = 0; index < value.length; index += 1) {
       hash ^= value.charCodeAt(index);

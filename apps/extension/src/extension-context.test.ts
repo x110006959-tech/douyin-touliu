@@ -7,6 +7,11 @@ import {
 
 const contextResponse = {
   collectionProtocolVersion: 1,
+  liveScreenInternalApi: {
+    enabled: false,
+    contractVersion: "test-contract",
+    adapterVersion: "test-adapter"
+  },
   account: {
     id: "account-1",
     accountName: "好想来测试",
@@ -61,5 +66,12 @@ describe("extension collection context", () => {
       code: "EXTENSION_UPDATE_REQUIRED"
     });
     expect(checkExtensionContextProtocol(contextResponse, 1)).toEqual({ ok: true, version: 1 });
+  });
+
+  it("rejects an older service protocol before exchanging a pairing code", () => {
+    expect(checkExtensionContextProtocol({ collectionProtocolVersion: 4 }, 5)).toEqual({
+      ok: false,
+      code: "SERVICE_UPDATE_REQUIRED"
+    });
   });
 });

@@ -95,7 +95,10 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
   }, [extensionDetected, onCaptureCompleted, reloadTask, taskId, token]);
 
   const refreshConnectionStatus = useCallback(async () => {
-    await Promise.all([refreshBridgeStatus(), refreshCaptureStatus()]);
+    // The bridge request can restore a saved binding by reporting a task-page
+    // heartbeat. Read server state only after that acknowledgement arrives.
+    await refreshBridgeStatus();
+    await refreshCaptureStatus();
   }, [refreshBridgeStatus, refreshCaptureStatus]);
 
   useEffect(() => {
@@ -138,11 +141,6 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
   }, [refreshBridgeStatus]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => void refreshBridgeStatus(), 3_000);
-    return () => window.clearInterval(timer);
-  }, [refreshBridgeStatus]);
-
-  useEffect(() => {
     if (!token) return;
     let stopped = false;
     let refreshing = false;
@@ -150,9 +148,9 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
       if (refreshing) return;
       refreshing = true;
       try {
-        await refreshCaptureStatus();
+        await refreshConnectionStatus();
       } catch {
-        if (!stopped) {
+        if (!stopped && token) {
           setExtensionStatus((current) => current
             ? { ...current, state: "OFFLINE", message: "暂时无法读取插件状态，请检查本地 API。" }
             : null);
@@ -162,12 +160,12 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
       }
     };
     void refresh();
-    const timer = window.setInterval(refresh, 3_000);
+    const timer = window.setInterval(refresh, 5_000);
     return () => {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [refreshCaptureStatus, token]);
+  }, [refreshConnectionStatus, token]);
 
   return {
     captureSummary,

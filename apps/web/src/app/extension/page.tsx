@@ -51,7 +51,7 @@ export default function ExtensionPage() {
         <Card>
           <CardTitle>如何开始采集</CardTitle>
           <p className="text-sm leading-6 text-muted">
-            打开目标投流后台页面，确认页面属于允许采集的域名范围，然后点击“采集并上传当前路线”。直播大屏的概览、商品和流量分栏需要由用户手动切换并分别采集，插件不会自动点击平台标签。
+            巨量本地推只在数据总览页点击“采集并上传数据总览”；直播数据大屏点击一次“开始 API 持续采集”。任务或计划列表不再采集，插件不会自动点击平台标签。
           </p>
         </Card>
         <Card>

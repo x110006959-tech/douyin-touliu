@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectionSnapshotSchema,
+  createActionOutcomeInputSchema,
   createProjectSchema,
   decisionEngineInputSchema,
   generatedOptimizationRecommendationSchema,
@@ -22,6 +23,8 @@ describe("metric dictionary", () => {
 
   it("maps metric names when raw keys are not standard", () => {
     expect(standardizeMetricKey({ key: "foo_123", name: "点击率" })).toBe("ctr");
+    expect(standardizeMetricKey({ key: "GoodsCvr", name: "商品转化率" })).toBe("product_conversion_rate");
+    expect(standardizeMetricKey({ key: "ClientAvgWatchDuration", name: "人均观看时长" })).toBe("average_watch_duration_seconds");
   });
 
   it("marks unknown metrics as unknown", () => {
@@ -54,6 +57,27 @@ describe("project subject requirements", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe("action outcome contracts", () => {
+  it("accepts new live metrics while continuing to reject the unknown key", () => {
+    expect(createActionOutcomeInputSchema.safeParse({
+      observationWindow: "30m",
+      beforeMetrics: [
+        { metricKey: "average_watch_duration_seconds", value: 59.76, unit: "s" }
+      ],
+      afterMetrics: [
+        { metricKey: "product_conversion_rate", value: 0.4824, unit: "%" }
+      ],
+      result: "IMPROVED"
+    }).success).toBe(true);
+
+    expect(createActionOutcomeInputSchema.safeParse({
+      observationWindow: "30m",
+      beforeMetrics: [{ metricKey: "unknown", value: 1 }],
+      result: "UNCLEAR"
+    }).success).toBe(false);
   });
 });
 

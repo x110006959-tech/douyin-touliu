@@ -18,6 +18,10 @@ const collectionDashboardSource = readFileSync(
   fileURLToPath(new URL("../app/tasks/[id]/collection-dashboard/page.tsx", import.meta.url)),
   "utf8"
 );
+const collectionRouteFlowSource = readFileSync(
+  fileURLToPath(new URL("../app/tasks/[id]/collection-dashboard/collection-route-flow.tsx", import.meta.url)),
+  "utf8"
+);
 const extensionTaskStatusSource = readFileSync(
   fileURLToPath(new URL("../app/tasks/[id]/use-extension-task-status.ts", import.meta.url)),
   "utf8"
@@ -47,7 +51,7 @@ describe("task page acceptance guard", () => {
     expect(taskPageSource).toContain("进入校准大屏");
     expect(taskPageSource).not.toContain("查看完整指标明细");
     expect(taskPageSource).not.toContain("一键确认可信字段");
-    expect(collectionDashboardSource).toContain("采集校准大屏");
+    expect(collectionDashboardSource).toContain("经营数据大屏");
     expect(collectionDashboardSource).toContain("指标类别");
     expect(collectionDashboardSource).toContain("metricCategoryFilter");
     expect(collectionDashboardSource).toContain("来源路线：");
@@ -56,6 +60,8 @@ describe("task page acceptance guard", () => {
     expect(collectionDashboardSource).toContain("后台字段标签");
     expect(collectionDashboardSource).toContain("metric.fieldLabel");
     expect(collectionDashboardSource).toContain("formatOverviewMetricValue");
+    expect(collectionDashboardSource).toContain("metric.originalValue?.trim()");
+    expect(collectionDashboardSource).toContain("原始采集值 · 待复核");
     expect(collectionDashboardSource).toContain("（比例）");
     expect(collectionDashboardSource).toContain("统计周期");
     expect(collectionDashboardSource).toContain("metricPeriodDrafts");
@@ -63,7 +69,11 @@ describe("task page acceptance guard", () => {
     expect(collectionDashboardSource).not.toContain("确认表头与行列关系");
     expect(collectionDashboardSource).not.toContain("/table-bindings/confirm");
     expect(collectionDashboardSource).toContain("系统不会生成模拟趋势或虚构表格");
-    expect(collectionDashboardSource).toContain("全任务核心指标");
+    expect(collectionDashboardSource).toContain("经营数据总览");
+    expect(collectionDashboardSource).toContain("采集线路");
+    expect(collectionRouteFlowSource).toContain("已退出当前采集");
+    expect(collectionRouteFlowSource).toContain("不计入线路进度，也无需再次采集");
+    expect(collectionDashboardSource).not.toContain("API 实时数据");
     expect(collectionDashboardSource).toContain("dashboard.summary.metrics.filter");
     expect(collectionDashboardSource).toContain("详细指标与原始表格");
     expect(collectionDashboardSource).toContain("确认可信数据并生成诊断");
@@ -91,20 +101,53 @@ describe("task page acceptance guard", () => {
 
   it("refreshes the bridge state after Popup pairing confirmation", () => {
     expect(extensionTaskStatusSource).toContain("const refreshBridgeStatus = useCallback");
-    expect(extensionTaskStatusSource).toContain("window.setInterval(() => void refreshBridgeStatus(), 3_000)");
     expect(extensionTaskStatusSource).toContain("const refreshConnectionStatus = useCallback");
+    expect(extensionTaskStatusSource).toContain("await refreshBridgeStatus();");
+    expect(extensionTaskStatusSource).toContain("await refreshCaptureStatus();");
+    expect(extensionTaskStatusSource).not.toContain("Promise.all([refreshBridgeStatus(), refreshCaptureStatus()])");
   });
 
-  it("keeps recovery controls available when historical captures exist but the plugin is offline", () => {
+  it("uses a fixed five-second bridge refresh so a saved task binding reconnects automatically", () => {
+    expect(extensionTaskStatusSource).toContain("window.setInterval(refresh, 5_000)");
+  });
+
+  it("keeps recovery controls and an explicit historical-data warning when the plugin is offline", () => {
     expect(taskPageSource).toContain("{!extensionConnected ? (");
     expect(taskPageSource).toContain("恢复采集插件连接");
     expect(taskPageSource).toContain("重新检测插件");
+    expect(taskPageSource).toContain("历史快照不会代替当前配对");
+    expect(taskPageSource).toContain("当前插件未连接，历史数据仅供复核");
     expect(taskPageSource).not.toContain("{!extensionConnected && !hasCapture ? (");
+  });
+
+  it("returns an expired task session to the same task for pairing recovery", () => {
+    expect(taskPageSource).toContain('<AuthRequiredState returnTo={`/tasks/${encodeURIComponent(params.id)}`} />');
+  });
+
+  it("offers a login return path when a collection task no longer exists", () => {
+    expect(taskPageSource).toContain("采集任务不存在");
+    expect(taskPageSource).toContain("返回登录");
+    expect(taskPageSource).toContain('href="/login"');
+  });
+
+  it("offers an explicit manual button back to the parent project", () => {
+    expect(taskPageSource).toContain('aria-label="返回上一级：项目详情"');
+    expect(taskPageSource).toContain("← 返回上一级");
+    expect(taskPageSource).toContain('href={`/projects/${task.project.id}`}');
+    expect(taskPageSource).toContain("inline-flex h-10 items-center rounded-md border");
   });
 
   it("uses server-verified task binding instead of page account identity", () => {
     expect(taskPageSource).toContain("任务绑定");
     expect(taskPageSource).toContain("服务端已验证");
+    expect(taskPageSource).toContain("extensionServerVerified");
+    expect(taskPageSource).toContain("本机 API 已确认当前任务");
+    expect(taskPageSource).toContain("当前插件本地凭证已验证");
+    expect(taskPageSource).toContain("服务器有历史授权，当前插件未验证");
+    expect(taskPageSource).toContain("pluginUpdateRequired");
+    expect(taskPageSource).toContain("请先重新加载插件");
+    expect(taskPageSource).toContain("当前插件协议不兼容");
+    expect(taskPageSource).not.toContain("|| (webBridge.response?.paired && webBridge.response.boundTaskId === task.id)");
     expect(taskPageSource).not.toContain("页面识别：");
     expect(taskPageSource).not.toContain("待确认账号");
     expect(taskPageSource).not.toContain("confirm-accounts");
@@ -122,7 +165,14 @@ describe("task page acceptance guard", () => {
   });
 
   it("inherits route templates without requiring per-task URLs while preserving legacy links", () => {
-    expect(projectPageSource).toContain("任务会自动继承全局采集路线");
+    expect(projectPageSource).toContain("任务默认只保留基础采集路线");
+    expect(projectPageSource).toContain("defaultCollectionRouteTemplates.map");
+    expect(projectPageSource).not.toContain("collectionRouteTemplates.map");
+    expect(projectPageSource).not.toContain("直播大屏商品页");
+    expect(projectPageSource).not.toContain("直播大屏流量页");
+    expect(projectPageSource).not.toContain("页面路线 {captured}/");
+    expect(projectPageSource).toContain("已有采集记录");
+    expect(taskPageSource).toContain("任务或计划列表不再采集");
     expect(projectPageSource).toContain('JSON.stringify({ projectId: project.id, pageTitle: form.get("pageTitle") })');
     expect(projectPageSource).not.toContain("routeSources })");
     expect(projectPageSource).not.toContain("页面地址（可选，可由插件识别当前页面）");

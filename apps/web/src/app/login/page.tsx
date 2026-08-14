@@ -1,12 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ApiError, apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { loginDestination } from "@/lib/auth-redirect";
 import { extensionSafetyNotice } from "@douyin-local-life/shared";
 
 type AuthPayload = {
@@ -21,12 +22,15 @@ type AuthPayload = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { token, hydrated, setToken } = useAuth();
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { if (hydrated && token) router.replace("/dashboard"); }, [hydrated, token, router]);
+  const returnTo = loginDestination(searchParams.get("returnTo"));
+
+  useEffect(() => { if (hydrated && token) router.replace(returnTo); }, [hydrated, returnTo, token, router]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,7 +47,7 @@ export default function LoginPage() {
         body: JSON.stringify(body)
       });
       setToken(payload.csrfToken);
-      router.push("/dashboard");
+      router.push(returnTo);
     } catch (err) {
       if (err instanceof ApiError) setFieldErrors(err.fieldErrors);
       setError(err instanceof Error ? err.message : "登录失败");

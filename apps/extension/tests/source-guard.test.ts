@@ -68,22 +68,57 @@ describe("extension source safety guard", () => {
     expect(worker).not.toMatch(/chrome\.tabs\.(create|update)/);
   });
 
-  it("keeps the ordinary popup focused on task pairing and one-click manual capture", () => {
+  it("keeps the popup focused on explicit capture and API continuous collection", () => {
     const popup = readFileSync(resolve(root, "src/popup.ts"), "utf8");
+    const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
     const html = readFileSync(resolve(root, "popup.html"), "utf8");
     expect(popup).toContain("CAPTURE_AND_UPLOAD");
-    expect(popup).toContain("采集并上传当前路线");
-    expect(popup).toContain("renderRouteOverrideOptions");
+    expect(popup).toContain("采集并上传数据总览");
+    expect(popup).not.toContain("renderRouteOverrideOptions");
+    expect(popup).toContain("VERIFY_BOUND_CONTEXT");
+    expect(popup).toContain("START_LIVE_PULSE");
+    expect(popup).toContain("STOP_LIVE_PULSE");
+    expect(popup).not.toContain('window.addEventListener("pagehide"');
+    expect(content).toContain('document.addEventListener("visibilitychange"');
+    expect(content).toContain('window.addEventListener("pagehide"');
+    expect(popup).toContain("已有成功记录，可重新采集");
+    expect(popup).not.toContain("本轮路线已完成");
     expect(popup).not.toMatch(/\bprompt\s*\(/);
     expect(html).toContain("输入六位配对码");
-    expect(html).toContain("确认本次采集路线");
+    expect(html).toContain("任务或计划列表不再采集");
     expect(html).toContain("确认插件配对");
     expect(popup).toContain("CONFIRM_PAIRING");
-    expect(html).toContain('id="routeOverride"');
+    expect(html).not.toContain('id="routeOverride"');
+    expect(html).toContain('id="livePulseBtn"');
+    expect(html).toContain("开始 API 持续采集");
+    expect(html).not.toContain("保存当前数据为正式快照");
+    expect(html).not.toContain("30 秒");
     expect(html).not.toContain('id="routeChoices"');
     expect(html).not.toContain('id="routeMaterial"');
     expect(html).not.toContain('id="routeTrend"');
     expect(html).toContain("高级设置");
+  });
+
+  it("stops live pulses when the user leaves or closes the live-screen tab", () => {
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
+    expect(worker).toContain("chrome.tabs.onRemoved");
+    expect(worker).toContain("chrome.tabs.onUpdated");
+    expect(worker).toContain("PAGE_NAVIGATED");
+    expect(worker).toContain("state.uploadController?.abort()");
+    expect(worker).not.toContain("function scheduleLivePulse");
+    expect(content).toContain('window.addEventListener("pagehide"');
+    expect(content).toContain("BEGIN_LIVE_PULSE_LOOP");
+    expect(content).toContain("SUBMIT_LIVE_PULSE");
+  });
+
+  it("keeps formal snapshots and DOM pulses connected to the server feature state", () => {
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
+    expect(worker).toContain("liveScreenInternalApiEnabled: refreshedContext.context.liveScreenInternalApi.enabled");
+    expect(worker).toContain("MESSAGE.BEGIN_LIVE_PULSE_LOOP");
+    expect(worker).not.toContain("服务端尚未开启直播大屏内部 API 采集。");
+    expect(content).toContain("liveScreenCapturePlan");
   });
 
   it("requires Popup confirmation before a web bridge can exchange a pairing code", () => {
@@ -100,13 +135,34 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("if (!isPopupSender(sender))");
   });
 
+  it("rejects auto-detected snapshot routes that are no longer enabled for the current task", () => {
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const captureSource = worker.slice(
+      worker.indexOf("async function captureAndUpload("),
+      worker.indexOf("async function startLivePulse")
+    );
+
+    expect(captureSource).toContain("const allowedRoutes = await currentTaskRouteKeys()");
+    expect(captureSource).toContain("if (!allowedRoutes.includes(snapshotRouteKey))");
+    expect(captureSource).toContain("当前任务已取消");
+  });
+
+  it("uses authenticated JSON postMessage envelopes across page worlds", () => {
+    const bridge = readFileSync(resolve(root, "src/web-bridge.ts"), "utf8");
+    expect(bridge).toContain('window.addEventListener("message"');
+    expect(bridge).toContain("parseBridgeWindowMessage");
+    expect(bridge).toContain("serializeBridgeWindowMessage");
+    expect(bridge).toContain("event.source !== window || event.origin !== window.location.origin");
+    expect(bridge).toContain("window.postMessage");
+    expect(bridge).not.toContain("new CustomEvent");
+  });
+
   it("keeps one-shot manual route confirmation scoped to the current task", () => {
     const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
     const popup = readFileSync(resolve(root, "src/popup.ts"), "utf8");
     expect(worker).toContain("currentTaskRouteKeys");
-    expect(worker).toContain("本次人工路线选择无效");
     expect(worker).not.toContain("[\"LIVE_DATA_SCREEN\", \"LIVE_PRODUCT_TAB\", \"LIVE_TRAFFIC_TAB\"]");
-    expect(popup).toContain("task?.routeSources");
+    expect(popup).toContain('routeKey === "LOCAL_PROMOTION_DASHBOARD"');
     expect(popup).not.toContain('"MATERIAL_LIBRARY"');
     expect(popup).not.toContain('"HOURLY_TREND"');
   });
@@ -121,6 +177,19 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("tabId");
     expect(worker).toContain("routeKey");
     expect(worker).toContain("collectionRunId");
+  });
+
+  it("restores a saved task binding only from the active task-page tab", () => {
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const recovery = readFileSync(resolve(root, "src/task-page-bridge-recovery.ts"), "utf8");
+    expect(worker).toContain("restoreBoundTaskPageConnection");
+    expect(worker).toContain("restoreTaskPageConnection");
+    expect(recovery).not.toContain("input.sender.tab?.active");
+    expect(recovery).toContain("taskPageTaskId !== input.boundTaskId");
+    expect(recovery).toContain("pageType: \"TASK_TABLE\"");
+    expect(recovery).toContain("collectable: false");
+    expect(worker).toContain("bridgeRecoveryRequestTimeoutMs");
+    expect(worker).toContain("fetchWithTimeout");
   });
 
   it("removes all production network interception code", () => {
@@ -140,7 +209,9 @@ describe("extension source safety guard", () => {
   it("keeps the tracked unpacked release on the current manifest version", () => {
     const rootPackage = JSON.parse(readFileSync(resolve(root, "../../package.json"), "utf8"));
     const releaseManifest = JSON.parse(readFileSync(resolve(root, "release/local-unpacked-test-extension/manifest.json"), "utf8"));
+    const releaseMetadata = JSON.parse(readFileSync(resolve(root, "release/local-unpacked-test-extension/build-metadata.json"), "utf8"));
     expect(releaseManifest.version).toBe(rootPackage.version);
+    expect(releaseMetadata.schemaVersion).toBe(rootPackage.pxxisMetadata.schemaVersion);
     expect(releaseManifest.name).toContain("本地测试");
     expect(releaseManifest.description).toContain("本地测试");
     expect(releaseManifest.host_permissions).toContain("http://localhost/*");
@@ -150,6 +221,15 @@ describe("extension source safety guard", () => {
       expect(readFileSync(resolve(root, "release/local-unpacked-test-extension", iconName))).toEqual(localTestIcon);
       expect(localTestIcon).not.toEqual(readFileSync(resolve(root, "public", iconName)));
     }
+  });
+
+  it("fingerprints every authored extension and shared source module", () => {
+    const buildScript = readFileSync(resolve(root, "scripts/build.mjs"), "utf8");
+    const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+    expect(buildScript).toContain('sourceFiles("apps/extension/src")');
+    expect(buildScript).toContain('sourceFiles("packages/shared/src")');
+    expect(packageJson.scripts.build).toContain("--dist-only");
+    expect(packageJson.scripts["build:local"]).not.toContain("--dist-only");
   });
 
   it("validates the current-version ZIP when that release artifact is present", () => {

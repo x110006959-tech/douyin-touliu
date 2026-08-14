@@ -1,5 +1,4 @@
 import {
-  isTrustedExtensionCollectionUrl,
   sanitizeCollectionSnapshotPayload,
   sanitizeSensitiveData,
   shouldRedactSensitiveKey
@@ -22,5 +21,13 @@ export function normalizeApiBaseUrl(value: string, allowedLoopbackHostnames = de
 }
 
 export function isSupportedExtensionCollectionUrl(value: string) {
-  return isTrustedExtensionCollectionUrl(value);
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return false;
+    if (url.hostname === "eos.douyin.com") return url.pathname === "/dp/liveScreen";
+    return url.hostname === "localads.chengzijianzhan.cn"
+      && /^\/lamp\/pc\/liveboard2(?:\/|$)/.test(url.pathname);
+  } catch {
+    return false;
+  }
 }

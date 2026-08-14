@@ -1,10 +1,10 @@
 {
   "productVersion": "0.2.4",
-  "gitSha": "b4e7a97998b6",
-  "buildTime": "2026-08-01T08:57:44.606Z",
-  "schemaVersion": "20260729_v034_metric_binding_calibration",
+  "gitSha": "a0cef5b788b6",
+  "buildTime": "2026-08-14T19:57:29.639Z",
+  "schemaVersion": "20260731_v035_ai_skill_diagnosis",
   "extensionVersion": "0.2.4",
-  "sourceFingerprint": "d1c80aee42ea",
+  "sourceFingerprint": "1a4bc20a9d72",
   "buildTarget": "local",
   "localTestOnly": true
 }

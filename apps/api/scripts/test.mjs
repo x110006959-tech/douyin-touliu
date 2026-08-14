@@ -11,6 +11,9 @@ const env = {
   ...process.env,
   DATABASE_URL: databaseUrl,
   SECURITY_SECRET: process.env.SECURITY_SECRET || process.env.JWT_SECRET || "local-test-security-secret-at-least-32-characters",
+  // Keep the smoke suite deterministic even when a developer enables the
+  // separately authorized local API collector in the repository .env file.
+  LIVE_SCREEN_INTERNAL_API_ENABLED: "false",
   NODE_ENV: "test"
 };
 const pnpmCli = process.env.npm_execpath;

@@ -1,19 +1,26 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
-import { assertDirectoryArtifact, extensionSchemaVersion } from "./artifact-policy.mjs";
+import { assertDirectoryArtifact } from "./artifact-policy.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
 const repoRoot = resolve(root, "../..");
 const target = readBuildTarget();
 const isLocalBuild = target === "local";
+const syncUnpackedRelease = !process.argv.includes("--dist-only");
 const unpackedRelease = resolve(root, `release/${isLocalBuild ? "local-unpacked-test-extension" : "production-unpacked-extension"}`);
 const entries = ["popup", "content", "service-worker", "sidepanel", "web-bridge"];
 const rootPackage = JSON.parse(await readFile(resolve(repoRoot, "package.json"), "utf8"));
+const schemaVersion = rootPackage.pxxisMetadata?.schemaVersion;
+if (typeof schemaVersion !== "string" || !/^\d{8}_[a-z0-9_]+$/.test(schemaVersion)) {
+  throw new Error("Root package metadata must define a valid pxxisMetadata.schemaVersion.");
+}
 const gitSha = safeGitSha();
+const extensionBuildSources = await sourceFiles("apps/extension/src");
+const sharedBuildSources = await sourceFiles("packages/shared/src");
 const sourceFingerprint = await fingerprintBuildInputs([
   "apps/extension/popup.html",
   "apps/extension/sidepanel.html",
@@ -22,17 +29,9 @@ const sourceFingerprint = await fingerprintBuildInputs([
     `apps/extension/public/icons/icon${size}.png`,
     `apps/extension/public/local-test-icons/icon${size}.png`
   ]),
-  ...entries.map((entry) => `apps/extension/src/${entry}.ts`),
-  "apps/extension/src/bridge-protocol.ts",
-  "apps/extension/src/build-target.ts",
-  "apps/extension/src/messages.ts",
-  "apps/extension/src/page-adapters.ts",
-  "apps/extension/src/safety.ts",
-  "apps/extension/src/extension-context.ts",
+  ...extensionBuildSources,
   "apps/extension/scripts/artifact-policy.mjs",
-  "packages/shared/src/index.ts",
-  "packages/shared/src/collection-routes.ts",
-  "packages/shared/src/safety.ts"
+  ...sharedBuildSources
 ]);
 const buildTime = new Date().toISOString();
 const localDevelopmentHosts = isLocalBuild ? ["localhost", "127.0.0.1"] : [];
@@ -69,16 +68,18 @@ await writeFile(resolve(dist, "build-metadata.json"), `${JSON.stringify({
   productVersion: rootPackage.version,
   gitSha,
   buildTime,
-  schemaVersion: extensionSchemaVersion,
+  schemaVersion,
   extensionVersion: rootPackage.version,
   sourceFingerprint,
   buildTarget: target,
   localTestOnly: isLocalBuild
 }, null, 2)}\n`);
 await assertDirectoryArtifact(dist, target);
-await rm(unpackedRelease, { recursive: true, force: true });
-await mkdir(unpackedRelease, { recursive: true });
-await cp(dist, unpackedRelease, { recursive: true });
+if (syncUnpackedRelease) {
+  await rm(unpackedRelease, { recursive: true, force: true });
+  await mkdir(unpackedRelease, { recursive: true });
+  await cp(dist, unpackedRelease, { recursive: true });
+}
 
 async function buildEntry(entry) {
   const file = resolve(root, `src/${entry}.ts`);
@@ -122,6 +123,13 @@ function safeGitSha() {
   } catch {
     return "unknown";
   }
+}
+
+async function sourceFiles(relativeDirectory) {
+  const directory = resolve(repoRoot, relativeDirectory);
+  return (await readdir(directory, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+    .map((entry) => `${relativeDirectory}/${entry.name}`);
 }
 
 function readBuildTarget() {

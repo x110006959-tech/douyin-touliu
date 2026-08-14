@@ -18,8 +18,6 @@ const productionContentScriptMatches = [
   ["https://www.pxxis.cn/*"]
 ];
 
-export const extensionSchemaVersion = "20260729_v034_metric_binding_calibration";
-
 export async function assertDirectoryArtifact(root, target) {
   assertExtensionArtifact(await readDirectoryArtifact(root), target);
 }

@@ -73,10 +73,7 @@ corepack pnpm dev
 - 不自动创建投放计划。
 - 不自动提交平台操作。
 - 不绕过验证码。
-- 不规避平台风控。
-- 不把 ActionProposal 执行到平台页面。
-- 不申请 Chrome `cookies` 权限。
-- 不采集平台 cookie、平台 authorization、平台 token、password。
+
 
 ## Chrome 插件
 

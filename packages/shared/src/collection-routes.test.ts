@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { assessCollectionQuality, detectActiveCollectionRoute, inferCollectionRoute, isSupportedCollectionUrl, isTrustedExtensionCollectionUrl } from "./collection-routes";
+import { assessCollectionQuality, defaultCollectionRouteTemplates, detectActiveCollectionRoute, inferCollectionRoute, isPrimaryCollectionRouteKey, isSupportedCollectionUrl, isTrustedExtensionCollectionUrl } from "./collection-routes";
 
 describe("collection routes", () => {
+  it("keeps the default task checklist focused on required routes", () => {
+    expect(defaultCollectionRouteTemplates.map((route) => route.routeKey)).toEqual([
+      "LIVE_DATA_SCREEN",
+      "LOCAL_PROMOTION_DASHBOARD"
+    ]);
+    expect(defaultCollectionRouteTemplates.every((route) => route.required)).toBe(true);
+    expect(isPrimaryCollectionRouteKey("TASK_TABLE")).toBe(false);
+    expect(isPrimaryCollectionRouteKey("LIVE_DATA_SCREEN")).toBe(true);
+  });
+
   it("prefers fixed target page semantics over a broad page type", () => {
     expect(inferCollectionRoute({ pageType: "LOCAL_PROMOTION_DASHBOARD", sourceUrl: "https://example.com/material/list" })).toBe("MATERIAL_LIBRARY");
     expect(inferCollectionRoute({ pageType: "UNKNOWN", sourceUrl: "https://example.com/hourly-trend" })).toBe("HOURLY_TREND");

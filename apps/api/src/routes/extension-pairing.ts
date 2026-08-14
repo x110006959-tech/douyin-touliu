@@ -1,6 +1,13 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { Router } from "express";
-import { createExtensionPairingCodeSchema, exchangeExtensionPairingCodeSchema, extensionCollectionProtocolVersion, extensionHeartbeatSchema } from "@douyin-local-life/shared";
+import {
+  createExtensionPairingCodeSchema,
+  exchangeExtensionPairingCodeSchema,
+  extensionCollectionProtocolVersion,
+  extensionHeartbeatSchema,
+  liveScreenInternalApiAdapterVersion,
+  liveScreenInternalApiContractVersion
+} from "@douyin-local-life/shared";
 import { hashExtensionSecret, requireHumanSession, type AuthenticatedRequest } from "../auth.js";
 import { createAuditActorSnapshot, writeAuditLog } from "../audit.js";
 import { getExtensionStatus, recordExtensionPresence, removeExtensionPresence } from "../extension-presence.js";
@@ -10,9 +17,11 @@ import { checkExtensionPairingRateLimit } from "../rate-limit.js";
 import { sendError, sendSuccess, validationErrorOptions } from "../response.js";
 import { currentUser, toJson } from "../server-utils.js";
 import { getBuildMetadata } from "../version.js";
+import { liveScreenInternalApiEnabled } from "../live-screen-internal-api-config.js";
 
 const pairingLifetimeMs = 2 * 60 * 1000;
 const credentialLifetimeMs = 30 * 24 * 60 * 60 * 1000;
+const extensionCollectionProtocolHeader = "x-pxxis-collection-protocol";
 
 export function createExtensionPublicRouter() {
   const router = Router();
@@ -272,6 +281,10 @@ export function createExtensionProtectedRouter() {
     if (user.authKind !== "EXTENSION" || !user.extensionAccountProfileId) {
       return sendError(res, 403, "EXTENSION_CREDENTIAL_REQUIRED", "请使用插件配对凭证访问");
     }
+    const declaredProtocol = parseDeclaredCollectionProtocol(req.get(extensionCollectionProtocolHeader));
+    if (declaredProtocol !== extensionCollectionProtocolVersion) {
+      return sendError(res, 409, "EXTENSION_COLLECTION_PROTOCOL_MISMATCH", "插件版本已过期，请重新加载当前本地扩展后重试");
+    }
     const account = await prisma.accountProfile.findFirst({
       where: { id: user.extensionAccountProfileId, workspaceId: user.workspaceId, status: "ACTIVE" },
       select: {
@@ -288,9 +301,20 @@ export function createExtensionProtectedRouter() {
     return sendSuccess(res, {
       account,
       credential: { id: user.extensionCredentialId, scopes: user.extensionScopes },
-      collectionProtocolVersion: extensionCollectionProtocolVersion
+      collectionProtocolVersion: extensionCollectionProtocolVersion,
+      liveScreenInternalApi: {
+        enabled: liveScreenInternalApiEnabled(),
+        contractVersion: liveScreenInternalApiContractVersion,
+        adapterVersion: liveScreenInternalApiAdapterVersion
+      }
     });
   });
 
   return router;
+}
+
+function parseDeclaredCollectionProtocol(value: string | undefined) {
+  if (!value || !/^\d{1,3}$/.test(value)) return null;
+  const protocol = Number(value);
+  return Number.isInteger(protocol) && protocol > 0 ? protocol : null;
 }

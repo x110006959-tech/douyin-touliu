@@ -7,7 +7,8 @@ const lineBudgets = new Map([
   ["apps/api/src/server.ts", 1_950],
   ["packages/shared/src/index.ts", 1_650],
   ["packages/decision-engine/src/index.ts", 1_300],
-  ["apps/web/src/app/tasks/[id]/page.tsx", 850]
+  ["apps/web/src/app/tasks/[id]/page.tsx", 850],
+  ["apps/web/src/app/tasks/[id]/collection-dashboard/page.tsx", 1_600]
 ]);
 const requiredSeams = new Map([
   ["apps/api/src/server.ts", "./routes/snapshot-accounts.js"],

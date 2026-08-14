@@ -12,6 +12,7 @@ import {
   type PageType,
   type VisibleMetric
 } from "@douyin-local-life/shared";
+import { isCaptureVisibleElement } from "./capture-budget";
 
 export type PageAdapterInput = {
   document: Document;
@@ -52,7 +53,7 @@ function createAdapter(routeKey: CollectionRouteKey): PageAdapter {
   if (!profile) throw new Error(`Missing collection field profile for ${routeKey}`);
   return {
     id: profile.adapterId,
-    version: "2.1.0",
+    version: "2.2.0",
     pageType: profile.pageType,
     expectedFields: [...profile.metricKeys],
     detect(input) {
@@ -133,14 +134,24 @@ function invalidBindingMetric(definition: MetricDefinition, reason: string): Vis
 }
 
 function countMetricLabels(document: Document, labels: string[]) {
-  return [...document.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, labels)).length;
+  return [...document.querySelectorAll("*")].filter((element) => (
+    isVisible(element)
+    && !isInsideDataTable(element)
+    && !isMetricDisplayNoise(element)
+    && isExactMetricLabel(element, labels)
+  )).length;
 }
 
 function findMetricBindings(document: Document, definition: MetricDefinition, profile: CollectionFieldProfile): MetricBinding[] {
-  const labelElements = [...document.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
+  const labelElements = [...document.querySelectorAll("*")].filter((element) => (
+    isVisible(element)
+    && !isInsideDataTable(element)
+    && !isMetricDisplayNoise(element)
+    && isExactMetricLabel(element, definition.labels)
+  ));
   const bindings: MetricBinding[] = [];
   for (const labelElement of labelElements) {
-    const container = findMetricContainer(labelElement);
+    const container = findMetricContainer(labelElement, definition);
     if (!container) continue;
     const labelsInContainer = [...container.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
     if (labelsInContainer.length !== 1) continue;
@@ -183,36 +194,78 @@ function findMetricBindings(document: Document, definition: MetricDefinition, pr
   return bindings;
 }
 
-function findMetricContainer(label: Element) {
+function findMetricContainer(label: Element, definition: MetricDefinition) {
+  let nearestUniqueValueContainer: Element | null = null;
   let current: Element | null = label.parentElement;
-  for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
-    const className = current.getAttribute("class") || "";
-    if (current.tagName === "ARTICLE" || current.tagName === "SECTION" || /card|metric|indicator|overview|data-item/i.test(className)) return current;
-    if (current.children.length <= 8 && current.querySelectorAll("*").length <= 24) return current;
+  for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
+    if (current.tagName === "BODY" || current.tagName === "HTML") break;
+    const labelsInContainer = [...current.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
+    if (labelsInContainer.length !== 1) continue;
+    const values = findMetricValueElements(current, label, definition);
+    if (values.length !== 1) continue;
+    nearestUniqueValueContainer ||= current;
+    if (findTimeRangeElement(current)) return current;
   }
-  return null;
+  return nearestUniqueValueContainer;
 }
 
 function findMetricValueElements(container: Element, label: Element, definition: MetricDefinition) {
   const descendants = [...container.querySelectorAll("*")];
   const labelIndex = descendants.indexOf(label);
-  return descendants.filter((element, index) => {
+  const candidates = descendants.filter((element, index) => {
     if (index <= labelIndex) return false;
-    if (element === label || !isVisible(element) || element.children.length > 0) return false;
+    if (element === label || !isVisible(element)) return false;
     const text = textOf(element);
     if (!text || isExactMetricLabel(element, definition.labels)) return false;
+    if (element.children.length > 0 && !isSplitMetricValueElement(element, definition)) return false;
     const parsed = parseDisplayedMetricValue(text, metricValueSemantic(definition.key), definition.unit);
     return parsed.normalizedText != null || parsed.reasons.includes("VALUE_MISSING");
   });
+  const outerCandidates = candidates.filter((candidate) => !candidates.some((other) => other !== candidate && isDescendantOf(candidate, other)));
+  const primaryCandidates = outerCandidates.filter((candidate) => !isComparisonMetricValue(candidate, container));
+  return primaryCandidates.length ? primaryCandidates : outerCandidates;
+}
+
+function isSplitMetricValueElement(element: Element, definition: MetricDefinition) {
+  const children = [...element.children].filter(isVisible);
+  if (!children.length || children.some((child) => child.children.length > 0 || isExactMetricLabel(child, definition.labels))) return false;
+  const displayValue = textOf(element);
+  const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(definition.key), definition.unit);
+  if (parsed.normalizedText == null && !parsed.reasons.includes("VALUE_MISSING")) return false;
+  if (children.length > 1) return true;
+  // The live dashboard renders the number as a direct text node and keeps only
+  // its unit/decorative suffix in one child span. The wrapper is the value;
+  // treating the suffix as the value turns a visible number into an empty one.
+  return normalizeMetricLookupValue(displayValue) !== normalizeMetricLookupValue(textOf(children[0]!));
+}
+
+function isDescendantOf(candidate: Element, ancestor: Element) {
+  let current = candidate.parentElement;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function isComparisonMetricValue(element: Element, container: Element) {
+  let current = element.parentElement;
+  while (current && current !== container) {
+    const text = textOf(current);
+    if (/^(?:近\s*\d+\s*场均值|近\s*\d+\s*(?:日|天|小时)均值|(?:同|环)比|平均值|目标(?:值)?)/.test(text)) return true;
+    current = current.parentElement;
+  }
+  return false;
 }
 
 function isExactMetricLabel(element: Element, labels: string[]) {
   const text = normalizeMetricLookupValue(textOf(element));
-  return Boolean(text) && labels.some((label) => text === normalizeMetricLookupValue(label));
+  if (!text || !labels.some((label) => text === normalizeMetricLookupValue(label))) return false;
+  return ![...element.children].some((child) => normalizeMetricLookupValue(textOf(child)) === text);
 }
 
 function isVisible(element: Element) {
-  return !element.hasAttribute("hidden") && element.getAttribute("aria-hidden") !== "true";
+  return isCaptureVisibleElement(element);
 }
 
 function textOf(element: Element) {
@@ -220,15 +273,40 @@ function textOf(element: Element) {
 }
 
 function extractTimeRange(text: string) {
-  return text.match(/(?:今日|昨日|昨天|实时|本场|整场|近\s*\d+\s*(?:分钟|小时|天)|\d{1,2}:\d{2}\s*[-至]\s*\d{1,2}:\d{2}|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至]\s*\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)?)/)?.[0] || null;
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const direct = normalized.match(/^(?:今日|昨日|昨天|实时|本场|整场|近\s*\d+\s*(?:分钟|小时|天)|\d{1,2}:\d{2}\s*[-至]\s*\d{1,2}:\d{2}|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至]\s*\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)?)$/);
+  if (direct) return direct[0];
+  return normalized.match(/^(?:统计周期|数据周期|统计日期|数据日期|时间范围|数据范围|日期范围)\s*[:：]?\s*(今日|昨日|昨天|实时|本场|整场|近\s*\d+\s*(?:分钟|小时|天)|\d{1,2}:\d{2}\s*[-至]\s*\d{1,2}:\d{2}|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至]\s*\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)?)$/)?.[1] || null;
 }
 
 function findTimeRangeElement(container: Element) {
   return [container, ...container.querySelectorAll("*")].find((element) => (
     isVisible(element)
+    && !isInsideDataTable(element)
     && element.children.length === 0
     && Boolean(extractTimeRange(textOf(element)))
   )) || null;
+}
+
+function isInsideDataTable(element: Element) {
+  let current: Element | null = element;
+  while (current) {
+    const role = current.getAttribute("role");
+    if (current.tagName === "TABLE" || role === "table" || role === "grid") return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function isMetricDisplayNoise(element: Element) {
+  let current: Element | null = element;
+  for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
+    const className = current.getAttribute("class") || "";
+    const role = current.getAttribute("role");
+    if (["option", "radio", "tab"].includes(role || "")) return true;
+    if (/(?:^|[-_\s])legend(?:[-_\s]|$)|chart|(?:^|[-_\s])tabs?(?:[-_\s]|$)|(?:^|[-_\s])radio-select(?:[-_\s]|$)/i.test(className)) return true;
+  }
+  return false;
 }
 
 function componentPath(container: Element, target: Element) {
@@ -249,7 +327,9 @@ function bindingSignature(metricKey: string, label: string, unit: string | null,
 }
 
 function buildCaptureMeta(adapter: PageAdapter, input: PageAdapterInput, metrics: VisibleMetric[], profile?: CollectionFieldProfile, routeKey?: CollectionRouteKey): CaptureMeta {
-  const extractedFields = [...new Set(metrics.map((metric) => String(metric.key)))];
+  const extractedFields = [...new Set(metrics
+    .filter((metric) => metric.value != null && String(metric.value).trim() !== "")
+    .map((metric) => String(metric.key)))];
   const expected = adapter.expectedFields;
   const matched = expected.filter((field) => extractedFields.includes(field)).length;
   const coverageRatio = expected.length ? matched / expected.length : 0;

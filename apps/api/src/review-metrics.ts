@@ -139,6 +139,11 @@ export function toReviewedMetricDTO(metric: ReviewedMetric): ReviewedMetricDTO {
     bindingLocation: evidence?.componentPath || evidence?.columnName || null,
     bindingStatus: evidence?.validationStatus || null,
     bindingReasons: evidence?.validationReasons || [],
+    sourceStatus: evidence?.sourceStatus || null,
+    apiValue: evidence?.apiCandidate?.value || null,
+    domValue: evidence?.domCandidate?.value || null,
+    selectionReason: evidence?.selectionReason || null,
+    manualSourceSelection: evidence?.manualSourceSelection || null,
     pageType: metric.pageType,
     scope: metric.scope,
     timeRange: evidence?.timeRange || metric.timeRange,
@@ -221,17 +226,59 @@ export function defaultConfidence(source: PrismaMetricSource, key: MetricKey = "
   return 0.5;
 }
 
-export function normalizeReviewPatch(metric: ReviewedMetric, input: { reviewedValue?: string; timeRange?: string; reviewStatus: PrismaMetricReviewStatus }) {
+export function normalizeReviewPatch(metric: ReviewedMetric, input: {
+  reviewedValue?: string;
+  timeRange?: string;
+  sourceSelection?: "API" | "DOM" | "IGNORE";
+  reviewStatus: PrismaMetricReviewStatus;
+}) {
   const reviewedValue = input.reviewedValue?.trim();
   const evidence = toMetricRawEvidence(metric.rawEvidence);
   const timeRange = input.timeRange?.trim() || evidence?.timeRange?.trim() || (metric.timeRange && metric.timeRange !== "UNKNOWN" ? metric.timeRange.trim() : "");
   if (input.reviewStatus === "CONFIRMED") {
-    return { reviewedValue: reviewedValue || metric.originalValue || "", timeRange, reviewStatus: input.reviewStatus };
+    return { reviewedValue: reviewedValue || metric.originalValue || "", timeRange, reviewStatus: input.reviewStatus, sourceSelection: input.sourceSelection };
   }
   if (input.reviewStatus === "MODIFIED") {
-    return { reviewedValue: reviewedValue || "", timeRange, reviewStatus: input.reviewStatus };
+    return { reviewedValue: reviewedValue || "", timeRange, reviewStatus: input.reviewStatus, sourceSelection: input.sourceSelection };
   }
-  return { reviewedValue: reviewedValue || metric.reviewedValue, timeRange, reviewStatus: input.reviewStatus };
+  return { reviewedValue: reviewedValue || metric.reviewedValue, timeRange, reviewStatus: input.reviewStatus, sourceSelection: input.sourceSelection };
+}
+
+export function resolveSourceConflictReview(
+  metric: Pick<ReviewedMetric, "rawEvidence">,
+  input: { reviewedValue?: string; timeRange?: string; sourceSelection?: "API" | "DOM" | "IGNORE"; reviewStatus: PrismaMetricReviewStatus }
+) {
+  const evidence = toMetricRawEvidence(metric.rawEvidence);
+  if (evidence?.sourceStatus !== "SOURCE_CONFLICT") return { ok: true as const, patch: null };
+  const selection = input.sourceSelection;
+  if (!selection) return { ok: false as const, error: "SOURCE_CONFLICT_SELECTION_REQUIRED" as const };
+  if (selection === "IGNORE") {
+    if (input.reviewStatus !== "IGNORED" || input.reviewedValue?.trim() || input.timeRange?.trim()) {
+      return { ok: false as const, error: "SOURCE_CONFLICT_SELECTION_INVALID" as const };
+    }
+    return { ok: true as const, patch: { reviewedValue: null, timeRange: "", reviewStatus: "IGNORED" as const, sourceSelection: selection } };
+  }
+  const candidate = selection === "API" ? evidence.apiCandidate : evidence.domCandidate;
+  if (!candidate || input.reviewStatus !== "CONFIRMED") return { ok: false as const, error: "SOURCE_CONFLICT_SELECTION_INVALID" as const };
+  if (input.reviewedValue?.trim() && input.reviewedValue.trim() !== candidate.value) {
+    return { ok: false as const, error: "SOURCE_CONFLICT_VALUE_MISMATCH" as const };
+  }
+  if (input.timeRange?.trim() && input.timeRange.trim() !== candidate.timeRange) {
+    return { ok: false as const, error: "SOURCE_CONFLICT_VALUE_MISMATCH" as const };
+  }
+  return {
+    ok: true as const,
+    patch: {
+      reviewedValue: candidate.value,
+      timeRange: candidate.timeRange,
+      reviewStatus: "CONFIRMED" as const,
+      sourceSelection: selection
+    }
+  };
+}
+
+export function isSourceConflictMetric(metric: Pick<ReviewedMetric, "rawEvidence">) {
+  return toMetricRawEvidence(metric.rawEvidence)?.sourceStatus === "SOURCE_CONFLICT";
 }
 
 export function canConfirmMetric(metric: Pick<ReviewedMetric, "rawEvidence">) {

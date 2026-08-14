@@ -1,7 +1,16 @@
-import type { CollectionRouteKey } from "@douyin-local-life/shared";
+import type { CollectionRouteKey, CollectionSnapshotPayload } from "@douyin-local-life/shared";
 import { collectionRouteLabels, normalizeCollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
+import type { ExtensionConfig, ExtensionContext, ExtensionTask } from "./extension-context";
 import { MESSAGE } from "./messages";
 import { isSupportedExtensionCollectionUrl } from "./safety";
+import {
+  livePulseButtonState,
+  livePulseOutcomeMessage,
+  livePulseReasonText,
+  livePulseStatusText,
+  livePulseMetricCoverage,
+  type LivePulseDisplayState
+} from "./live-pulse-status";
 
 
 const els = {
@@ -10,7 +19,7 @@ const els = {
   currentUrl: document.getElementById("currentUrl")!,
   pageType: document.getElementById("pageType")!,
   routeKey: document.getElementById("routeKey")!,
-  collectable: document.getElementById("collectable")!,
+  collectionNotice: document.getElementById("collectionNotice")!,
   hasToken: document.getElementById("hasToken")!,
   taskId: document.getElementById("taskId")!,
   accountName: document.getElementById("accountName")!,
@@ -37,15 +46,74 @@ const els = {
   clearPairingBtn: document.getElementById("clearPairingBtn") as HTMLButtonElement,
   sidePanelBtn: document.getElementById("sidePanelBtn") as HTMLButtonElement,
   captureBtn: document.getElementById("captureBtn") as HTMLButtonElement,
-  routeOverridePanel: document.getElementById("routeOverridePanel")!,
-  routeOverride: document.getElementById("routeOverride") as HTMLSelectElement,
-  routeRecognitionHint: document.getElementById("routeRecognitionHint")!,
+  livePulsePanel: document.getElementById("livePulsePanel")!,
+  livePulseStatus: document.getElementById("livePulseStatus")!,
+  livePulseData: document.getElementById("livePulseData")!,
+  livePulseUpdatedAt: document.getElementById("livePulseUpdatedAt")!,
+  livePulseCoverage: document.getElementById("livePulseCoverage")!,
+  livePulseMissing: document.getElementById("livePulseMissing")!,
+  livePulseErrorRow: document.getElementById("livePulseErrorRow")!,
+  livePulseLastError: document.getElementById("livePulseLastError")!,
+  livePulseBtn: document.getElementById("livePulseBtn") as HTMLButtonElement,
   nextRoute: document.getElementById("nextRoute")!,
   refreshBtn: document.getElementById("refreshBtn") as HTMLButtonElement,
   clearBtn: document.getElementById("clearBtn") as HTMLButtonElement
 };
+let pairingError: string | null = null;
+let livePulsePairingVerified = false;
+let livePulseTarget: { tabId: number; currentUrl: string } | null = null;
+let livePulseActive = false;
+
+type PopupState = {
+  config?: ExtensionConfig;
+  latestSnapshot?: CollectionSnapshotPayload | null;
+  routeUploadState?: Record<string, { lastUploadAt?: number }>;
+  pageActivity?: {
+    tabId?: number;
+    currentUrl?: string;
+    pageType?: CollectionSnapshotPayload["pageType"];
+    routeKey?: CollectionRouteKey;
+  } | null;
+  activeCollectionSession?: { collectionRunId?: string } | null;
+  livePulse?: (LivePulseDisplayState & {
+    lastSuccessAt?: string | null;
+  });
+  context?: ExtensionContext | null;
+  hasToken?: boolean;
+  pendingPairingConfirmation?: {
+    apiBaseUrl?: string;
+    account: { accountName: string };
+    task?: { id: string; pageTitle: string | null; projectName: string } | null;
+    expiresAt?: string;
+  } | null;
+};
+
+type PopupRuntimeResponse = PopupState & {
+  ok?: boolean;
+  error?: unknown;
+  state?: PopupState;
+  config?: ExtensionConfig;
+  skipped?: boolean;
+  metricCount?: number;
+  recognizedMetricCount?: number;
+  missingMetricCount?: number;
+  captureSource?: "API" | "API_AND_DOM" | "API_FAILED_DOM_FALLBACK" | "DOM";
+  apiEndpointSuccessCount?: number;
+  coverageRatio?: number | null;
+};
+
+type PageContextResponse = {
+  ok?: boolean;
+  currentUrl?: string;
+  pageType?: CollectionSnapshotPayload["pageType"];
+  routeKey?: CollectionRouteKey;
+  livePulseEligible?: boolean;
+  livePulseRoomId?: string | null;
+  livePulseFailureCode?: "ROOM_ID_UNAVAILABLE" | null;
+};
 
 void render();
+void refreshLivePulseStatus();
 els.pairBtn.addEventListener("click", pairExtension);
 els.confirmPairBtn.addEventListener("click", confirmPairing);
 els.cancelPairBtn.addEventListener("click", cancelPairing);
@@ -53,11 +121,10 @@ els.selectTaskBtn.addEventListener("click", selectTask);
 els.clearPairingBtn.addEventListener("click", clearPairing);
 els.sidePanelBtn.addEventListener("click", openSidePanel);
 els.captureBtn.addEventListener("click", captureAndUpload);
-els.routeOverride.addEventListener("change", () => {
-  els.captureBtn.disabled = !els.routeOverride.value;
-});
+els.livePulseBtn.addEventListener("click", toggleLivePulse);
 els.refreshBtn.addEventListener("click", render);
 els.clearBtn.addEventListener("click", clearSnapshot);
+window.setInterval(() => void refreshLivePulseStatus(), 1_000);
 
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -71,7 +138,14 @@ async function render() {
     runtimeMessage({ type: MESSAGE.GET_STATE })
   ]);
   const tab = tabResult.status === "fulfilled" ? tabResult.value : undefined;
-  const state = stateResult.status === "fulfilled" ? stateResult.value : null;
+  const initialState = stateResult.status === "fulfilled" ? stateResult.value : null;
+  const verification = initialState?.hasToken && initialState?.config?.collectionTaskId
+    ? await runtimeMessage({ type: MESSAGE.VERIFY_BOUND_CONTEXT }).catch((error): PopupRuntimeResponse => ({
+        ok: false,
+        error: error instanceof Error ? error.message : "本机 API 配对校验失败"
+      }))
+    : null;
+  const state = verification?.ok && verification.state ? verification.state : initialState;
   const url = tab?.url || "";
   const collectable = isCollectable(url);
   const currentActivity = state?.pageActivity?.tabId === tab?.id && state?.pageActivity?.currentUrl === url ? state.pageActivity : null;
@@ -81,10 +155,10 @@ async function render() {
   const routeKey = normalizeCollectionRouteKey(pageContext?.routeKey || currentActivity?.routeKey);
 
   els.currentUrl.textContent = url || "无法读取，请重新打开插件";
-  els.pageType.textContent = pageTypeLabel(pageContext?.pageType || currentActivity?.pageType || inferPageTypeFromUrl(url));
-  els.routeKey.textContent = routeLabel(routeKey);
-  els.collectable.textContent = collectable ? "当前页面可以采集" : "当前页面不支持采集";
-  els.hasToken.textContent = state?.hasToken ? "已安全配对" : "尚未配对";
+  const currentPageType = pageTypeLabel(pageContext?.pageType || currentActivity?.pageType || inferPageTypeFromUrl(url));
+  const currentRouteLabel = routeLabel(routeKey);
+  els.pageType.textContent = currentPageType;
+  els.routeKey.textContent = currentRouteLabel;
   els.taskId.textContent = state?.config?.collectionTaskId || "尚未绑定任务";
   els.accountName.textContent = state?.config?.accountName || "未绑定";
   els.projectName.textContent = state?.config?.projectName || "未绑定";
@@ -105,20 +179,38 @@ async function render() {
   const hasToken = Boolean(state?.hasToken);
   const pendingPairing = state?.pendingPairingConfirmation;
   const hasTask = Boolean(state?.config?.collectionTaskId);
-  const needsRouteOverride = collectable && routeKey === "UNKNOWN";
-  renderRouteOverrideOptions(boundTask, needsRouteOverride ? els.routeOverride.value : "");
-  toggle(els.pairingPanel, !hasToken);
+  const pairingVerified = hasToken && hasTask && Boolean(verification?.ok);
+  const isExactLiveScreen = /^https:\/\/eos\.douyin\.com\/dp\/liveScreen(?:[/?#]|$)/.test(url);
+  const isLocalPromotionPage = /^https:\/\/localads\.chengzijianzhan\.cn\/lamp\/pc\/liveboard2(?:[/?#]|$)/.test(url);
+  const internalApiEnabled = state?.context?.liveScreenInternalApi?.enabled === true;
+  const livePulseRoomReady = pageContext?.livePulseEligible === true;
+  const isLiveApiPage = hasToken && hasTask && isExactLiveScreen;
+  const apiContinuousAvailable = isLiveApiPage && internalApiEnabled && livePulseRoomReady;
+  els.hasToken.textContent = !hasToken
+    ? "尚未配对"
+    : !hasTask
+      ? "已有本机凭证，选择任务后校验"
+      : pairingVerified
+        ? "已向本机 API 校验"
+        : "本机 API 校验失败";
+  toggle(els.pairingPanel, !hasToken || (hasTask && !pairingVerified));
   // A new task pairing still requires an explicit confirmation when the account is already paired.
   toggle(els.pairingConfirmationPanel, Boolean(pendingPairing));
   toggle(els.taskPanel, hasToken && !hasTask);
-  toggle(els.boundPanel, hasToken && hasTask);
-  toggle(els.routeOverridePanel, hasToken && hasTask && needsRouteOverride);
-  toggle(els.routeRecognitionHint, hasToken && hasTask && collectable && !needsRouteOverride);
-  els.routeRecognitionHint.textContent = routeKey === "UNKNOWN"
-    ? "当前页面尚未识别，需要手动选择本次采集路线。"
-    : `当前页面已自动识别为“${routeLabel(routeKey)}”，无需选择下拉路线。`;
-  if (!needsRouteOverride) els.routeOverride.value = "";
-  els.captureBtn.disabled = !collectable || !hasTask || (needsRouteOverride && !els.routeOverride.value);
+  toggle(els.boundPanel, hasToken && hasTask && isLocalPromotionPage);
+  els.captureBtn.disabled = !isLocalPromotionPage || !hasTask || !pairingVerified;
+  livePulsePairingVerified = pairingVerified;
+  livePulseTarget = tab?.id && apiContinuousAvailable ? { tabId: tab.id, currentUrl: url } : null;
+  livePulseActive = state?.livePulse?.active === true;
+  els.captureBtn.textContent = "采集并上传数据总览";
+  toggle(els.captureBtn, isLocalPromotionPage);
+  toggle(els.livePulsePanel, isLiveApiPage);
+  els.collectionNotice.textContent = isLiveApiPage
+    ? "直播采集只调用已批准的平台内部 API，只上传白名单指标，不读取 DOM 数值补齐。"
+    : "本地推采集只读取当前数据总览的可见 DOM、真实表格和白名单指标。";
+  els.livePulseStatus.textContent = livePulseStatusText(state?.livePulse, internalApiEnabled);
+  renderLivePulseData(state?.livePulse);
+  syncLivePulseButton(state);
   els.nextRoute.textContent = nextPendingRouteLabel(state);
   els.pendingPairServer.textContent = pendingPairing?.apiBaseUrl || "-";
   els.pendingPairAccount.textContent = pendingPairing
@@ -132,17 +224,107 @@ async function render() {
   if (!state) {
     setStatus("插件后台状态读取失败，请在扩展管理页重新加载插件", "error");
   } else if (!hasToken && pendingPairing) {
-    setStatus("请在 Popup 核对服务器、账号和任务，再确认配对", "warning");
+    setStatus(pairingError || "请在 Popup 核对服务器、账号和任务，再确认配对", pairingError ? "error" : "warning");
   } else if (!hasToken) {
     setStatus("插件运行正常，请输入任务页生成的配对码", "warning");
   } else if (!hasTask) {
     setStatus("账号已配对，请选择采集任务", "warning");
+  } else if (!pairingVerified) {
+    setStatus(chineseError(verification?.error, "本机 API 未确认当前账号与任务，请重新配对"), "error");
   } else if (!collectable) {
-    setStatus("任务已绑定，请打开任务页列出的目标后台页面", "warning");
-  } else if (needsRouteOverride && !els.routeOverride.value) {
-    setStatus("当前路线无法自动确认，请为本次采集选择当前可见页面路线", "warning");
+    setStatus("请打开巨量本地推数据页或直播数据大屏", "warning");
+  } else if (isExactLiveScreen && pageContext?.livePulseFailureCode === "ROOM_ID_UNAVAILABLE") {
+    setStatus("当前直播页未提供可信 room_id；未启动 API 采集，也不会改用 DOM。请确认已打开具体直播场次。", "error");
+  } else if (state?.livePulse?.lastOutcome?.failure) {
+    setStatus(livePulseOutcomeMessage(state.livePulse.lastOutcome), "error");
   } else {
     setStatus("插件、账号和任务均正常，可以开始采集", "ready");
+  }
+}
+
+let livePulseStatusRefreshInFlight = false;
+
+async function refreshLivePulseStatus() {
+  if (document.visibilityState !== "visible" || livePulseStatusRefreshInFlight) return;
+  livePulseStatusRefreshInFlight = true;
+  try {
+    const state = await runtimeMessage({ type: MESSAGE.GET_STATE });
+    const internalApiEnabled = state?.context?.liveScreenInternalApi?.enabled === true;
+    els.livePulseStatus.textContent = livePulseStatusText(state?.livePulse, internalApiEnabled);
+    renderLivePulseData(state?.livePulse);
+    syncLivePulseButton(state);
+    if (state?.livePulse?.lastOutcome?.failure) {
+      setStatus(livePulseOutcomeMessage(state.livePulse.lastOutcome), "error");
+    }
+  } catch {
+    // The main render path provides the actionable recovery message. Polling is best-effort only.
+  } finally {
+    livePulseStatusRefreshInFlight = false;
+  }
+}
+
+function syncLivePulseButton(state: PopupState | null) {
+  const pairingVerified = livePulsePairingVerified
+    && state?.hasToken === true
+    && Boolean(state.config?.collectionTaskId);
+  const buttonState = livePulseButtonState(
+    state?.livePulse,
+    pairingVerified,
+    state?.context?.liveScreenInternalApi?.enabled === true
+  );
+  els.livePulseBtn.textContent = buttonState.text;
+  // Starting also requires the exact page context to contain a trusted room ID.
+  // Stopping remains available for an already active session.
+  els.livePulseBtn.disabled = buttonState.disabled || (!livePulseActive && !livePulseTarget);
+}
+
+function renderLivePulseData(livePulse: PopupState["livePulse"]) {
+  toggle(els.livePulseData, livePulse?.active === true || Boolean(livePulse?.lastSuccessAt || livePulse?.lastFailureReason || livePulse?.lastOutcome?.failure));
+  els.livePulseUpdatedAt.textContent = livePulse?.lastSuccessAt
+    ? `最近 ${new Date(livePulse.lastSuccessAt).toLocaleTimeString("zh-CN", { hour12: false })} · 累计 ${livePulse.successCount || 0} 次`
+    : "等待首次上传";
+  const coverage = livePulseMetricCoverage(livePulse?.lastMetricKeys);
+  els.livePulseCoverage.textContent = `核心指标 ${coverage.count}/${coverage.total}`;
+  els.livePulseMissing.textContent = coverage.missingLabels.length
+    ? `缺少：${coverage.missingLabels.join("、")}`
+    : "7 项核心指标已齐全";
+  toggle(els.livePulseMissing, Boolean(livePulse?.lastSuccessAt));
+  const lastError = livePulse?.lastFailureReason
+    ? livePulseReasonText(livePulse.lastFailureReason)
+    : livePulse?.lastOutcome?.failure
+      ? livePulseOutcomeMessage(livePulse.lastOutcome)
+      : "-";
+  els.livePulseLastError.textContent = lastError;
+  toggle(els.livePulseErrorRow, lastError !== "-");
+}
+
+async function toggleLivePulse() {
+  const target = livePulseTarget;
+  const active = livePulseActive;
+  if (!active && !target) {
+    setStatus("实时脉冲仅支持当前直播数据大屏页面", "error");
+    return;
+  }
+  els.livePulseBtn.disabled = true;
+  let actionMessage = "";
+  let actionTone: "ready" | "error" = "ready";
+  try {
+    const response = await runtimeMessage({
+      type: active ? MESSAGE.STOP_LIVE_PULSE : MESSAGE.START_LIVE_PULSE,
+      payload: active ? {} : target
+    });
+    actionMessage = response?.ok
+      ? active
+          ? "API 持续采集已停止"
+          : "API 持续采集已开启；插件会在后台持续上传，关闭弹窗不会停止，网页端实时数据栏会持续更新"
+      : chineseError(response?.error, "API 持续采集状态更新失败");
+    actionTone = response?.ok ? "ready" : "error";
+  } catch {
+    actionMessage = "API 持续采集通信中断，请重新加载插件";
+    actionTone = "error";
+  } finally {
+    await render();
+    setStatus(actionMessage, actionTone);
   }
 }
 
@@ -160,8 +342,7 @@ async function captureAndUpload() {
       type: MESSAGE.CAPTURE_AND_UPLOAD,
       payload: {
         tabId: tab.id,
-        currentUrl: tab.url || "",
-        routeOverride: els.routeOverride.value || undefined
+        currentUrl: tab.url || ""
       }
     });
     if (!response?.ok) {
@@ -170,18 +351,27 @@ async function captureAndUpload() {
       return;
     }
     const skippedMessage = response.skipped ? "数据未变化，已保留上次上传" : "快照已上传";
+    const recognizedMetricCount = response.recognizedMetricCount ?? response.metricCount ?? 0;
+    const missingMetricCount = response.missingMetricCount ?? Math.max(0, recognizedMetricCount - (response.metricCount || 0));
     setStatus("采集完成，网页任务页会自动更新", "ready");
     showCaptureResult(
-      `${skippedMessage}；识别 ${response.metricCount || 0} 个指标；覆盖率 ${formatPercent(response.coverageRatio)}。`,
+      `${skippedMessage}；${captureSourceLabel(response.captureSource, response.apiEndpointSuccessCount)}；识别 ${recognizedMetricCount} 个字段，其中 ${response.metricCount || 0} 个有原值、${missingMetricCount} 个缺失；覆盖率 ${formatPercent(response.coverageRatio)}。`,
       true
     );
   } catch {
     setStatus("插件通信中断，请重新加载插件和目标页面", "error");
     showCaptureResult("插件通信中断，请重新加载插件和目标页面。", false);
   } finally {
-    els.captureBtn.textContent = "采集并上传当前路线";
+    els.captureBtn.textContent = "采集并上传数据总览";
     await render();
   }
+}
+
+function captureSourceLabel(source: PopupRuntimeResponse["captureSource"], apiEndpointSuccessCount = 0) {
+  if (source === "API") return `API 采集（${apiEndpointSuccessCount} 个端点成功）`;
+  if (source === "API_AND_DOM") return `API 优先并保留 DOM 对账（${apiEndpointSuccessCount} 个端点成功）`;
+  if (source === "API_FAILED_DOM_FALLBACK") return "API 已尝试但没有可用端点，已明确回退 DOM";
+  return "DOM 采集（当前路线无可用 API 证据）";
 }
 
 async function pairExtension() {
@@ -191,6 +381,7 @@ async function pairExtension() {
     return;
   }
   els.pairBtn.disabled = true;
+  pairingError = null;
   try {
     const response = await runtimeMessage({
       type: MESSAGE.REQUEST_PAIRING_CONFIRMATION,
@@ -218,12 +409,15 @@ async function confirmPairing() {
   try {
     const response = await runtimeMessage({ type: MESSAGE.CONFIRM_PAIRING });
     if (!response?.ok) {
-      setStatus(chineseError(response?.error, "配对失败，请在任务页重新生成配对码"), "error");
+      pairingError = chineseError(response?.error, "配对失败，请在任务页重新生成配对码");
+      setStatus(pairingError, "error");
       return;
     }
+    pairingError = null;
     setStatus(response.config?.collectionTaskId ? "账号和当前任务已安全绑定" : "账号已配对，请选择采集任务", response.config?.collectionTaskId ? "ready" : "warning");
   } catch {
-    setStatus("插件后台响应超时，请在扩展管理页重新加载插件", "error");
+    pairingError = "插件后台响应超时，请在扩展管理页重新加载插件";
+    setStatus(pairingError, "error");
   } finally {
     els.confirmPairBtn.disabled = false;
     await render();
@@ -232,6 +426,7 @@ async function confirmPairing() {
 
 async function cancelPairing() {
   const response = await runtimeMessage({ type: MESSAGE.CANCEL_PAIRING });
+  pairingError = null;
   setStatus(response?.ok ? "已取消待确认配对" : chineseError(response?.error, "取消待确认配对失败"), response?.ok ? "warning" : "error");
   await render();
 }
@@ -253,7 +448,7 @@ async function clearPairing() {
   await render();
 }
 
-function renderTaskOptions(context: any, selectedTaskId?: string) {
+function renderTaskOptions(context: ExtensionContext | null | undefined, selectedTaskId?: string) {
   const options: HTMLOptionElement[] = [];
   const placeholder = document.createElement("option");
   placeholder.value = "";
@@ -269,27 +464,6 @@ function renderTaskOptions(context: any, selectedTaskId?: string) {
     }
   }
   els.taskSelect.replaceChildren(...options);
-}
-
-function renderRouteOverrideOptions(task: any, selectedRouteKey?: string) {
-  const selected = normalizeCollectionRouteKey(selectedRouteKey);
-  const options: HTMLOptionElement[] = [];
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = task ? "请选择当前可见路线" : "等待任务路线信息";
-  options.push(placeholder);
-  const seen = new Set<string>();
-  for (const route of task?.routeSources || []) {
-    const routeKey = normalizeCollectionRouteKey(route.routeKey);
-    if (routeKey === "UNKNOWN" || seen.has(routeKey)) continue;
-    seen.add(routeKey);
-    const option = document.createElement("option");
-    option.value = routeKey;
-    option.textContent = routeLabel(routeKey);
-    option.selected = selected === routeKey;
-    options.push(option);
-  }
-  els.routeOverride.replaceChildren(...options);
 }
 
 async function openSidePanel() {
@@ -328,8 +502,8 @@ function isCollectable(url: string) {
 }
 
 function inferPageTypeFromUrl(url: string) {
-  if (/liveboard|liveScreen|room|screen/i.test(url)) return "LIVE_DATA_SCREEN";
-  if (/task|campaign|ad|promotion|local|cockpit/i.test(url)) return "LOCAL_PROMOTION_DASHBOARD";
+  if (/^https:\/\/eos\.douyin\.com\/dp\/liveScreen(?:[/?#]|$)/.test(url)) return "LIVE_DATA_SCREEN";
+  if (/^https:\/\/localads\.chengzijianzhan\.cn\/lamp\/pc\/liveboard2(?:[/?#]|$)/.test(url)) return "LOCAL_PROMOTION_DASHBOARD";
   return "UNKNOWN";
 }
 
@@ -337,7 +511,7 @@ function pageTypeLabel(value: string) {
   const labels: Record<string, string> = {
     LIVE_DATA_SCREEN: "直播数据大屏",
     LOCAL_PROMOTION_DASHBOARD: "巨量本地推数据页",
-    TASK_TABLE: "任务或计划列表",
+    TASK_TABLE: "当前页面不采集",
     UNKNOWN: "尚未识别"
   };
   return labels[value] || value;
@@ -347,20 +521,31 @@ function routeLabel(routeKey: CollectionRouteKey) {
   return collectionRouteLabels[routeKey] || (routeKey === "UNKNOWN" ? "尚未识别" : routeKey);
 }
 
-function nextPendingRouteLabel(state: any) {
+function nextPendingRouteLabel(state: PopupState | null | undefined) {
   const task = currentTask(state);
-  const next = task?.routeSources?.find((route: any) => !state?.routeUploadState?.[route.routeKey]);
-  return next ? routeLabel(normalizeCollectionRouteKey(next.routeKey)) : task ? "本轮路线已完成" : "等待任务信息";
+  const routes = formalSnapshotRoutes(task);
+  if (!task || !routes.length) return "等待任务信息";
+  const route = routes[0]!;
+  return Number(state?.routeUploadState?.[route.routeKey]?.lastUploadAt || 0) > 0
+    ? "已有成功记录，可重新采集"
+    : "尚未采集";
 }
 
-function currentTask(state: any) {
+function formalSnapshotRoutes(task: ExtensionTask | null | undefined) {
+  return (task?.routeSources || []).filter((route) => {
+    const routeKey = normalizeCollectionRouteKey(route.routeKey);
+    return routeKey === "LOCAL_PROMOTION_DASHBOARD";
+  });
+}
+
+function currentTask(state: PopupState | null | undefined) {
   const taskId = state?.config?.collectionTaskId;
   return state?.context?.account?.projects
-    ?.flatMap((project: any) => project.tasks || [])
-    .find((item: any) => item.id === taskId) || null;
+    ?.flatMap((project) => project.tasks)
+    .find((item) => item.id === taskId) || null;
 }
 
-function runtimeMessage(message: unknown, timeoutMs = 5_000): Promise<any> {
+function runtimeMessage(message: unknown, timeoutMs = 5_000): Promise<PopupRuntimeResponse> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error("插件后台响应超时")), timeoutMs);
     chrome.runtime.sendMessage(message).then(
@@ -370,7 +555,7 @@ function runtimeMessage(message: unknown, timeoutMs = 5_000): Promise<any> {
   });
 }
 
-function contentMessage(tabId: number, message: unknown, timeoutMs = 5_000): Promise<any> {
+function contentMessage(tabId: number, message: unknown, timeoutMs = 5_000): Promise<PageContextResponse> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error("页面探测超时")), timeoutMs);
     chrome.tabs.sendMessage(tabId, message).then(

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { aiDisclaimer, collectionRouteTemplates, collectionTaskStatusLabels, cooperationTypeLabels, operatorTypeLabels, subjectTypeLabels, type CollectionTaskStatus, type CooperationType, type OperatorType, type SubjectType } from "@douyin-local-life/shared";
+import { aiDisclaimer, defaultCollectionRouteTemplates, collectionTaskStatusLabels, cooperationTypeLabels, isPrimaryCollectionRouteKey, operatorTypeLabels, subjectTypeLabels, type CollectionTaskStatus, type CooperationType, type OperatorType, type SubjectType } from "@douyin-local-life/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -93,19 +93,19 @@ export default function ProjectDetailPage() {
         <div className="sm:col-span-2"><span className="text-xs text-muted">本次分摊服务成本</span><p>{project.serviceFee == null ? "未填写，不计算服务商后毛利 ROI" : `¥${project.serviceFee}`}</p></div>
       </div>
     </details>
-    <Card className="mb-4"><CardTitle>第一次使用按这 5 步操作</CardTitle><ol className="grid gap-2 text-sm md:grid-cols-5"><li><strong>1. 确认账号</strong><p className="text-muted">检查页面顶部账号与平台一致</p></li><li><strong>2. 新建任务</strong><p className="text-muted">一个直播场次或诊断周期一个任务</p></li><li><strong>3. 打开页面</strong><p className="text-muted">自行登录并打开下方所列页面</p></li><li><strong>4. 插件采集</strong><p className="text-muted">逐页点击插件“采集并上传当前路线”</p></li><li><strong>5. 复核诊断</strong><p className="text-muted">确认缺失指标后生成建议</p></li></ol></Card>
+    <Card className="mb-4"><CardTitle>第一次使用按这 5 步操作</CardTitle><ol className="grid gap-2 text-sm md:grid-cols-5"><li><strong>1. 确认账号</strong><p className="text-muted">检查页面顶部账号与平台一致</p></li><li><strong>2. 新建任务</strong><p className="text-muted">一个直播场次或诊断周期一个任务</p></li><li><strong>3. 打开页面</strong><p className="text-muted">打开本地推数据页或直播数据大屏</p></li><li><strong>4. 插件采集</strong><p className="text-muted">本地推采集一次，直播页开启 API 持续采集</p></li><li><strong>5. 复核诊断</strong><p className="text-muted">确认缺失指标后生成建议</p></li></ol></Card>
     <section className="grid gap-4 lg:grid-cols-[460px_1fr]">
-      <Card><CardTitle>新建本次采集任务</CardTitle><form className="grid gap-4" onSubmit={createTask}><label className="grid gap-1 text-sm"><span>任务名称 <strong className="text-danger">必填</strong></span><Input name="pageTitle" required placeholder="例如：7月14日晚场直播" /></label><div className="grid gap-3">{collectionRouteTemplates.map((route) => <div className="grid gap-1 rounded-md border border-border p-3 text-sm" key={route.routeKey}><span className="font-medium">{route.label} <span className={route.required ? "text-danger" : "text-muted"}>{route.required ? "基础路线" : "补充路线"}</span></span><span className="text-xs text-muted">{route.website}：{route.purpose}</span><span className="text-xs text-muted">{route.urlHint}</span></div>)}</div><div className="rounded-md bg-slate-50 p-3 text-xs leading-5 text-muted">任务会自动继承全局采集路线。系统不会代替你登录或自动打开、点击平台页面。</div>{error ? <div className="rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}<Button disabled={submitting} type="submit">{submitting ? "正在创建..." : "创建任务并查看采集清单"}</Button></form></Card>
+      <Card><CardTitle>新建本次采集任务</CardTitle><form className="grid gap-4" onSubmit={createTask}><label className="grid gap-1 text-sm"><span>任务名称 <strong className="text-danger">必填</strong></span><Input name="pageTitle" required placeholder="例如：7月14日晚场直播" /></label><div className="grid gap-3">{defaultCollectionRouteTemplates.map((route) => <div className="grid gap-1 rounded-md border border-border p-3 text-sm" key={route.routeKey}><span className="font-medium">{route.label} <span className="text-danger">基础路线</span></span><span className="text-xs text-muted">{route.website}：{route.purpose}</span><span className="text-xs text-muted">{route.urlHint}</span></div>)}</div><div className="rounded-md bg-slate-50 p-3 text-xs leading-5 text-muted">任务默认只保留基础采集路线；直播 API 持续采集的数据请在网页端实时数据栏查看。系统不会代替你登录或自动打开、点击平台页面。</div>{error ? <div className="rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}<Button disabled={submitting} type="submit">{submitting ? "正在创建..." : "创建任务并查看采集清单"}</Button></form></Card>
       <Card>
         <CardTitle>采集任务存档</CardTitle>
         <div className="grid gap-3">
           {project.tasks.map((task) => {
-            const captured = task.routeSources.filter((route) => route.status === "CAPTURED").length;
+            const hasCaptured = task.routeSources.some((route) => isPrimaryCollectionRouteKey(route.routeKey) && route.status === "CAPTURED");
             return (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3 transition hover:border-primary" key={task.id}>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{task.pageTitle || "未命名任务"}</p>
-                  <p className="text-sm text-muted">{collectionTaskStatusLabels[task.status]} · 页面路线 {captured}/{task.routeSources.length} 已采集</p>
+                  <p className="text-sm text-muted">{collectionTaskStatusLabels[task.status]} · {hasCaptured ? "已有采集记录" : "尚未采集"}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <Link className="rounded-md border border-border px-3 py-2 text-sm text-primary hover:bg-blue-50" href={`/tasks/${task.id}`}>进入任务</Link>

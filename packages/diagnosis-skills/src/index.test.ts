@@ -54,6 +54,40 @@ describe("diagnosis skill registry", () => {
     expect(result.output.refused).toBe(true);
   });
 
+  it("readiness accepts reviewed live overview realtime API evidence", async () => {
+    const skill = diagnosisSkillRegistry.get("audit_data_readiness")!;
+    const realtimeInput: DecisionEngineInput = {
+      ...input,
+      metricLayer: "REALTIME_API",
+      collectionQuality: {
+        requiredRoutes: ["LIVE_DATA_SCREEN"],
+        routes: [{ routeKey: "LIVE_DATA_SCREEN", state: "FRESH", lastCollectedAt: new Date().toISOString(), ageMs: 0 }],
+        completeness: 1,
+        missingRoutes: [],
+        staleRoutes: [],
+        blocksStrongActions: false
+      },
+      realtimeEvidence: {
+        routeKey: "LIVE_DATA_SCREEN",
+        pageType: "LIVE_DATA_SCREEN",
+        observedAt: new Date().toISOString(),
+        receivedAt: new Date().toISOString(),
+        metricCount: 1,
+        successfulEndpoints: ["key_index"],
+        source: "LIVE_SCREEN_INTERNAL_API"
+      }
+    };
+    const result = await skill.execute({
+      businessMode: "MANAGED_LIVE_GROWTH",
+      decisionInput: realtimeInput,
+      evidenceCatalog: buildDiagnosisEvidenceCatalog(realtimeInput),
+      availableRoutes: ["LIVE_DATA_SCREEN"],
+      similarCases: []
+    }, { completeSkill: async () => { throw new Error("must not be called"); } });
+
+    expect(result.output.refused).toBe(false);
+  });
+
   it("does not treat an ordinary product table as activity or compliance evidence", async () => {
     const skill = diagnosisSkillRegistry.get("diagnose_activity_and_compliance")!;
     const decisionInput: DecisionEngineInput = {

@@ -5,10 +5,10 @@ import helmet from "helmet";
 import type { NextFunction, Request, Response } from "express";
 import {
   actionProposalStatuses,
+  defaultCollectionRouteTemplates,
   collectionRouteTemplates,
   collectionSnapshotSchema,
   extensionCollectionProtocolVersion,
-  collectionFreshnessPolicy,
   inferCollectionRoute,
   identifyMetricKey,
   isSupportedCollectionUrl,
@@ -28,11 +28,8 @@ import {
   shouldRedactSensitiveKey,
   updateCollectionTaskStatusSchema,
   type AnalyzeInput,
-  type DecisionEngineInput,
-  type DecisionEngineOutput,
   type VisibleMetric
 } from "@douyin-local-life/shared";
-import { evaluateFormalDecisionReadiness } from "@douyin-local-life/shared/formal-decision-readiness";
 import { structureTaskCollectionTables } from "@douyin-local-life/decision-engine";
 import {
   EXPLANATION_PROMPT_VERSION,
@@ -42,7 +39,8 @@ import {
 import { authMiddleware, ensureSecurityConfiguration, extensionScopeGuard, type AuthenticatedRequest } from "./auth.js";
 import { csrfProtection } from "./csrf.js";
 import { writeAuditLog, writeAuditLogs } from "./audit.js";
-import { buildDecisionInput, hasUntrustedCurrentEvidence, runDecisionEngine, strategyVersion, toActionProposalCreate } from "./decision.js";
+import { buildDecisionInput, runDecisionEngine, strategyVersion, toActionProposalCreate } from "./decision.js";
+import { evaluateDecisionReadiness } from "./decision-readiness.js";
 import { DecisionEvidenceChangedError, decisionEvidenceFingerprint } from "./decision-evidence.js";
 import { normalizeMetrics } from "./normalize.js";
 import { qualifyCapturedMetrics, qualifyTableBindings } from "./metric-validation.js";
@@ -78,10 +76,15 @@ import { currentUser, readOptionalText, toJson } from "./server-utils.js";
 import { readSafeOptionalText, sanitizeDerivedPersistedJson } from "./persisted-input.js";
 import { getBuildMetadata } from "./version.js";
 import { getCaptureSummary } from "./capture-summary.js";
-import { latestRealtimeSignals, recordMetricPulse, subscribeRealtimeSignals } from "./realtime-signals.js";
+import {
+  latestRealtimeMetricFrame,
+  latestRealtimeSignals,
+  recordMetricPulse,
+  subscribeRealtimeMetricFrames,
+  subscribeRealtimeSignals
+} from "./realtime-signals.js";
 import { metricAliasOverrideInputSchema, metricDriftStatusSchema, normalizeAlias, recordMetricDriftEvents } from "./metric-drift.js";
 import { AiCircuitOpenError, executeWithAiCircuit } from "./ai-circuit.js";
-import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 import { isSerializableConflict, runSerializableTransaction } from "./transactions.js";
 import { getSseConnectionMetrics, registerSseConnectionCloser, reserveSseConnection } from "./sse-limits.js";
 import { createLatestSseWriter } from "./sse-writer.js";
@@ -93,12 +96,10 @@ import {
   checkSnapshotRateLimit,
   checkWriteRateLimit
 } from "./rate-limit.js";
-import {
-  currentReviewedMetrics,
-  ensureReviewMetricsForTask,
-  normalizedMetricsToVisibleMetrics,
-  reviewCoverage
-} from "./review-metrics.js";
+import { ensureReviewMetricsForTask, normalizedMetricsToVisibleMetrics } from "./review-metrics.js";
+import { liveScreenInternalApiEnabled } from "./live-screen-internal-api-config.js";
+import { structureLiveScreenMinuteTrend } from "./live-screen-minute-trend.js";
+import { validateLiveScreenInternalApiPayload } from "./live-screen-internal-api-validation.js";
 
 export function createServer(options: { isDraining?: () => boolean } = {}) {
   ensureSecurityConfiguration();
@@ -447,6 +448,10 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     }
     const suppliedRoutes = new Map((parsed.data.routeSources || []).map((route) => [route.routeKey, route.sourceUrl ? sanitizeCaptureUrl(route.sourceUrl) : null]));
     if (safeSourceUrl) suppliedRoutes.set(inferCollectionRoute({ sourceUrl: safeSourceUrl, pageTitle: pageTitleInput.value || undefined }), safeSourceUrl);
+    const defaultRouteKeys = new Set(defaultCollectionRouteTemplates.map((route) => route.routeKey));
+    const taskRouteTemplates = collectionRouteTemplates.filter((template) => (
+      defaultRouteKeys.has(template.routeKey) || suppliedRoutes.has(template.routeKey)
+    ));
     try {
       const task = await prisma.$transaction(async (tx) => {
         const created = await tx.collectionTask.create({
@@ -458,7 +463,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             pageTitle: pageTitleInput.value || `采集任务 ${new Date().toLocaleDateString("zh-CN")}`,
             status: "PENDING",
             routeSources: {
-              create: collectionRouteTemplates.map((template) => ({
+              create: taskRouteTemplates.map((template) => ({
                 routeKey: template.routeKey,
                 label: template.label,
                 sourceUrl: suppliedRoutes.get(template.routeKey) || null,
@@ -614,18 +619,44 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     }
     const parsed = metricPulseSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "实时指标参数错误");
+    const liveScreenGuard = validateLiveScreenInternalApiPayload({
+      featureEnabled: liveScreenInternalApiEnabled(),
+      authKind: currentUser(req).authKind,
+      sourceUrl: parsed.data.sourceUrl,
+      pageType: parsed.data.pageType,
+      routeKey: parsed.data.routeKey,
+      captureProtocolVersion: parsed.data.captureProtocolVersion,
+      captureMeta: parsed.data.captureMeta,
+      metrics: parsed.data.metrics,
+      mode: "PULSE"
+    });
+    if (!liveScreenGuard.ok) {
+      console.warn(`[${getRequestId(res)}] live-screen pulse rejected`, {
+        taskId: task.id,
+        routeKey: parsed.data.routeKey,
+        code: liveScreenGuard.code
+      });
+      return sendError(res, liveScreenGuard.status, liveScreenGuard.code, liveScreenGuard.message);
+    }
     const capturedAt = new Date(parsed.data.localCapturedAt).getTime();
     if (capturedAt > Date.now() + 60_000 || Date.now() - capturedAt > 5 * 60_000) {
       return sendError(res, 400, "PULSE_TIME_INVALID", "实时指标时间超出允许范围");
-    }
-    if (parsed.data.tabState !== "VISIBLE") {
-      return sendError(res, 409, "PAGE_INACTIVE", "页面非活跃，实时信号已停止");
     }
     if (parsed.data.collectionRunId) {
       const run = await prisma.collectionRun.findFirst({ where: { id: parsed.data.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }, select: { id: true } });
       if (!run) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "巡检批次不存在或已停止");
     }
-    return sendSuccess(res, recordMetricPulse(task.id, parsed.data), 202);
+    const recorded = recordMetricPulse(task.id, parsed.data);
+    console.info(`[${getRequestId(res)}] live-screen pulse accepted`, {
+      taskId: task.id,
+      routeKey: parsed.data.routeKey,
+      metricCount: parsed.data.metrics.length,
+      tabState: parsed.data.tabState,
+      successfulEndpoints: parsed.data.captureMeta.liveScreenInternalApi?.endpointStatuses
+        .filter((status) => status.status === "SUCCESS")
+        .map((status) => status.endpoint) || []
+    });
+    return sendSuccess(res, recorded, 202);
   });
 
   app.get("/collection-tasks/:id/signals/stream", async (req, res) => {
@@ -644,10 +675,14 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
     const signalWriter = createLatestSseWriter(res, (signals: ReturnType<typeof latestRealtimeSignals>) => `event: signals\ndata: ${JSON.stringify(signals)}\n\n`);
+    const metricWriter = createLatestSseWriter(res, (frame: NonNullable<ReturnType<typeof latestRealtimeMetricFrame>>) => `event: pulse\ndata: ${JSON.stringify(frame)}\n\n`);
     signalWriter.push(latestRealtimeSignals(task.id));
-    const unsubscribe = subscribeRealtimeSignals(task.id, (signals) => signalWriter.push(signals));
+    const latestMetricFrame = latestRealtimeMetricFrame(task.id);
+    if (latestMetricFrame) metricWriter.push(latestMetricFrame);
+    const unsubscribeSignals = subscribeRealtimeSignals(task.id, (signals) => signalWriter.push(signals));
+    const unsubscribeMetrics = subscribeRealtimeMetricFrames(task.id, (frame) => metricWriter.push(frame));
     const heartbeat = setInterval(() => {
-      if (signalWriter.canWriteHeartbeat()) {
+      if (signalWriter.canWriteHeartbeat() && metricWriter.canWriteHeartbeat()) {
         res.write(`event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
       }
     }, 15_000);
@@ -659,8 +694,10 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       closed = true;
       clearInterval(heartbeat);
       clearTimeout(maxLifetime);
-      unsubscribe();
+      unsubscribeSignals();
+      unsubscribeMetrics();
       signalWriter.close();
+      metricWriter.close();
       reservation.release();
       queueSecurityMetrics([{ key: "sse_active_connections", value: getSseConnectionMetrics().totalConnections }]);
       unregister();
@@ -708,6 +745,38 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     }
     if (currentUser(req).authKind === "EXTENSION" && !isTrustedExtensionCollectionUrl(snapshotPayload.sourceUrl)) {
       return sendError(res, 403, "EXTENSION_SOURCE_URL_FORBIDDEN", "插件只能上传可信平台域名下当前打开页面的采集结果");
+    }
+    const liveScreenGuard = validateLiveScreenInternalApiPayload({
+      featureEnabled: liveScreenInternalApiEnabled(),
+      authKind: currentUser(req).authKind,
+      sourceUrl: snapshotPayload.sourceUrl,
+      pageType: snapshotPayload.pageType,
+      routeKey: snapshotPayload.routeKey || "UNKNOWN",
+      captureProtocolVersion: snapshotPayload.captureProtocolVersion,
+      captureMeta: snapshotPayload.captureMeta,
+      metrics: snapshotPayload.visibleMetricsJson,
+      mode: "SNAPSHOT"
+    });
+    if (!liveScreenGuard.ok) {
+      console.warn(`[${getRequestId(res)}] live-screen snapshot rejected`, {
+        taskId: task.id,
+        routeKey: snapshotPayload.routeKey || "UNKNOWN",
+        code: liveScreenGuard.code
+      });
+      return sendError(res, liveScreenGuard.status, liveScreenGuard.code, liveScreenGuard.message);
+    }
+    const liveScreenApiMeta = snapshotPayload.captureMeta?.liveScreenInternalApi;
+    if (liveScreenApiMeta) {
+      console.info(`[${getRequestId(res)}] live-screen snapshot source`, {
+        taskId: task.id,
+        routeKey: snapshotPayload.routeKey || "UNKNOWN",
+        apiEnabled: liveScreenApiMeta.enabled,
+        successfulEndpoints: liveScreenApiMeta.endpointStatuses
+          .filter((status) => status.status === "SUCCESS")
+          .map((status) => status.endpoint),
+        apiMetricCount: snapshotPayload.visibleMetricsJson.filter((metric) => metric.metricSource === "XHR_JSON").length,
+        domMetricCount: snapshotPayload.visibleMetricsJson.filter((metric) => metric.metricSource === "DOM_TEXT").length
+      });
     }
     const suppliedRouteKey = normalizeCollectionRouteKey(snapshotPayload.routeKey);
     const inferredRouteKey = inferCollectionRoute(snapshotPayload);
@@ -781,7 +850,13 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
           adapterId: snapshotPayload.captureMeta?.adapterId,
           adapterVersion: snapshotPayload.captureMeta?.adapterVersion
         })
-      : null;
+      : structureLiveScreenMinuteTrend({
+          routeKey,
+          capturedAt: snapshotPayload.localCollectedAt,
+          adapterId: snapshotPayload.captureMeta?.adapterId,
+          adapterVersion: snapshotPayload.captureMeta?.adapterVersion,
+          minuteRows: snapshotPayload.captureMeta?.liveScreenInternalApi?.minuteRows
+        });
     try {
       const snapshot = await prisma.$transaction(async (tx) => {
         const created = await tx.dataSnapshot.create({
@@ -1240,10 +1315,11 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.post("/collection-tasks/:id/decision-preview", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    if (!task.snapshots[0]) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-    const input = buildDecisionInput(task);
+    const realtimeFrame = latestRealtimeMetricFrame(task.id);
+    if (!task.snapshots[0] && !realtimeFrame) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const input = buildDecisionInput(task, { realtimeFrame });
     const { ruleOutput, finalOutput } = runDecisionEngine(input);
-    const readiness = decisionReadiness(task, input, finalOutput);
+    const readiness = evaluateDecisionReadiness(task, input);
     return sendSuccess(res, {
       preview: true,
       createsRecords: false,
@@ -1320,62 +1396,6 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     return sendError(res, 500, "INTERNAL_ERROR", message, { requestId });
   });
   return app;
-}
-
-function decisionReadiness(
-  task: NonNullable<Awaited<ReturnType<typeof getOwnedTask>>>,
-  input: DecisionEngineInput,
-  output: DecisionEngineOutput
-) {
-  const latestRunId = task.collectionRuns[0]?.id || null;
-  const currentSnapshots = selectLatestSnapshotsByRoute(task.snapshots, latestRunId);
-  const latestByRoute = new Map(currentSnapshots.flatMap((snapshot) => {
-    const routeKey = normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType);
-    return routeKey ? [[routeKey, snapshot] as const] : [];
-  }));
-  const activeRequiredRouteKeys = task.collectionRuns[0]
-    ? requiredRoutesFromJson(task.collectionRuns[0].requiredRoutesJson)
-    : task.routeSources.filter((route) => route.required).map((route) => route.routeKey);
-  const requiredRoutes = activeRequiredRouteKeys.map((routeKey) => task.routeSources.find((route) => route.routeKey === routeKey) || {
-    routeKey,
-    label: collectionRouteTemplates.find((route) => route.routeKey === routeKey)?.label || routeKey
-  });
-  const missingRequiredRoutes = requiredRoutes.filter((route) => !latestByRoute.has(normalizeCollectionRouteKey(route.routeKey)));
-  const unverifiedRequiredRoutes = requiredRoutes.filter((route) => {
-    const snapshot = latestByRoute.get(normalizeCollectionRouteKey(route.routeKey));
-    return snapshot && snapshot.routeVerificationStatus !== "VERIFIED";
-  });
-  const staleRequiredRoutes = requiredRoutes.filter((route) => {
-    const snapshot = latestByRoute.get(normalizeCollectionRouteKey(route.routeKey));
-    if (!snapshot?.localCollectedAt) return false;
-    return Date.now() - snapshot.localCollectedAt.getTime() > collectionFreshnessPolicy.staleAfterMs;
-  });
-  const currentMetricReviewCoverage = reviewCoverage(currentReviewedMetrics(task));
-  const readiness = evaluateFormalDecisionReadiness({
-    missingRequiredRouteLabels: missingRequiredRoutes.map((route) => route.label),
-    unverifiedRequiredRouteLabels: unverifiedRequiredRoutes.map((route) => route.label),
-    staleRequiredRouteLabels: staleRequiredRoutes.map((route) => route.label),
-    subjectReady: output.dataQuality.subjectReady !== false,
-    reviewTotalCount: Math.max(input.reviewCoverage?.totalCount || 0, currentMetricReviewCoverage.totalCount),
-    reviewPendingCount: Math.max(input.reviewCoverage?.pendingCount || 0, currentMetricReviewCoverage.pendingCount)
-  });
-  const invalidEvidenceReason = hasUntrustedCurrentEvidence(task)
-    ? "当前快照存在未放行的字段绑定或表格行列证据，不能生成正式诊断"
-    : null;
-  const unsupportedBusinessModeReason = input.subject.operatorType === "SERVICE_PROVIDER_LIVE" || input.subject.serviceMode?.trim() === "代播"
-    ? null
-    : "首期 AI 诊断只支持代直播增长项目";
-  const additionalBlockingReasons = [invalidEvidenceReason, unsupportedBusinessModeReason].filter((reason): reason is string => Boolean(reason));
-  const advisories = (output.dataQuality.blockingReasons || []).filter((reason) => ![
-    "主体识别未完成",
-    "数据未人工复核"
-  ].includes(reason));
-  return {
-    ...readiness,
-    ready: readiness.ready && additionalBlockingReasons.length === 0,
-    blockingReasons: [...readiness.blockingReasons, ...additionalBlockingReasons],
-    advisories
-  };
 }
 
 function isPublicServiceError(error: unknown): error is { statusCode: number; code: string; publicMessage: string } {

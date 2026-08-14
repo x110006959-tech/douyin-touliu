@@ -1,12 +1,15 @@
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
 import { developmentLoopbackHostnames, isLocalBuild } from "./build-target";
 
-export const extensionBridgeEvents = {
-  READY: "PXXIS_EXTENSION_READY",
-  LEGACY_PING: "PXXIS_EXTENSION_PING",
-  REQUEST: "PXXIS_EXTENSION_REQUEST",
-  RESPONSE: "PXXIS_EXTENSION_RESPONSE"
-} as const;
+const bridgeWindowMessageChannel = "PXXIS_EXTENSION_BRIDGE";
+
+export type BridgeWindowMessageType = "READY" | "PING" | "REQUEST" | "RESPONSE";
+
+export type BridgeWindowMessage = {
+  channel: typeof bridgeWindowMessageChannel;
+  type: BridgeWindowMessageType;
+  payload?: unknown;
+};
 
 export type ExtensionBridgeRequest = {
   requestId: string;
@@ -45,6 +48,24 @@ export function isAllowedBridgeApiBaseUrl(value: string, allowedLoopbackHostname
     return isLocalBuild && url.protocol === "http:" && allowedLoopbackHostnames.includes(url.hostname);
   } catch {
     return false;
+  }
+}
+
+export function serializeBridgeWindowMessage(type: BridgeWindowMessageType, payload?: unknown) {
+  return JSON.stringify({ channel: bridgeWindowMessageChannel, type, payload });
+}
+
+export function parseBridgeWindowMessage(value: unknown): BridgeWindowMessage | null {
+  if (typeof value !== "string") return null;
+  try {
+    const candidate: unknown = JSON.parse(value);
+    if (!candidate || typeof candidate !== "object") return null;
+    const message = candidate as Partial<BridgeWindowMessage>;
+    if (message.channel !== bridgeWindowMessageChannel) return null;
+    if (message.type !== "READY" && message.type !== "PING" && message.type !== "REQUEST" && message.type !== "RESPONSE") return null;
+    return message as BridgeWindowMessage;
+  } catch {
+    return null;
   }
 }
 

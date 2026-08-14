@@ -28,6 +28,13 @@ describe("capture summary overview", () => {
     )).toBe("3.50");
   });
 
+  it("leaves a missing page display text empty so the client can label its original-value fallback", () => {
+    expect(summaryDisplayValue(
+      { metricValue: "", rawEvidence: {} },
+      { reviewStatus: "PENDING", reviewedValue: null, originalValue: "123.45" }
+    )).toBeNull();
+  });
+
   it("keeps repeated collection on one route separate from the other current routes", () => {
     const selected = selectLatestSnapshotsByRoute([
       snapshot("live-first", "LIVE_DATA_SCREEN", "2026-07-28T12:00:00Z"),

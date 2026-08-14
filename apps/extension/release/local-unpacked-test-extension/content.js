@@ -67,6 +67,12 @@
     heartbeatUploadMs: 5 * 60 * 1e3,
     routeFailureThreshold: 3
   };
+  var primaryCollectionRouteKeys = [
+    "LOCAL_PROMOTION_DASHBOARD",
+    "LIVE_DATA_SCREEN"
+  ];
+  var defaultRequiredCollectionRoutes = [...primaryCollectionRouteKeys];
+  var defaultCollectionRouteTemplates = collectionRouteTemplates.filter((route) => defaultRequiredCollectionRoutes.includes(route.routeKey));
   function normalizeCollectionRouteKey(value) {
     return collectionRouteKeys.includes(value) ? value : "UNKNOWN";
   }
@@ -201,7 +207,12 @@ ${input.visibleText || ""}`;
     GET_PAGE_CONTEXT: "AI_DIAGNOSIS_GET_PAGE_CONTEXT",
     PAGE_ACTIVITY: "AI_DIAGNOSIS_PAGE_ACTIVITY",
     CAPTURE_AND_UPLOAD: "AI_DIAGNOSIS_CAPTURE_AND_UPLOAD",
+    BEGIN_LIVE_PULSE_LOOP: "AI_DIAGNOSIS_BEGIN_LIVE_PULSE_LOOP",
+    SUBMIT_LIVE_PULSE: "AI_DIAGNOSIS_SUBMIT_LIVE_PULSE",
+    START_LIVE_PULSE: "AI_DIAGNOSIS_START_LIVE_PULSE",
+    STOP_LIVE_PULSE: "AI_DIAGNOSIS_STOP_LIVE_PULSE",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
+    VERIFY_BOUND_CONTEXT: "AI_DIAGNOSIS_VERIFY_BOUND_CONTEXT",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
     REQUEST_PAIRING_CONFIRMATION: "AI_DIAGNOSIS_REQUEST_PAIRING_CONFIRMATION",
     CONFIRM_PAIRING: "AI_DIAGNOSIS_CONFIRM_PAIRING",
@@ -4381,36 +4392,36 @@ ${input.visibleText || ""}`;
       return sanitizeVisibleText(inputUrl, snapshotSafetyLimits.urlChars);
     }
   }
-  function sanitizeCollectionSnapshotPayload(snapshot) {
-    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot;
+  function sanitizeCollectionSnapshotPayload(snapshot2) {
+    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot2;
     const truncatedFields = [
-      ...snapshot.rawDomText.length ? ["rawDomText"] : [],
-      ...snapshot.rawNetworkJson.length ? ["rawNetworkJson"] : [],
-      ...snapshot.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : [],
-      ...(snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : []
+      ...snapshot2.rawDomText.length ? ["rawDomText"] : [],
+      ...snapshot2.rawNetworkJson.length ? ["rawNetworkJson"] : [],
+      ...snapshot2.rawTableData.length > snapshotSafetyLimits.tableItems ? ["rawTableData"] : [],
+      ...(snapshot2.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["visibleMetricsJson"] : []
     ];
     const sanitized = {
       ...snapshotWithoutPageAccount,
-      sourceUrl: sanitizeCaptureUrl(snapshot.sourceUrl || ""),
-      pageTitle: sanitizeVisibleText(snapshot.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
+      sourceUrl: sanitizeCaptureUrl(snapshot2.sourceUrl || ""),
+      pageTitle: sanitizeVisibleText(snapshot2.pageTitle || "", snapshotSafetyLimits.pageTitleChars),
       // Page text may be used in memory to derive allowlisted fields, but is never part of a snapshot payload.
       rawDomText: "",
       rawNetworkJson: [],
-      rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
-      visibleMetricsJson: (snapshot.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
-      screenshotUrl: snapshot.screenshotUrl ? sanitizeCaptureUrl(snapshot.screenshotUrl) : snapshot.screenshotUrl
+      rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot2.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
+      visibleMetricsJson: (snapshot2.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
+      screenshotUrl: snapshot2.screenshotUrl ? sanitizeCaptureUrl(snapshot2.screenshotUrl) : snapshot2.screenshotUrl
     };
-    if ("captureMeta" in snapshot && snapshot.captureMeta && typeof snapshot.captureMeta === "object") {
-      const meta = snapshot.captureMeta;
+    if ("captureMeta" in snapshot2 && snapshot2.captureMeta && typeof snapshot2.captureMeta === "object") {
+      const meta = snapshot2.captureMeta;
       sanitized.captureMeta = {
         ...meta,
         acceptedBytes: serializedLength({ rawDomText: sanitized.rawDomText, rawTableData: sanitized.rawTableData, visibleMetricsJson: sanitized.visibleMetricsJson }),
         truncatedFields: [.../* @__PURE__ */ new Set([...Array.isArray(meta.truncatedFields) ? meta.truncatedFields.map(String) : [], ...truncatedFields])],
         truncationReasons: [.../* @__PURE__ */ new Set([
           ...Array.isArray(meta.truncationReasons) ? meta.truncationReasons.map(String) : [],
-          ...snapshot.rawDomText.length ? ["PAGE_TEXT_CAPTURE_DISABLED"] : [],
-          ...snapshot.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : [],
-          ...snapshot.rawTableData.length > snapshotSafetyLimits.tableItems || (snapshot.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["SNAPSHOT_SAFETY_LIMIT"] : []
+          ...snapshot2.rawDomText.length ? ["PAGE_TEXT_CAPTURE_DISABLED"] : [],
+          ...snapshot2.rawNetworkJson.length ? ["NETWORK_CAPTURE_DISABLED"] : [],
+          ...snapshot2.rawTableData.length > snapshotSafetyLimits.tableItems || (snapshot2.visibleMetricsJson?.length || 0) > snapshotSafetyLimits.visibleMetrics ? ["SNAPSHOT_SAFETY_LIMIT"] : []
         ])]
       };
     }
@@ -4489,7 +4500,7 @@ ${input.visibleText || ""}`;
     "ad_coupon",
     "rebate_coupon"
   ]);
-  var percentageMetricKeys = /* @__PURE__ */ new Set(["ctr", "complaint_rate", "refund_rate", "fulfillment_exception_rate"]);
+  var percentageMetricKeys = /* @__PURE__ */ new Set(["ctr", "product_click_rate", "product_conversion_rate", "live_room_click_rate", "complaint_rate", "refund_rate", "fulfillment_exception_rate"]);
   var roiMetricKeys = /* @__PURE__ */ new Set(["pay_roi", "full_domain_pay_roi", "verify_roi", "gross_profit_roi", "target_roi"]);
   function metricValueSemantic(metricKey) {
     if (currencyMetricKeys.has(metricKey))
@@ -4562,6 +4573,17 @@ ${input.visibleText || ""}`;
       reasons: [reason]
     };
   }
+  function metricValueText(metric, semantic = "UNKNOWN") {
+    const evidencedValue = metric.rawEvidence?.normalizedValue;
+    if (typeof evidencedValue === "string" && isCanonicalDecimal(evidencedValue))
+      return evidencedValue;
+    if (metric.value == null)
+      return null;
+    if (typeof metric.value === "number") {
+      return Number.isFinite(metric.value) ? String(metric.value) : null;
+    }
+    return parseDisplayedMetricValue(metric.value, semantic).normalizedText;
+  }
   function scaleDecimal(value, multiplier, decimalShift) {
     const negative = value.startsWith("-");
     const unsigned = negative ? value.slice(1) : value;
@@ -4577,6 +4599,9 @@ ${input.visibleText || ""}`;
     }
     result = result.replace(/^0+(?=\d)/, "").replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
     return negative && result !== "0" ? `-${result}` : result;
+  }
+  function isCanonicalDecimal(value) {
+    return /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value);
   }
 
   // ../../packages/shared/dist/collection-diagnostics.js
@@ -4706,22 +4731,401 @@ ${input.visibleText || ""}`;
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
+  // ../../packages/shared/dist/metric-keys.js
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/dist/live-screen-internal-api.js
+  var liveScreenInternalApiContractVersion = "2026-08-14.1";
+  var liveScreenInternalApiAdapterVersion = "1.6.0";
+  var liveScreenRoomIdSources = ["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"];
+  var liveScreenRoomIdPattern = /^\d{1,32}$/;
+  var liveScreenInternalApiEndpointKeys = [
+    "key_index",
+    "room_minute_indicator",
+    "room_info",
+    "follow_product",
+    "product_trend",
+    "conversion_funnel",
+    "portrait",
+    "marketing_data",
+    "comment_info",
+    "punish_info"
+  ];
+  var liveScreenApiEvidencePurposes = ["PULSE_ONLY", "SNAPSHOT_EVIDENCE", "SNAPSHOT_DISPLAY_ONLY"];
+  var requestSchema = external_exports.object({ room_id: external_exports.string().regex(/^\d{1,32}$/) }).strict();
+  var metricValueSchema = external_exports.union([external_exports.number().finite(), external_exports.string().trim().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?%?$/)]).nullable();
+  var responseSchema = external_exports.object({
+    code: external_exports.number().int(),
+    data: external_exports.record(external_exports.string(), external_exports.unknown())
+  }).passthrough();
+  var keyIndexResponseSchema = external_exports.object({
+    code: external_exports.number().int(),
+    // Field-level type checks happen only at the explicit approved paths below.
+    // Keeping the object opaque here lets a single invalid/missing metric remain
+    // a local projection miss instead of widening the whole endpoint contract.
+    data: external_exports.record(external_exports.string(), external_exports.unknown())
+  }).strip();
+  var roomMinuteIndicatorResponseSchema = external_exports.object({
+    code: external_exports.literal(0),
+    data: external_exports.object({
+      minute_rows: external_exports.array(external_exports.object({
+        interval_label: external_exports.string().trim().min(1).max(100),
+        live_views: metricValueSchema
+      }).strip()).max(120)
+    }).strip()
+  }).strip();
+  var roomInfoResponseSchema = external_exports.object({
+    code: external_exports.literal(0),
+    data: external_exports.object({
+      live_viewers: metricValueSchema.optional(),
+      impressions: metricValueSchema.optional(),
+      clicks: metricValueSchema.optional(),
+      orders: metricValueSchema.optional()
+    }).strip()
+  }).strip();
+  var clickRateResponseSchema = external_exports.object({
+    code: external_exports.literal(0),
+    data: external_exports.object({ product_click_rate: metricValueSchema.optional() }).strip()
+  }).strip();
+  function endpoint(key, fields, maxResponseBytes = 96 * 1024, endpointResponseSchema = responseSchema) {
+    return {
+      key,
+      path: `/life/api/live_screen/v5/${key}`,
+      method: "POST",
+      requestSchema,
+      responseSchema: endpointResponseSchema,
+      maxResponseBytes,
+      fields
+    };
+  }
+  var realtime = (metricKey, metricName, fieldPath, fieldLabel, unit, semanticScope, displayPrecision = 0) => ({
+    metricKey,
+    metricName,
+    fieldPath,
+    approvedFieldPaths: [fieldPath],
+    fieldLabel,
+    unit,
+    timeRange: "\u5B9E\u65F6",
+    semanticScope,
+    purpose: "PULSE_ONLY",
+    displayPrecision
+  });
+  var snapshot = (metricKey, metricName, fieldPath, fieldLabel, unit, semanticScope, displayPrecision = 0, rowPath, rowLabelPath) => ({
+    metricKey,
+    metricName,
+    fieldPath,
+    approvedFieldPaths: [fieldPath],
+    fieldLabel,
+    unit,
+    timeRange: "\u672C\u573A",
+    semanticScope,
+    purpose: "SNAPSHOT_EVIDENCE",
+    displayPrecision,
+    rowPath,
+    rowLabelPath
+  });
+  var liveScreenInternalApiContracts = {
+    key_index: endpoint("key_index", [
+      // The live page renders Object.keys(response.data), and every key-index item
+      // exposes its display number through item.value. Keep this whitelist aligned
+      // with the concrete data keys shipped by the platform bundle; never scan
+      // arbitrary response keys or retain the response body.
+      realtime("gmv", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "data.PayGmv.value", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "yuan", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", 2),
+      realtime("current_online_viewers", "\u5728\u7EBF\u4EBA\u6570", "data.CurrentUserCnt.value", "\u5728\u7EBF\u4EBA\u6570", null, "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570"),
+      realtime("average_watch_duration_seconds", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "data.ClientAvgWatchDuration.value", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "s", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", 2),
+      realtime("gpm", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "data.GPM.value", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "yuan", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", 2),
+      realtime("orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "data.PayOrderCnt.value", "\u6210\u4EA4\u8BA2\u5355\u6570", null, "\u6210\u4EA4\u8BA2\u5355\u6570"),
+      realtime("transaction_users", "\u6210\u4EA4\u4EBA\u6570", "data.PayUvAll.value", "\u6210\u4EA4\u4EBA\u6570", null, "\u6210\u4EA4\u4EBA\u6570"),
+      realtime("product_conversion_rate", "\u5546\u54C1\u8F6C\u5316\u7387", "data.GoodsCvr.value", "\u5546\u54C1\u8F6C\u5316\u7387", "%", "\u5546\u54C1\u8F6C\u5316\u7387", 2)
+    ], 64 * 1024, keyIndexResponseSchema),
+    room_minute_indicator: endpoint("room_minute_indicator", [
+      snapshot("hourly_live_views", "\u5206\u949F\u770B\u64AD\u6B21\u6570", "data.minute_rows[].live_views", "\u5206\u949F\u770B\u64AD\u6B21\u6570", null, "\u5206\u949F\u8D8B\u52BF", 0, "data.minute_rows", "interval_label")
+    ], 96 * 1024, roomMinuteIndicatorResponseSchema),
+    room_info: endpoint("room_info", [
+      snapshot("live_viewers", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570", "data.live_viewers", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570", null, "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570"),
+      snapshot("impressions", "\u66DD\u5149\u6B21\u6570", "data.impressions", "\u66DD\u5149\u6B21\u6570", null, "\u66DD\u5149\u6B21\u6570"),
+      snapshot("clicks", "\u70B9\u51FB\u6B21\u6570", "data.clicks", "\u70B9\u51FB\u6B21\u6570", null, "\u70B9\u51FB\u6B21\u6570"),
+      snapshot("orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "data.orders", "\u6210\u4EA4\u8BA2\u5355\u6570", null, "\u6210\u4EA4\u8BA2\u5355\u6570")
+    ], 64 * 1024, roomInfoResponseSchema),
+    follow_product: endpoint("follow_product", [
+      snapshot("product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "data.product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "%", "\u5546\u54C1\u70B9\u51FB\u7387", 2)
+    ], 64 * 1024, clickRateResponseSchema),
+    product_trend: endpoint("product_trend", []),
+    conversion_funnel: endpoint("conversion_funnel", [
+      snapshot("product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "data.product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387", "%", "\u5546\u54C1\u70B9\u51FB\u7387", 2)
+    ], 64 * 1024, clickRateResponseSchema),
+    portrait: endpoint("portrait", []),
+    marketing_data: endpoint("marketing_data", []),
+    // Comments and enforcement endpoints intentionally expose no free text or identity fields.
+    comment_info: endpoint("comment_info", []),
+    punish_info: endpoint("punish_info", [])
+  };
+  var liveScreenSnapshotEndpointKeys = liveScreenInternalApiEndpointKeys.filter((key) => liveScreenInternalApiContracts[key].fields.some((field) => field.purpose !== "PULSE_ONLY"));
+  function liveScreenEndpointKeysForMode(mode) {
+    if (mode === "SNAPSHOT")
+      return [...liveScreenSnapshotEndpointKeys];
+    return ["key_index"];
+  }
+  function resolveLiveScreenRoomId(input) {
+    const evidence = {
+      urlRoomIds: normalizeRoomIds(input.urlRoomIds),
+      domRoomIds: normalizeRoomIds(input.domRoomIds)
+    };
+    if (evidence.urlRoomIds.length > 1 || evidence.domRoomIds.length > 1) {
+      return { value: null, source: "MISMATCH", evidence };
+    }
+    const urlRoomId = evidence.urlRoomIds[0] || null;
+    const domRoomId = evidence.domRoomIds[0] || null;
+    if (urlRoomId && domRoomId && urlRoomId !== domRoomId) {
+      return { value: null, source: "MISMATCH", evidence };
+    }
+    if (urlRoomId && domRoomId)
+      return { value: urlRoomId, source: "URL_AND_DOM", evidence };
+    if (urlRoomId)
+      return { value: urlRoomId, source: "URL", evidence };
+    if (domRoomId)
+      return { value: domRoomId, source: "DOM", evidence };
+    return { value: null, source: "MISSING", evidence };
+  }
+  function normalizeRoomIds(values) {
+    return [...new Set(values.map((value) => value?.trim() || "").filter((value) => liveScreenRoomIdPattern.test(value)))].slice(0, 2);
+  }
+
+  // ../../packages/shared/dist/collection-capture.js
+  var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
+  var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
+  var metricSourceStatuses = ["INTERNAL_API", "DOM_TEXT", "API_AND_DOM", "SOURCE_CONFLICT"];
+  var captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"];
+  var captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"];
+  var metricRawEvidenceSchema = external_exports.object({
+    sourceType: external_exports.string().min(1),
+    path: external_exports.string().optional(),
+    selector: external_exports.string().optional(),
+    tableIndex: external_exports.number().int().optional(),
+    rowIndex: external_exports.number().int().optional(),
+    columnName: external_exports.string().optional(),
+    url: external_exports.string().optional(),
+    method: external_exports.string().optional(),
+    jsonPath: external_exports.string().optional(),
+    textSnippet: external_exports.string().max(500).optional(),
+    fieldLabel: external_exports.string().max(100).optional(),
+    displayValue: external_exports.string().max(100).optional(),
+    normalizedValue: external_exports.string().max(100).nullable().optional(),
+    displayPrecision: external_exports.number().int().min(0).max(20).nullable().optional(),
+    multiplier: external_exports.number().positive().optional(),
+    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+    timeRange: external_exports.string().max(100).nullable().optional(),
+    timeRangeSource: external_exports.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
+    timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+    bindingKind: external_exports.enum(["CARD", "TABLE", "MANUAL"]).optional(),
+    componentPath: external_exports.string().max(300).optional(),
+    rowIdentity: external_exports.string().max(200).optional(),
+    calibrationSignature: external_exports.string().max(500).optional(),
+    validationStatus: external_exports.enum(metricValidationStatuses).optional(),
+    validationReasons: external_exports.array(external_exports.string().max(100)).max(20).optional(),
+    sourceStatus: external_exports.enum(metricSourceStatuses).optional(),
+    apiCandidate: external_exports.object({
+      value: external_exports.string().max(100),
+      displayValue: external_exports.string().max(100),
+      unit: external_exports.string().nullable(),
+      timeRange: external_exports.string().max(100),
+      displayPrecision: external_exports.number().int().min(0).max(20),
+      fieldPath: external_exports.string().max(300),
+      fieldLabel: external_exports.string().max(100)
+    }).optional(),
+    domCandidate: external_exports.object({
+      value: external_exports.string().max(100),
+      displayValue: external_exports.string().max(100),
+      unit: external_exports.string().nullable(),
+      timeRange: external_exports.string().max(100),
+      displayPrecision: external_exports.number().int().min(0).max(20),
+      fieldPath: external_exports.string().max(300),
+      fieldLabel: external_exports.string().max(100)
+    }).optional(),
+    selectionReason: external_exports.string().max(200).optional(),
+    manualSourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
+    semanticScope: external_exports.string().max(100).optional(),
+    apiContractVersion: external_exports.string().max(50).optional(),
+    apiAdapterVersion: external_exports.string().max(50).optional(),
+    endpointKey: external_exports.string().max(100).optional(),
+    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional()
+  });
+  var visibleMetricSchema = external_exports.object({
+    key: external_exports.string().min(1),
+    name: external_exports.string().min(1),
+    value: external_exports.union([external_exports.number(), external_exports.string(), external_exports.null()]),
+    unit: external_exports.string().nullable().optional(),
+    source: external_exports.enum(["dom", "table", "network", "manual"]),
+    metricSource: external_exports.enum(metricSources).optional(),
+    confidence: external_exports.number().min(0).max(1).optional(),
+    rawEvidence: metricRawEvidenceSchema.nullable().optional()
+  });
+  var networkRecordSchema = external_exports.object({
+    url: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
+    method: external_exports.string().min(1).max(16),
+    status: external_exports.number().int().min(0).max(599),
+    responseJson: external_exports.unknown(),
+    capturedAt: external_exports.string().datetime()
+  });
+  var captureMetaSchema = external_exports.object({
+    adapterId: external_exports.string().min(1).max(100),
+    adapterVersion: external_exports.string().min(1).max(50),
+    pageFingerprint: external_exports.string().min(1).max(128),
+    completeness: external_exports.enum(captureCompletenessValues),
+    coverageRatio: external_exports.number().min(0).max(1),
+    expectedFields: external_exports.array(external_exports.string().max(100)).max(100),
+    extractedFields: external_exports.array(external_exports.string().max(100)).max(100),
+    visibleRegions: external_exports.array(external_exports.string().max(100)).max(50),
+    renderModes: external_exports.array(external_exports.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
+    tableBindings: external_exports.array(external_exports.object({
+      tableIndex: external_exports.number().int().min(0).max(3),
+      headers: external_exports.array(external_exports.string().max(100)).min(1).max(100),
+      identityColumn: external_exports.string().max(100).nullable(),
+      identityColumnIndex: external_exports.number().int().min(0).max(99).nullable().optional(),
+      timeRange: external_exports.string().max(100).nullable().optional(),
+      timeRangeLocation: external_exports.string().max(300).nullable().optional(),
+      componentPath: external_exports.string().max(300).nullable().optional(),
+      bindingSignature: external_exports.string().min(1).max(500),
+      validationStatus: external_exports.enum(metricValidationStatuses),
+      validationReasons: external_exports.array(external_exports.string().max(100)).max(20)
+    })).max(4).optional(),
+    tabState: external_exports.enum(captureTabStates),
+    originalBytes: external_exports.number().int().min(0),
+    acceptedBytes: external_exports.number().int().min(0),
+    truncatedFields: external_exports.array(external_exports.string().max(100)).max(100),
+    truncationReasons: external_exports.array(external_exports.string().max(200)).max(100),
+    routeDetection: external_exports.object({
+      routeKey: external_exports.enum(collectionRouteKeys),
+      source: external_exports.enum(["MANUAL", "URL", "ACTIVE_TAB", "VISIBLE_CONTENT", "PAGE_TYPE", "UNKNOWN"]),
+      confidence: external_exports.number().min(0).max(1),
+      manuallyConfirmed: external_exports.boolean(),
+      evidence: external_exports.array(external_exports.string().max(200)).max(20)
+    }).optional(),
+    liveScreenInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      roomId: external_exports.string().regex(liveScreenRoomIdPattern).nullable().optional(),
+      roomIdSource: external_exports.enum(liveScreenRoomIdSources),
+      roomIdEvidence: external_exports.object({
+        urlRoomIds: external_exports.array(external_exports.string().regex(liveScreenRoomIdPattern)).max(2),
+        domRoomIds: external_exports.array(external_exports.string().regex(liveScreenRoomIdPattern)).max(2)
+      }).optional(),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.enum(liveScreenInternalApiEndpointKeys),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().min(0).max(384 * 1024),
+        reason: external_exports.string().max(100).optional()
+      })).max(liveScreenInternalApiEndpointKeys.length),
+      minuteRows: external_exports.array(external_exports.object({
+        intervalLabel: external_exports.string().min(1).max(100),
+        liveViews: external_exports.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
+      })).max(120).optional()
+    }).optional()
+  });
+  var collectionSnapshotSchema = external_exports.object({
+    pageType: external_exports.enum(pageTypes).default("UNKNOWN"),
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
+    pageTitle: external_exports.string().max(snapshotSafetyLimits.pageTitleChars).default(""),
+    rawDomText: external_exports.string().max(snapshotSafetyLimits.rawDomTextChars).default(""),
+    rawNetworkJson: external_exports.array(networkRecordSchema).max(snapshotSafetyLimits.networkRecords).default([]),
+    rawTableData: external_exports.array(external_exports.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
+    visibleMetricsJson: external_exports.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
+    screenshotUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
+    localCollectedAt: external_exports.string().datetime(),
+    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
+    routeKey: external_exports.enum(collectionRouteKeys).optional(),
+    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
+    captureMeta: captureMetaSchema.optional()
+  });
+  var metricPulseSchema = external_exports.object({
+    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
+    routeKey: external_exports.enum(collectionRouteKeys),
+    pageType: external_exports.enum(pageTypes),
+    localCapturedAt: external_exports.string().datetime(),
+    tabState: external_exports.enum(captureTabStates),
+    metrics: external_exports.array(visibleMetricSchema).max(32),
+    captureMeta: captureMetaSchema,
+    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
+    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional()
+  });
+
   // ../../packages/shared/dist/collection-field-profiles.js
   var collectionMetricFieldDefinitions = [
-    { key: "spend", name: "ad spend", unit: "yuan", labels: ["\u6D88\u8017", "\u5E7F\u544A\u6D88\u8017", "\u4ECA\u65E5\u6D88\u8017"] },
+    { key: "spend", name: "ad spend", unit: "yuan", labels: ["\u6D88\u8017", "\u5E7F\u544A\u6D88\u8017", "\u4ECA\u65E5\u6D88\u8017", "\u5168\u57DF\u6D88\u8017(\u5143)"] },
     { key: "daily_budget", name: "daily budget", unit: "yuan", labels: ["\u65E5\u9884\u7B97", "\u9884\u7B97"] },
     { key: "remaining_budget", name: "remaining budget", unit: "yuan", labels: ["\u5269\u4F59\u9884\u7B97"] },
-    { key: "impressions", name: "impressions", labels: ["\u66DD\u5149\u6B21\u6570", "\u66DD\u5149\u91CF", "\u5546\u54C1\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u4EBA\u6570"] },
-    { key: "clicks", name: "clicks", labels: ["\u70B9\u51FB\u4EBA\u6570", "\u5546\u54C1\u70B9\u51FB\u4EBA\u6570", "\u70B9\u51FB\u6B21\u6570"] },
-    { key: "ctr", name: "click through rate", unit: "%", labels: ["\u5546\u54C1\u70B9\u51FB\u7387", "\u70B9\u51FB\u7387", "CTR"] },
-    { key: "orders", name: "orders", labels: ["\u6210\u4EA4\u8BA2\u5355\u6570", "\u652F\u4ED8\u8BA2\u5355", "\u652F\u4ED8\u8BA2\u5355\u6570", "\u6210\u4EA4\u4EBA\u6570"] },
+    { key: "impressions", name: "impressions", labels: ["\u66DD\u5149\u6B21\u6570", "\u66DD\u5149\u91CF"] },
+    { key: "clicks", name: "clicks", labels: ["\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] },
+    { key: "ctr", name: "click through rate", unit: "%", labels: ["\u70B9\u51FB\u7387", "CTR"] },
+    { key: "orders", name: "orders", labels: ["\u6210\u4EA4\u8BA2\u5355\u6570", "\u652F\u4ED8\u8BA2\u5355", "\u652F\u4ED8\u8BA2\u5355\u6570", "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570"] },
     { key: "pay_roi", name: "\u6574\u4F53\u652F\u4ED8 ROI", labels: ["\u6574\u4F53\u652F\u4ED8ROI", "\u6574\u4F53\u652F\u4ED8 ROI", "\u4ED8\u6B3E ROI"] },
     { key: "full_domain_pay_roi", name: "\u5168\u57DF\u652F\u4ED8 ROI", labels: ["\u5168\u57DF\u652F\u4ED8ROI", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DFROI", "\u5168\u57DF ROI"] },
     { key: "verify_roi", name: "verify ROI", labels: ["\u6838\u9500 ROI"] },
     { key: "gross_profit_roi", name: "gross profit ROI", labels: ["\u6BDB\u5229 ROI"] },
-    { key: "gmv", name: "GMV", unit: "yuan", labels: ["\u6210\u4EA4\u91D1\u989D", "\u652F\u4ED8\u91D1\u989D", "GMV"] },
+    { key: "gmv", name: "GMV", unit: "yuan", labels: ["\u6210\u4EA4\u91D1\u989D", "\u652F\u4ED8\u91D1\u989D", "GMV", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)"] },
     { key: "gpm", name: "GPM", unit: "yuan", labels: ["\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "GPM"] },
     { key: "live_viewers", name: "live viewers", labels: ["\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570", "\u89C2\u770B\u4EBA\u6570", "\u770B\u64AD\u4EBA\u6570", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570"] },
+    { key: "current_online_viewers", name: "current online viewers", labels: ["\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", "\u5728\u7EBF\u4EBA\u6570"] },
+    { key: "average_watch_duration_seconds", name: "average watch duration", unit: "s", labels: ["\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u5E73\u5747\u89C2\u770B\u65F6\u957F"] },
+    { key: "exposure_users", name: "exposure users", labels: ["\u66DD\u5149\u4EBA\u6570", "\u5546\u54C1\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u4EBA\u6570"] },
+    { key: "click_users", name: "click users", labels: ["\u70B9\u51FB\u4EBA\u6570", "\u5546\u54C1\u70B9\u51FB\u4EBA\u6570"] },
+    { key: "transaction_users", name: "transaction users", labels: ["\u6210\u4EA4\u4EBA\u6570", "\u652F\u4ED8\u4EBA\u6570"] },
+    { key: "product_click_rate", name: "product click rate", unit: "%", labels: ["\u5546\u54C1\u70B9\u51FB\u7387"] },
+    { key: "product_conversion_rate", name: "product conversion rate", unit: "%", labels: ["\u5546\u54C1\u8F6C\u5316\u7387"] },
+    { key: "live_room_click_rate", name: "live room click rate", unit: "%", labels: ["\u76F4\u64AD\u95F4\u70B9\u51FB\u7387"] },
     { key: "hourly_live_views", name: "\u5C0F\u65F6\u770B\u64AD\u6B21\u6570", labels: ["\u5C0F\u65F6\u770B\u64AD\u6B21\u6570"] },
     { key: "hourly_natural_live_views", name: "\u5C0F\u65F6\u81EA\u7136\u770B\u64AD\u6B21\u6570", labels: ["\u5C0F\u65F6\u81EA\u7136\u770B\u64AD\u6B21\u6570"] },
     { key: "hourly_commercial_live_views", name: "\u5C0F\u65F6\u5546\u4E1A\u770B\u64AD\u6B21\u6570", labels: ["\u5C0F\u65F6\u5546\u4E1A\u770B\u64AD\u6B21\u6570"] },
@@ -4784,7 +5188,7 @@ ${input.visibleText || ""}`;
       adapterId: "live-screen",
       pageType: "LIVE_DATA_SCREEN",
       keywords: ["\u76F4\u64AD\u6570\u636E\u5927\u5C4F", "\u76F4\u64AD\u95F4", "\u770B\u64AD", "\u66DD\u5149\u4EBA\u6570", "\u6210\u4EA4\u4EBA\u6570"],
-      metricKeys: ["gmv", "gpm", "live_viewers", "impressions", "clicks", "orders"],
+      metricKeys: ["gmv", "current_online_viewers", "average_watch_duration_seconds", "gpm", "orders", "transaction_users", "product_conversion_rate"],
       periodRequired: true,
       tableFields: []
     },
@@ -4874,7 +5278,6 @@ ${input.visibleText || ""}`;
   var accountPlatforms = ["DOUYIN_LOCAL_LIFE"];
   var collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"];
   var riskLevels = ["LOW", "MEDIUM", "HIGH"];
-  var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
   var actionTypes = [
     "OBSERVE",
     "INCREASE_BUDGET",
@@ -4904,58 +5307,11 @@ ${input.visibleText || ""}`;
     "REQUEST_MANUAL_REVIEW"
   ];
   var actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "OBSERVING", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"];
-  var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"];
   var dataReviewStatuses = ["REVIEWED", "UNREVIEWED"];
-  var metricLayers = ["REVIEWED_METRIC"];
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
+  var metricLayers = ["REVIEWED_METRIC", "REALTIME_API"];
   var observationWindows = ["30m", "2h", "1d", "custom"];
   var actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"];
-  var captureCompletenessValues = ["COMPLETE", "PARTIAL", "UNKNOWN"];
-  var captureTabStates = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"];
   var metricKeyLabels = {
     unknown: "\u672A\u77E5\u6307\u6807",
     verify_roi: "\u6838\u9500 ROI",
@@ -4969,6 +5325,7 @@ ${input.visibleText || ""}`;
     recent_30m_spend: "\u8FD1 30 \u5206\u949F\u6D88\u8017",
     recent_30m_orders: "\u8FD1 30 \u5206\u949F\u8BA2\u5355\u6570",
     live_duration_minutes: "\u5F00\u64AD\u65F6\u957F\uFF08\u5206\u949F\uFF09",
+    average_watch_duration_seconds: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F\uFF08\u79D2\uFF09",
     minutes_since_last_adjustment: "\u8DDD\u4E0A\u6B21\u8C03\u4EF7\uFF08\u5206\u949F\uFF09",
     orders: "\u6210\u4EA4\u8BA2\u5355\u6570",
     impressions: "\u66DD\u5149\u91CF",
@@ -4977,6 +5334,13 @@ ${input.visibleText || ""}`;
     cpa: "\u8BA2\u5355\u6210\u672C",
     target_cpa: "\u76EE\u6807 CPA",
     live_viewers: "\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570",
+    current_online_viewers: "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570",
+    exposure_users: "\u66DD\u5149\u4EBA\u6570",
+    click_users: "\u70B9\u51FB\u4EBA\u6570",
+    transaction_users: "\u6210\u4EA4\u4EBA\u6570",
+    product_click_rate: "\u5546\u54C1\u70B9\u51FB\u7387",
+    product_conversion_rate: "\u5546\u54C1\u8F6C\u5316\u7387",
+    live_room_click_rate: "\u76F4\u64AD\u95F4\u70B9\u51FB\u7387",
     hourly_live_views: "\u5C0F\u65F6\u770B\u64AD\u6B21\u6570",
     hourly_natural_live_views: "\u5C0F\u65F6\u81EA\u7136\u770B\u64AD\u6B21\u6570",
     hourly_commercial_live_views: "\u5C0F\u65F6\u5546\u4E1A\u770B\u64AD\u6B21\u6570",
@@ -5013,14 +5377,22 @@ ${input.visibleText || ""}`;
     recent_30m_spend: ["recent_30m_spend", "\u8FD130\u5206\u949F\u6D88\u8017", "\u8FD1 30 \u5206\u949F\u6D88\u8017"],
     recent_30m_orders: ["recent_30m_orders", "\u8FD130\u5206\u949F\u8BA2\u5355", "\u8FD1 30 \u5206\u949F\u8BA2\u5355\u6570"],
     live_duration_minutes: ["live_duration_minutes", "\u5F00\u64AD\u65F6\u957F", "\u76F4\u64AD\u65F6\u957F", "\u5DF2\u5F00\u64AD\u5206\u949F"],
+    average_watch_duration_seconds: ["average_watch_duration_seconds", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u5E73\u5747\u89C2\u770B\u65F6\u957F"],
     minutes_since_last_adjustment: ["minutes_since_last_adjustment", "\u8DDD\u4E0A\u6B21\u8C03\u4EF7", "\u8DDD\u4E0A\u6B21\u8C03\u6574", "\u6700\u8FD1\u4E00\u6B21\u8C03\u4EF7\u65F6\u95F4"],
-    orders: ["orders", "order_count", "conversions", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u6210\u4EA4\u4EBA\u6570", "\u652F\u4ED8\u8BA2\u5355", "\u652F\u4ED8\u8BA2\u5355\u6570"],
-    impressions: ["impressions", "\u66DD\u5149\u91CF", "\u66DD\u5149\u6B21\u6570", "\u5546\u54C1\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u6B21\u6570"],
-    clicks: ["clicks", "\u70B9\u51FB\u91CF", "\u70B9\u51FB\u4EBA\u6570", "\u5546\u54C1\u70B9\u51FB\u4EBA\u6570"],
-    ctr: ["ctr", "CTR", "\u70B9\u51FB\u7387", "\u5546\u54C1\u70B9\u51FB\u7387", "\u66DD\u5149\u70B9\u51FB\u7387"],
+    orders: ["orders", "order_count", "conversions", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u652F\u4ED8\u8BA2\u5355", "\u652F\u4ED8\u8BA2\u5355\u6570"],
+    impressions: ["impressions", "\u66DD\u5149\u91CF", "\u66DD\u5149\u6B21\u6570", "\u76F4\u64AD\u66DD\u5149\u6B21\u6570"],
+    clicks: ["clicks", "\u70B9\u51FB\u91CF", "\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"],
+    ctr: ["ctr", "CTR", "\u70B9\u51FB\u7387", "\u66DD\u5149\u70B9\u51FB\u7387"],
     cpa: ["cpa", "cost_per_order", "order_cost", "\u8F6C\u5316\u6210\u672C", "\u6210\u4EA4\u6210\u672C", "\u8BA2\u5355\u6210\u672C", "CPA"],
     target_cpa: ["target_cpa", "target_cost", "\u76EE\u6807 CPA", "\u76EE\u6807CPA", "\u76EE\u6807\u6210\u672C"],
-    live_viewers: ["live_viewers", "viewers", "\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570", "\u89C2\u770B\u4EBA\u6570", "\u770B\u64AD\u4EBA\u6570", "\u7D2F\u8BA1\u5728\u7EBF\u4EBA\u6570"],
+    live_viewers: ["live_viewers", "viewers", "\u76F4\u64AD\u95F4\u89C2\u770B\u4EBA\u6570", "\u89C2\u770B\u4EBA\u6570", "\u770B\u64AD\u4EBA\u6570", "\u6574\u573A\u7D2F\u8BA1\u770B\u64AD\u4EBA\u6570"],
+    current_online_viewers: ["current_online_viewers", "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", "\u5728\u7EBF\u4EBA\u6570"],
+    exposure_users: ["exposure_users", "\u66DD\u5149\u4EBA\u6570", "\u5546\u54C1\u66DD\u5149\u4EBA\u6570", "\u76F4\u64AD\u66DD\u5149\u4EBA\u6570"],
+    click_users: ["click_users", "\u70B9\u51FB\u4EBA\u6570", "\u5546\u54C1\u70B9\u51FB\u4EBA\u6570"],
+    transaction_users: ["transaction_users", "\u6210\u4EA4\u4EBA\u6570", "\u652F\u4ED8\u4EBA\u6570"],
+    product_click_rate: ["product_click_rate", "\u5546\u54C1\u70B9\u51FB\u7387"],
+    product_conversion_rate: ["product_conversion_rate", "\u5546\u54C1\u8F6C\u5316\u7387"],
+    live_room_click_rate: ["live_room_click_rate", "\u76F4\u64AD\u95F4\u70B9\u51FB\u7387"],
     hourly_live_views: ["hourly_live_views", "\u5C0F\u65F6\u770B\u64AD\u6B21\u6570"],
     hourly_natural_live_views: ["hourly_natural_live_views", "\u5C0F\u65F6\u81EA\u7136\u770B\u64AD\u6B21\u6570"],
     hourly_commercial_live_views: ["hourly_commercial_live_views", "\u5C0F\u65F6\u5546\u4E1A\u770B\u64AD\u6B21\u6570"],
@@ -5069,54 +5441,17 @@ ${input.visibleText || ""}`;
   var diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"];
   var recommendationPriorities = ["P0", "P1", "P2"];
   var decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"];
-  var metricRawEvidenceSchema = external_exports.object({
-    sourceType: external_exports.string().min(1),
-    path: external_exports.string().optional(),
-    selector: external_exports.string().optional(),
-    tableIndex: external_exports.number().int().optional(),
-    rowIndex: external_exports.number().int().optional(),
-    columnName: external_exports.string().optional(),
-    url: external_exports.string().optional(),
-    method: external_exports.string().optional(),
-    jsonPath: external_exports.string().optional(),
-    textSnippet: external_exports.string().max(500).optional(),
-    fieldLabel: external_exports.string().max(100).optional(),
-    displayValue: external_exports.string().max(100).optional(),
-    normalizedValue: external_exports.string().max(100).nullable().optional(),
-    displayPrecision: external_exports.number().int().min(0).max(20).nullable().optional(),
-    multiplier: external_exports.number().positive().optional(),
-    unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
-    timeRange: external_exports.string().max(100).nullable().optional(),
-    timeRangeSource: external_exports.enum(["COMPONENT", "TABLE_CONTEXT", "MANUAL"]).optional(),
-    timeRangeLocation: external_exports.string().max(300).nullable().optional(),
-    bindingKind: external_exports.enum(["CARD", "TABLE", "MANUAL"]).optional(),
-    componentPath: external_exports.string().max(300).optional(),
-    rowIdentity: external_exports.string().max(200).optional(),
-    calibrationSignature: external_exports.string().max(500).optional(),
-    validationStatus: external_exports.enum(metricValidationStatuses).optional(),
-    validationReasons: external_exports.array(external_exports.string().max(100)).max(20).optional()
-  });
   var metricKeySchema = external_exports.enum(metricKeys);
-  var visibleMetricSchema = external_exports.object({
-    key: external_exports.string().min(1),
-    name: external_exports.string().min(1),
-    value: external_exports.union([external_exports.number(), external_exports.string(), external_exports.null()]),
-    unit: external_exports.string().nullable().optional(),
-    source: external_exports.enum(["dom", "table", "network", "manual"]),
-    metricSource: external_exports.enum(metricSources).optional(),
-    confidence: external_exports.number().min(0).max(1).optional(),
-    rawEvidence: metricRawEvidenceSchema.nullable().optional()
-  });
   var createActionOutcomeInputSchema = external_exports.object({
     observationWindow: external_exports.enum(observationWindows),
     customWindow: external_exports.string().trim().max(100).nullable().optional(),
     beforeMetrics: external_exports.array(external_exports.object({
-      metricKey: external_exports.enum(metricKeys).exclude(["unknown"]),
+      metricKey: external_exports.enum(recordableMetricKeys),
       value: external_exports.number().finite(),
       unit: external_exports.string().trim().max(30).nullable().optional()
     }).strict()).max(100).optional(),
     afterMetrics: external_exports.array(external_exports.object({
-      metricKey: external_exports.enum(metricKeys).exclude(["unknown"]),
+      metricKey: external_exports.enum(recordableMetricKeys),
       value: external_exports.number().finite(),
       unit: external_exports.string().trim().max(30).nullable().optional()
     }).strict()).max(100).optional(),
@@ -5132,48 +5467,6 @@ ${input.visibleText || ""}`;
       });
     }
   });
-  var networkRecordSchema = external_exports.object({
-    url: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
-    method: external_exports.string().min(1).max(16),
-    status: external_exports.number().int().min(0).max(599),
-    responseJson: external_exports.unknown(),
-    capturedAt: external_exports.string().datetime()
-  });
-  var captureMetaSchema = external_exports.object({
-    adapterId: external_exports.string().min(1).max(100),
-    adapterVersion: external_exports.string().min(1).max(50),
-    pageFingerprint: external_exports.string().min(1).max(128),
-    completeness: external_exports.enum(captureCompletenessValues),
-    coverageRatio: external_exports.number().min(0).max(1),
-    expectedFields: external_exports.array(external_exports.string().max(100)).max(100),
-    extractedFields: external_exports.array(external_exports.string().max(100)).max(100),
-    visibleRegions: external_exports.array(external_exports.string().max(100)).max(50),
-    renderModes: external_exports.array(external_exports.enum(["DOM", "TABLE", "CANVAS", "VIRTUALIZED"])).max(4),
-    tableBindings: external_exports.array(external_exports.object({
-      tableIndex: external_exports.number().int().min(0).max(3),
-      headers: external_exports.array(external_exports.string().max(100)).min(1).max(100),
-      identityColumn: external_exports.string().max(100).nullable(),
-      identityColumnIndex: external_exports.number().int().min(0).max(99).nullable().optional(),
-      timeRange: external_exports.string().max(100).nullable().optional(),
-      timeRangeLocation: external_exports.string().max(300).nullable().optional(),
-      componentPath: external_exports.string().max(300).nullable().optional(),
-      bindingSignature: external_exports.string().min(1).max(500),
-      validationStatus: external_exports.enum(metricValidationStatuses),
-      validationReasons: external_exports.array(external_exports.string().max(100)).max(20)
-    })).max(4).optional(),
-    tabState: external_exports.enum(captureTabStates),
-    originalBytes: external_exports.number().int().min(0),
-    acceptedBytes: external_exports.number().int().min(0),
-    truncatedFields: external_exports.array(external_exports.string().max(100)).max(100),
-    truncationReasons: external_exports.array(external_exports.string().max(200)).max(100),
-    routeDetection: external_exports.object({
-      routeKey: external_exports.enum(collectionRouteKeys),
-      source: external_exports.enum(["MANUAL", "URL", "ACTIVE_TAB", "VISIBLE_CONTENT", "PAGE_TYPE", "UNKNOWN"]),
-      confidence: external_exports.number().min(0).max(1),
-      manuallyConfirmed: external_exports.boolean(),
-      evidence: external_exports.array(external_exports.string().max(200)).max(20)
-    }).optional()
-  });
   var subjectContextSchema = external_exports.object({
     subjectType: external_exports.enum(subjectTypes),
     operatorType: external_exports.enum(operatorTypes),
@@ -5183,21 +5476,6 @@ ${input.visibleText || ""}`;
     serviceProviderName: external_exports.string().nullable().optional(),
     serviceMode: external_exports.string().nullable().optional(),
     serviceFee: external_exports.number().min(0).nullable().optional()
-  });
-  var collectionSnapshotSchema = external_exports.object({
-    pageType: external_exports.enum(pageTypes).default("UNKNOWN"),
-    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars),
-    pageTitle: external_exports.string().max(snapshotSafetyLimits.pageTitleChars).default(""),
-    rawDomText: external_exports.string().max(snapshotSafetyLimits.rawDomTextChars).default(""),
-    rawNetworkJson: external_exports.array(networkRecordSchema).max(snapshotSafetyLimits.networkRecords).default([]),
-    rawTableData: external_exports.array(external_exports.unknown()).max(snapshotSafetyLimits.tableItems).default([]),
-    visibleMetricsJson: external_exports.array(visibleMetricSchema).max(snapshotSafetyLimits.visibleMetrics).default([]),
-    screenshotUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional(),
-    localCollectedAt: external_exports.string().datetime(),
-    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
-    routeKey: external_exports.enum(collectionRouteKeys).optional(),
-    captureProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
-    captureMeta: captureMetaSchema.optional()
   });
   var createExtensionPairingCodeSchema = external_exports.object({
     accountProfileId: external_exports.string().min(1, "\u8BF7\u9009\u62E9\u8981\u7ED1\u5B9A\u7684\u5E73\u53F0\u8D26\u53F7"),
@@ -5237,16 +5515,6 @@ ${input.visibleText || ""}`;
     sourceLabel: external_exports.string().trim().max(100).default("\u7F51\u9875\u624B\u5DE5\u5F55\u5165"),
     metrics: external_exports.array(manualMetricItemSchema).min(1, "\u8BF7\u81F3\u5C11\u586B\u5199\u4E00\u4E2A\u6307\u6807").max(200, "\u5355\u6B21\u6700\u591A\u5F55\u5165 200 \u4E2A\u6307\u6807")
   });
-  var metricPulseSchema = external_exports.object({
-    collectionRunId: external_exports.string().min(1).max(128).nullable().optional(),
-    routeKey: external_exports.enum(collectionRouteKeys),
-    pageType: external_exports.enum(pageTypes),
-    localCapturedAt: external_exports.string().datetime(),
-    tabState: external_exports.enum(captureTabStates),
-    metrics: external_exports.array(visibleMetricSchema).max(32),
-    captureMeta: captureMetaSchema,
-    sourceUrl: external_exports.string().url().max(snapshotSafetyLimits.urlChars).nullable().optional()
-  });
   var manualCheckItemSchema = external_exports.object({
     title: external_exports.string().min(1),
     reason: external_exports.string().min(1)
@@ -5281,6 +5549,18 @@ ${input.visibleText || ""}`;
       missingRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
+    }).optional(),
+    liveScreenInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      roomIdSource: external_exports.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.string().max(100),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().nonnegative(),
+        reason: external_exports.string().max(200).optional()
+      })).max(10)
     }).optional()
   });
   var reviewCoverageSchema = external_exports.object({
@@ -5311,6 +5591,11 @@ ${input.visibleText || ""}`;
     bindingLocation: external_exports.string().nullable().optional(),
     bindingStatus: external_exports.enum(metricValidationStatuses).nullable().optional(),
     bindingReasons: external_exports.array(external_exports.string()).optional(),
+    sourceStatus: external_exports.enum(metricSourceStatuses).nullable().optional(),
+    apiValue: external_exports.string().nullable().optional(),
+    domValue: external_exports.string().nullable().optional(),
+    selectionReason: external_exports.string().nullable().optional(),
+    manualSourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).nullable().optional(),
     pageType: external_exports.string().nullable().optional(),
     scope: external_exports.string().nullable().optional(),
     timeRange: external_exports.string().nullable().optional(),
@@ -5321,6 +5606,7 @@ ${input.visibleText || ""}`;
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
     reviewedValue: external_exports.string().optional(),
     timeRange: external_exports.string().trim().min(1).max(100).optional(),
+    sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
     reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
   }).superRefine((value, ctx) => {
     if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -5337,6 +5623,7 @@ ${input.visibleText || ""}`;
       expectedSnapshotUpdatedAt: external_exports.string().datetime(),
       reviewedValue: external_exports.string().optional(),
       timeRange: external_exports.string().trim().min(1).max(100).optional(),
+      sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
       reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
     }).superRefine((value, ctx) => {
       if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
@@ -5425,6 +5712,15 @@ ${input.visibleText || ""}`;
       missingRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
+    }).optional(),
+    realtimeEvidence: external_exports.object({
+      routeKey: external_exports.enum(collectionRouteKeys),
+      pageType: external_exports.enum(pageTypes),
+      observedAt: external_exports.string().datetime(),
+      receivedAt: external_exports.string().datetime(),
+      metricCount: external_exports.number().int().nonnegative(),
+      successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
+      source: external_exports.literal("LIVE_SCREEN_INTERNAL_API")
     }).optional()
   });
   var decisionEngineOutputSchema = external_exports.object({
@@ -5574,6 +5870,171 @@ ${input.visibleText || ""}`;
     ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
   ]));
 
+  // src/capture-budget.ts
+  var captureBudget = {
+    maxTraversalNodes: 5e4,
+    maxRows: 1e3,
+    maxColumns: 100,
+    maxCells: 5e4,
+    maxTableTextBytes: 1048576,
+    maxVisibleTextBytes: 1048576,
+    // Real dashboard pages can legitimately contain tens of thousands of rendered
+    // nodes. Keep the capture bounded without turning ordinary pages into partial
+    // evidence before their visible cards and tables have been read.
+    maxDurationMs: 1500
+  };
+  function createCaptureBudgetState(now = performance.now()) {
+    return {
+      startedAt: now,
+      traversedNodes: 0,
+      rows: 0,
+      columns: 0,
+      cells: 0,
+      tableTextBytes: 0,
+      visibleTextBytes: 0,
+      reasons: /* @__PURE__ */ new Set(),
+      visibilityCache: /* @__PURE__ */ new WeakMap()
+    };
+  }
+  function collectBudgetedVisibleText(document2, state) {
+    const walker = document2.createTreeWalker(document2.body || document2.documentElement, NodeFilter.SHOW_TEXT);
+    const chunks = [];
+    while (walker.nextNode()) {
+      if (!consumeNode(state)) break;
+      const text = walker.currentNode.textContent?.trim() || "";
+      const parent = walker.currentNode.parentElement;
+      if (!text || !parent || !isCaptureVisibleElement(parent, state)) continue;
+      const accepted = consumeText(state, text, "VISIBLE_TEXT_LIMIT", "visibleTextBytes", captureBudget.maxVisibleTextBytes);
+      if (accepted) chunks.push(accepted);
+      if (isTimedOut(state)) break;
+    }
+    return chunks.join("\n");
+  }
+  function collectBudgetedTables(document2, state) {
+    const tables = [];
+    for (const table of document2.querySelectorAll('table,[role="table"],[role="grid"]')) {
+      if (!consumeNode(state) || !isCaptureVisibleElement(table, state)) break;
+      const rows = [];
+      const rowSelector = table.tagName === "TABLE" ? "tr" : '[role="row"]';
+      const cellSelector = table.tagName === "TABLE" ? "th,td" : '[role="columnheader"],[role="rowheader"],[role="cell"],[role="gridcell"]';
+      for (const row of table.querySelectorAll(rowSelector)) {
+        if (!belongsToTable(row, table)) continue;
+        if (!consumeNode(state) || state.rows >= captureBudget.maxRows) {
+          state.reasons.add("TABLE_ROW_LIMIT");
+          break;
+        }
+        const cells = [];
+        for (const cell of row.querySelectorAll(cellSelector)) {
+          if (!belongsToRow(cell, row)) continue;
+          if (!consumeNode(state) || state.cells >= captureBudget.maxCells || cells.length >= captureBudget.maxColumns) {
+            state.reasons.add(state.cells >= captureBudget.maxCells ? "TABLE_CELL_LIMIT" : "TABLE_COLUMN_LIMIT");
+            break;
+          }
+          if (!isCaptureVisibleElement(cell, state)) continue;
+          const text = consumeText(state, cell.textContent?.trim() || "", "TABLE_TEXT_LIMIT", "tableTextBytes", captureBudget.maxTableTextBytes);
+          if (text) cells.push(text);
+          state.cells += 1;
+        }
+        state.rows += 1;
+        state.columns = Math.max(state.columns, cells.length);
+        if (cells.length) rows.push(cells);
+        if (isTimedOut(state)) break;
+      }
+      if (rows.length) tables.push(rows);
+      if (isTimedOut(state) || state.rows >= captureBudget.maxRows || state.cells >= captureBudget.maxCells) break;
+    }
+    return tables;
+  }
+  function belongsToTable(element, table) {
+    return typeof element.closest !== "function" || element.closest('table,[role="table"],[role="grid"]') === table;
+  }
+  function belongsToRow(element, row) {
+    return typeof element.closest !== "function" || element.closest('tr,[role="row"]') === row;
+  }
+  function applyCaptureBudget(meta, state) {
+    const truncationReasons = [.../* @__PURE__ */ new Set([...meta.truncationReasons, ...state.reasons])];
+    const truncatedFields = [.../* @__PURE__ */ new Set([
+      ...meta.truncatedFields,
+      ...truncationReasons.some((reason) => reason.includes("TABLE")) ? ["rawTableData"] : [],
+      ...truncationReasons.some((reason) => reason.includes("VISIBLE_TEXT")) ? ["rawDomText"] : []
+    ])];
+    const partial = truncationReasons.length > 0;
+    return {
+      ...meta,
+      completeness: partial ? "PARTIAL" : meta.completeness,
+      originalBytes: Math.max(meta.originalBytes, state.tableTextBytes + state.visibleTextBytes),
+      acceptedBytes: state.tableTextBytes + state.visibleTextBytes,
+      truncatedFields,
+      truncationReasons
+    };
+  }
+  function consumeNode(state) {
+    if (isTimedOut(state)) return false;
+    state.traversedNodes += 1;
+    if (state.traversedNodes > captureBudget.maxTraversalNodes) {
+      state.reasons.add("NODE_TRAVERSAL_LIMIT");
+      return false;
+    }
+    return true;
+  }
+  function consumeText(state, value, reason, field, limit) {
+    if (!value) return "";
+    const available = Math.max(0, limit - state[field]);
+    const bytes = new TextEncoder().encode(value);
+    if (bytes.byteLength <= available) {
+      state[field] += bytes.byteLength;
+      return value;
+    }
+    state.reasons.add(reason);
+    if (!available) return "";
+    let result = "";
+    for (const character of value) {
+      const next = result + character;
+      if (new TextEncoder().encode(next).byteLength > available) break;
+      result = next;
+    }
+    state[field] += new TextEncoder().encode(result).byteLength;
+    return result;
+  }
+  function isTimedOut(state) {
+    if (performance.now() - state.startedAt < captureBudget.maxDurationMs) return false;
+    state.reasons.add("TIME_BUDGET_EXCEEDED");
+    return true;
+  }
+  function isCaptureVisibleElement(element, state) {
+    const cached = state?.visibilityCache.get(element);
+    if (cached != null) return cached;
+    let current = element;
+    let visible = true;
+    while (current) {
+      if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
+        visible = false;
+        break;
+      }
+      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(current.tagName)) {
+        visible = false;
+        break;
+      }
+      const style = computedStyle(current);
+      if (style && (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0")) {
+        visible = false;
+        break;
+      }
+      current = current.parentElement;
+    }
+    state?.visibilityCache.set(element, visible);
+    return visible;
+  }
+  function computedStyle(element) {
+    const view = element.ownerDocument?.defaultView || (typeof window === "undefined" ? null : window);
+    if (!view || typeof view.getComputedStyle !== "function") return null;
+    try {
+      return view.getComputedStyle(element);
+    } catch {
+      return null;
+    }
+  }
+
   // src/page-adapters.ts
   var adapters = [
     createAdapter("LIVE_PRODUCT_TAB"),
@@ -5590,7 +6051,7 @@ ${input.visibleText || ""}`;
     if (!profile) throw new Error(`Missing collection field profile for ${routeKey}`);
     return {
       id: profile.adapterId,
-      version: "2.1.0",
+      version: "2.2.0",
       pageType: profile.pageType,
       expectedFields: [...profile.metricKeys],
       detect(input) {
@@ -5668,13 +6129,13 @@ ${input.visibleText.slice(0, 5e4)}`;
     };
   }
   function countMetricLabels(document2, labels) {
-    return [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, labels)).length;
+    return [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && !isInsideDataTable(element) && !isMetricDisplayNoise(element) && isExactMetricLabel(element, labels)).length;
   }
   function findMetricBindings(document2, definition, profile) {
-    const labelElements = [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
+    const labelElements = [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && !isInsideDataTable(element) && !isMetricDisplayNoise(element) && isExactMetricLabel(element, definition.labels));
     const bindings = [];
     for (const labelElement of labelElements) {
-      const container = findMetricContainer(labelElement);
+      const container = findMetricContainer(labelElement, definition);
       if (!container) continue;
       const labelsInContainer = [...container.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
       if (labelsInContainer.length !== 1) continue;
@@ -5716,42 +6177,100 @@ ${input.visibleText.slice(0, 5e4)}`;
     }
     return bindings;
   }
-  function findMetricContainer(label) {
+  function findMetricContainer(label, definition) {
+    let nearestUniqueValueContainer = null;
     let current = label.parentElement;
-    for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
-      const className = current.getAttribute("class") || "";
-      if (current.tagName === "ARTICLE" || current.tagName === "SECTION" || /card|metric|indicator|overview|data-item/i.test(className)) return current;
-      if (current.children.length <= 8 && current.querySelectorAll("*").length <= 24) return current;
+    for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
+      if (current.tagName === "BODY" || current.tagName === "HTML") break;
+      const labelsInContainer = [...current.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
+      if (labelsInContainer.length !== 1) continue;
+      const values = findMetricValueElements(current, label, definition);
+      if (values.length !== 1) continue;
+      nearestUniqueValueContainer ||= current;
+      if (findTimeRangeElement(current)) return current;
     }
-    return null;
+    return nearestUniqueValueContainer;
   }
   function findMetricValueElements(container, label, definition) {
     const descendants = [...container.querySelectorAll("*")];
     const labelIndex = descendants.indexOf(label);
-    return descendants.filter((element, index) => {
+    const candidates = descendants.filter((element, index) => {
       if (index <= labelIndex) return false;
-      if (element === label || !isVisible(element) || element.children.length > 0) return false;
+      if (element === label || !isVisible(element)) return false;
       const text = textOf(element);
       if (!text || isExactMetricLabel(element, definition.labels)) return false;
+      if (element.children.length > 0 && !isSplitMetricValueElement(element, definition)) return false;
       const parsed = parseDisplayedMetricValue(text, metricValueSemantic(definition.key), definition.unit);
       return parsed.normalizedText != null || parsed.reasons.includes("VALUE_MISSING");
     });
+    const outerCandidates = candidates.filter((candidate) => !candidates.some((other) => other !== candidate && isDescendantOf(candidate, other)));
+    const primaryCandidates = outerCandidates.filter((candidate) => !isComparisonMetricValue(candidate, container));
+    return primaryCandidates.length ? primaryCandidates : outerCandidates;
+  }
+  function isSplitMetricValueElement(element, definition) {
+    const children = [...element.children].filter(isVisible);
+    if (!children.length || children.some((child) => child.children.length > 0 || isExactMetricLabel(child, definition.labels))) return false;
+    const displayValue = textOf(element);
+    const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(definition.key), definition.unit);
+    if (parsed.normalizedText == null && !parsed.reasons.includes("VALUE_MISSING")) return false;
+    if (children.length > 1) return true;
+    return normalizeMetricLookupValue(displayValue) !== normalizeMetricLookupValue(textOf(children[0]));
+  }
+  function isDescendantOf(candidate, ancestor) {
+    let current = candidate.parentElement;
+    while (current) {
+      if (current === ancestor) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+  function isComparisonMetricValue(element, container) {
+    let current = element.parentElement;
+    while (current && current !== container) {
+      const text = textOf(current);
+      if (/^(?:近\s*\d+\s*场均值|近\s*\d+\s*(?:日|天|小时)均值|(?:同|环)比|平均值|目标(?:值)?)/.test(text)) return true;
+      current = current.parentElement;
+    }
+    return false;
   }
   function isExactMetricLabel(element, labels) {
     const text = normalizeMetricLookupValue(textOf(element));
-    return Boolean(text) && labels.some((label) => text === normalizeMetricLookupValue(label));
+    if (!text || !labels.some((label) => text === normalizeMetricLookupValue(label))) return false;
+    return ![...element.children].some((child) => normalizeMetricLookupValue(textOf(child)) === text);
   }
   function isVisible(element) {
-    return !element.hasAttribute("hidden") && element.getAttribute("aria-hidden") !== "true";
+    return isCaptureVisibleElement(element);
   }
   function textOf(element) {
     return (element.textContent || "").replace(/\s+/g, " ").trim();
   }
   function extractTimeRange(text) {
-    return text.match(/(?:今日|昨日|昨天|实时|本场|整场|近\s*\d+\s*(?:分钟|小时|天)|\d{1,2}:\d{2}\s*[-至]\s*\d{1,2}:\d{2}|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至]\s*\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)?)/)?.[0] || null;
+    const normalized = text.replace(/\s+/g, " ").trim();
+    const direct = normalized.match(/^(?:今日|昨日|昨天|实时|本场|整场|近\s*\d+\s*(?:分钟|小时|天)|\d{1,2}:\d{2}\s*[-至]\s*\d{1,2}:\d{2}|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至]\s*\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)?)$/);
+    if (direct) return direct[0];
+    return normalized.match(/^(?:统计周期|数据周期|统计日期|数据日期|时间范围|数据范围|日期范围)\s*[:：]?\s*(今日|昨日|昨天|实时|本场|整场|近\s*\d+\s*(?:分钟|小时|天)|\d{1,2}:\d{2}\s*[-至]\s*\d{1,2}:\d{2}|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至]\s*\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)?)$/)?.[1] || null;
   }
   function findTimeRangeElement(container) {
-    return [container, ...container.querySelectorAll("*")].find((element) => isVisible(element) && element.children.length === 0 && Boolean(extractTimeRange(textOf(element)))) || null;
+    return [container, ...container.querySelectorAll("*")].find((element) => isVisible(element) && !isInsideDataTable(element) && element.children.length === 0 && Boolean(extractTimeRange(textOf(element)))) || null;
+  }
+  function isInsideDataTable(element) {
+    let current = element;
+    while (current) {
+      const role = current.getAttribute("role");
+      if (current.tagName === "TABLE" || role === "table" || role === "grid") return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+  function isMetricDisplayNoise(element) {
+    let current = element;
+    for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
+      const className = current.getAttribute("class") || "";
+      const role = current.getAttribute("role");
+      if (["option", "radio", "tab"].includes(role || "")) return true;
+      if (/(?:^|[-_\s])legend(?:[-_\s]|$)|chart|(?:^|[-_\s])tabs?(?:[-_\s]|$)|(?:^|[-_\s])radio-select(?:[-_\s]|$)/i.test(className)) return true;
+    }
+    return false;
   }
   function componentPath(container, target) {
     const path = [];
@@ -5769,7 +6288,7 @@ ${input.visibleText.slice(0, 5e4)}`;
     return [metricKey, normalizeMetricLookupValue(label), unit || "", path, periodLocation || ""].join("|");
   }
   function buildCaptureMeta(adapter, input, metrics, profile, routeKey) {
-    const extractedFields = [...new Set(metrics.map((metric) => String(metric.key)))];
+    const extractedFields = [...new Set(metrics.filter((metric) => metric.value != null && String(metric.value).trim() !== "").map((metric) => String(metric.key)))];
     const expected = adapter.expectedFields;
     const matched = expected.filter((field) => extractedFields.includes(field)).length;
     const coverageRatio = expected.length ? matched / expected.length : 0;
@@ -5901,176 +6420,621 @@ ${input.visibleText.slice(0, 5e4)}`;
 
   // src/safety.ts
   var sanitizeSnapshotPayload = sanitizeCollectionSnapshotPayload;
-
-  // src/capture-budget.ts
-  var captureBudget = {
-    maxTraversalNodes: 5e4,
-    maxRows: 1e3,
-    maxColumns: 100,
-    maxCells: 5e4,
-    maxTableTextBytes: 1048576,
-    maxVisibleTextBytes: 1048576,
-    maxDurationMs: 100
-  };
-  function createCaptureBudgetState(now = performance.now()) {
-    return {
-      startedAt: now,
-      traversedNodes: 0,
-      rows: 0,
-      columns: 0,
-      cells: 0,
-      tableTextBytes: 0,
-      visibleTextBytes: 0,
-      reasons: /* @__PURE__ */ new Set()
-    };
-  }
-  function collectBudgetedVisibleText(document2, state) {
-    const walker = document2.createTreeWalker(document2.body || document2.documentElement, NodeFilter.SHOW_TEXT);
-    const chunks = [];
-    while (walker.nextNode()) {
-      if (!consumeNode(state)) break;
-      const text = walker.currentNode.textContent?.trim() || "";
-      const parent = walker.currentNode.parentElement;
-      if (!text || !parent || !isCaptureVisibleElement(parent)) continue;
-      const accepted = consumeText(state, text, "VISIBLE_TEXT_LIMIT", "visibleTextBytes", captureBudget.maxVisibleTextBytes);
-      if (accepted) chunks.push(accepted);
-      if (isTimedOut(state)) break;
-    }
-    return chunks.join("\n");
-  }
-  function collectBudgetedTables(document2, state) {
-    const tables = [];
-    for (const table of document2.querySelectorAll('table,[role="table"],[role="grid"]')) {
-      if (!consumeNode(state) || !isCaptureVisibleElement(table)) break;
-      const rows = [];
-      const rowSelector = table.tagName === "TABLE" ? "tr" : '[role="row"]';
-      const cellSelector = table.tagName === "TABLE" ? "th,td" : '[role="columnheader"],[role="rowheader"],[role="cell"],[role="gridcell"]';
-      for (const row of table.querySelectorAll(rowSelector)) {
-        if (!belongsToTable(row, table)) continue;
-        if (!consumeNode(state) || state.rows >= captureBudget.maxRows) {
-          state.reasons.add("TABLE_ROW_LIMIT");
-          break;
-        }
-        const cells = [];
-        for (const cell of row.querySelectorAll(cellSelector)) {
-          if (!belongsToRow(cell, row)) continue;
-          if (!consumeNode(state) || state.cells >= captureBudget.maxCells || cells.length >= captureBudget.maxColumns) {
-            state.reasons.add(state.cells >= captureBudget.maxCells ? "TABLE_CELL_LIMIT" : "TABLE_COLUMN_LIMIT");
-            break;
-          }
-          if (!isCaptureVisibleElement(cell)) continue;
-          const text = consumeText(state, cell.textContent?.trim() || "", "TABLE_TEXT_LIMIT", "tableTextBytes", captureBudget.maxTableTextBytes);
-          if (text) cells.push(text);
-          state.cells += 1;
-        }
-        state.rows += 1;
-        state.columns = Math.max(state.columns, cells.length);
-        if (cells.length) rows.push(cells);
-        if (isTimedOut(state)) break;
-      }
-      if (rows.length) tables.push(rows);
-      if (isTimedOut(state) || state.rows >= captureBudget.maxRows || state.cells >= captureBudget.maxCells) break;
-    }
-    return tables;
-  }
-  function belongsToTable(element, table) {
-    return typeof element.closest !== "function" || element.closest('table,[role="table"],[role="grid"]') === table;
-  }
-  function belongsToRow(element, row) {
-    return typeof element.closest !== "function" || element.closest('tr,[role="row"]') === row;
-  }
-  function applyCaptureBudget(meta, state) {
-    if (performance.now() - state.startedAt >= captureBudget.maxDurationMs) state.reasons.add("TIME_BUDGET_EXCEEDED");
-    const truncationReasons = [.../* @__PURE__ */ new Set([...meta.truncationReasons, ...state.reasons])];
-    const truncatedFields = [.../* @__PURE__ */ new Set([
-      ...meta.truncatedFields,
-      ...truncationReasons.some((reason) => reason.includes("TABLE")) ? ["rawTableData"] : [],
-      ...truncationReasons.some((reason) => reason.includes("VISIBLE_TEXT")) ? ["rawDomText"] : []
-    ])];
-    const partial = truncationReasons.length > 0;
-    return {
-      ...meta,
-      completeness: partial ? "PARTIAL" : meta.completeness,
-      originalBytes: Math.max(meta.originalBytes, state.tableTextBytes + state.visibleTextBytes),
-      acceptedBytes: state.tableTextBytes + state.visibleTextBytes,
-      truncatedFields,
-      truncationReasons
-    };
-  }
-  function consumeNode(state) {
-    if (isTimedOut(state)) return false;
-    state.traversedNodes += 1;
-    if (state.traversedNodes > captureBudget.maxTraversalNodes) {
-      state.reasons.add("NODE_TRAVERSAL_LIMIT");
+  function isSupportedExtensionCollectionUrl(value) {
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:") return false;
+      if (url.hostname === "eos.douyin.com") return url.pathname === "/dp/liveScreen";
+      return url.hostname === "localads.chengzijianzhan.cn" && /^\/lamp\/pc\/liveboard2(?:\/|$)/.test(url.pathname);
+    } catch {
       return false;
     }
-    return true;
   }
-  function consumeText(state, value, reason, field, limit) {
-    if (!value) return "";
-    const available = Math.max(0, limit - state[field]);
-    const bytes = new TextEncoder().encode(value);
-    if (bytes.byteLength <= available) {
-      state[field] += bytes.byteLength;
+
+  // src/live-screen-internal-api.ts
+  var responseSafetyPattern = /cookie|token|authorization|secret|session|credential/i;
+  var totalResponseLimit = 384 * 1024;
+  var liveScreenInternalApiRequestTimeoutMs = 4e3;
+  async function collectLiveScreenInternalApi(input) {
+    const endpointStatuses = [];
+    const requestableRoomId = input.enabled && input.roomId && !["MISMATCH", "MISSING"].includes(input.roomIdSource) ? input.roomId : null;
+    const baseMeta = {
+      contractVersion: liveScreenInternalApiContractVersion,
+      adapterVersion: liveScreenInternalApiAdapterVersion,
+      enabled: input.enabled,
+      roomIdSource: input.roomIdSource,
+      ...requestableRoomId ? { roomId: requestableRoomId, roomIdEvidence: input.roomIdEvidence } : {},
+      endpointStatuses
+    };
+    if (!input.enabled) return { metrics: [], captureMeta: baseMeta };
+    if (!requestableRoomId) {
+      endpointStatuses.push(...liveScreenEndpointKeysForMode(input.mode).map((endpoint2) => ({ endpoint: endpoint2, status: "SKIPPED", acceptedBytes: 0, reason: "ROOM_ID_UNAVAILABLE" })));
+      return { metrics: [], captureMeta: baseMeta };
+    }
+    const metrics = [];
+    let acceptedBytes = 0;
+    let fatalResponse = false;
+    for (const endpoint2 of liveScreenEndpointKeysForMode(input.mode)) {
+      if (input.signal?.aborted) {
+        endpointStatuses.push({ endpoint: endpoint2, status: "ABORTED", acceptedBytes: 0, reason: "ABORTED" });
+        fatalResponse = true;
+        break;
+      }
+      const contract = liveScreenInternalApiContracts[endpoint2];
+      const remaining = totalResponseLimit - acceptedBytes;
+      if (remaining <= 0) {
+        endpointStatuses.push({ endpoint: endpoint2, status: "ABORTED", acceptedBytes: 0, reason: "TOTAL_BYTE_LIMIT" });
+        fatalResponse = true;
+        break;
+      }
+      const endpointRequest = createEndpointRequest(
+        input.signal,
+        input.mode === "PULSE" ? liveScreenInternalApiRequestTimeoutMs : null
+      );
+      try {
+        const response = await fetch(contract.path, {
+          method: contract.method,
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(contract.requestSchema.parse({ room_id: requestableRoomId })),
+          signal: endpointRequest.signal
+        });
+        if (response.status === 401 || response.status === 429) {
+          endpointStatuses.push({ endpoint: endpoint2, status: "ABORTED", acceptedBytes: 0, reason: `HTTP_${response.status}` });
+          fatalResponse = true;
+          break;
+        }
+        if (!response.ok) {
+          endpointStatuses.push({ endpoint: endpoint2, status: "FAILED", acceptedBytes: 0, reason: `HTTP_${response.status}` });
+          continue;
+        }
+        const payload = await readSafeJson(response, Math.min(contract.maxResponseBytes, remaining), endpointRequest.signal);
+        if (!payload.ok) {
+          const reason = endpointRequest.didTimeout() ? "REQUEST_TIMEOUT" : payload.reason;
+          endpointStatuses.push({
+            endpoint: endpoint2,
+            status: ["ABORTED", "SENSITIVE_RESPONSE", "BYTE_LIMIT"].includes(reason) ? "ABORTED" : "FAILED",
+            acceptedBytes: payload.acceptedBytes,
+            reason
+          });
+          if (reason === "SENSITIVE_RESPONSE" || reason === "BYTE_LIMIT" || reason === "ABORTED") {
+            fatalResponse = true;
+            break;
+          }
+          continue;
+        }
+        acceptedBytes += payload.acceptedBytes;
+        const parsed = contract.responseSchema.safeParse(normalizePlatformResponse(payload.value));
+        if (!parsed.success || parsed.data.code !== 0) {
+          endpointStatuses.push({ endpoint: endpoint2, status: "FAILED", acceptedBytes: payload.acceptedBytes, reason: parsed.success ? "BUSINESS_ERROR" : "SCHEMA_MISMATCH" });
+          if (!parsed.success) {
+            fatalResponse = true;
+            break;
+          }
+          continue;
+        }
+        const projectedMetrics = projectMetrics(endpoint2, parsed.data.data, input.mode);
+        endpointStatuses.push({
+          endpoint: endpoint2,
+          status: "SUCCESS",
+          acceptedBytes: payload.acceptedBytes,
+          ...input.mode === "PULSE" && endpoint2 === "key_index" && projectedMetrics.length === 0 ? { reason: "PULSE_KEY_INDEX_NO_USABLE_METRICS" } : {}
+        });
+        metrics.push(...projectedMetrics);
+        if (endpoint2 === "room_minute_indicator") {
+          const minuteRows = projectMinuteRows(parsed.data.data);
+          if (minuteRows.length) baseMeta.minuteRows = minuteRows;
+        }
+      } catch (error) {
+        const reason = endpointRequest.didTimeout() ? "REQUEST_TIMEOUT" : error instanceof DOMException && error.name === "AbortError" ? "ABORTED" : "REQUEST_FAILED";
+        endpointStatuses.push({ endpoint: endpoint2, status: reason === "ABORTED" ? "ABORTED" : "FAILED", acceptedBytes: 0, reason });
+        if (reason === "ABORTED") {
+          fatalResponse = true;
+          break;
+        }
+      } finally {
+        endpointRequest.dispose();
+      }
+    }
+    if (fatalResponse) {
+      metrics.length = 0;
+      delete baseMeta.minuteRows;
+    }
+    return { metrics, captureMeta: baseMeta };
+  }
+  function projectMetrics(endpoint2, data, mode) {
+    const contract = liveScreenInternalApiContracts[endpoint2];
+    return contract.fields.flatMap((field) => {
+      if (mode === "PULSE" && field.purpose !== "PULSE_ONLY") return [];
+      if (mode === "SNAPSHOT" && field.purpose === "PULSE_ONLY") return [];
+      if (field.rowPath) return [];
+      const matched = readApprovedFieldValue(data, field.approvedFieldPaths);
+      if (!matched) return [];
+      const { value, fieldPath } = matched;
+      const displayValue = String(value).trim();
+      if (!displayValue || responseSafetyPattern.test(displayValue)) return [];
+      const parsedValue = field.metricKey === "average_watch_duration_seconds" ? parseAverageWatchDuration(displayValue) : parseDisplayedMetricValue(displayValue, metricValueSemantic(field.metricKey), field.unit);
+      if (!parsedValue.normalizedText) return [];
+      const evidence = {
+        sourceType: "INTERNAL_API",
+        bindingKind: "CARD",
+        fieldLabel: field.fieldLabel,
+        displayValue,
+        normalizedValue: parsedValue.normalizedText,
+        displayPrecision: field.displayPrecision,
+        unitSource: field.unit ? "DEFAULT" : "NONE",
+        timeRange: field.timeRange,
+        timeRangeSource: "COMPONENT",
+        timeRangeLocation: "internal-api-contract",
+        componentPath: fieldPath,
+        calibrationSignature: `${field.metricKey}|${field.timeRange}|${field.semanticScope}|${fieldPath}`,
+        validationStatus: "REQUIRES_REVIEW",
+        validationReasons: [],
+        endpointKey: endpoint2,
+        semanticScope: field.semanticScope,
+        apiContractVersion: liveScreenInternalApiContractVersion,
+        apiAdapterVersion: liveScreenInternalApiAdapterVersion,
+        evidencePurpose: field.purpose
+      };
+      const apiCandidate = {
+        value: parsedValue.normalizedText,
+        displayValue,
+        unit: field.unit,
+        timeRange: field.timeRange,
+        displayPrecision: field.displayPrecision,
+        fieldPath,
+        fieldLabel: field.fieldLabel
+      };
+      return [{
+        key: field.metricKey,
+        name: field.metricName,
+        value: displayValue,
+        unit: field.unit,
+        source: "network",
+        metricSource: "XHR_JSON",
+        confidence: 0.8,
+        rawEvidence: {
+          ...evidence,
+          sourceStatus: "INTERNAL_API",
+          apiCandidate,
+          selectionReason: "\u4EC5 API \u5B57\u6BB5\u6709\u6548"
+        }
+      }];
+    });
+  }
+  function parseAverageWatchDuration(displayValue) {
+    const matched = displayValue.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)\s*(?:s|秒)$/i);
+    if (!matched) return parseDisplayedMetricValue(displayValue, "COUNT", "s");
+    return {
+      displayValue,
+      normalizedText: matched[1],
+      displayPrecision: matched[1].split(".")[1]?.length || 0,
+      multiplier: 1,
+      unit: "s",
+      status: "REQUIRES_REVIEW",
+      reasons: []
+    };
+  }
+  function readApprovedFieldValue(data, approvedFieldPaths) {
+    for (const fieldPath of approvedFieldPaths) {
+      const value = readPath(data, fieldPath.replace(/^data\./, ""));
+      if (typeof value === "number" && Number.isFinite(value)) return { value, fieldPath };
+      if (typeof value === "string" && value.trim()) return { value, fieldPath };
+    }
+    return null;
+  }
+  function projectMinuteRows(data) {
+    const rows = data.minute_rows;
+    if (!Array.isArray(rows)) return [];
+    return rows.flatMap((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return [];
+      const record = row;
+      const intervalLabel = typeof record.interval_label === "string" ? record.interval_label.trim() : "";
+      const liveViews = record.live_views;
+      if (!intervalLabel || typeof liveViews !== "number" && typeof liveViews !== "string") return [];
+      const value = String(liveViews).trim();
+      if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return [];
+      return [{ intervalLabel, liveViews: value }];
+    });
+  }
+  async function readSafeJson(response, limit, signal) {
+    const reader = response.body?.getReader();
+    if (!reader) return { ok: false, acceptedBytes: 0, reason: signal?.aborted ? "ABORTED" : "EMPTY_RESPONSE" };
+    const decoder = new TextDecoder();
+    let text = "";
+    let acceptedBytes = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        acceptedBytes += chunk.value.byteLength;
+        if (acceptedBytes > limit) {
+          await reader.cancel();
+          return { ok: false, acceptedBytes, reason: "BYTE_LIMIT" };
+        }
+        text += decoder.decode(chunk.value, { stream: true });
+        if (responseSafetyPattern.test(text)) {
+          await reader.cancel();
+          return { ok: false, acceptedBytes, reason: "SENSITIVE_RESPONSE" };
+        }
+      }
+      text += decoder.decode();
+      if (responseSafetyPattern.test(text)) return { ok: false, acceptedBytes, reason: "SENSITIVE_RESPONSE" };
+      return { ok: true, value: JSON.parse(text), acceptedBytes };
+    } catch {
+      return { ok: false, acceptedBytes, reason: signal?.aborted ? "ABORTED" : "JSON_PARSE_FAILED" };
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  function createEndpointRequest(parentSignal, timeoutMs) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = timeoutMs == null ? null : globalThis.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const abortFromParent = () => controller.abort();
+    if (parentSignal?.aborted) controller.abort();
+    else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+    return {
+      signal: controller.signal,
+      didTimeout: () => timedOut,
+      dispose: () => {
+        if (timer != null) globalThis.clearTimeout(timer);
+        parentSignal?.removeEventListener("abort", abortFromParent);
+      }
+    };
+  }
+  function readPath(source, path) {
+    let current = source;
+    for (const segment of path.split(".")) {
+      if (!segment || segment.includes("[")) return void 0;
+      if (!current || typeof current !== "object" || Array.isArray(current)) return void 0;
+      current = current[segment];
+    }
+    return current;
+  }
+  function normalizePlatformResponse(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const record = value;
+    const code = record.code ?? record.status_code;
+    const data = record.data ?? record.result;
+    if (typeof code !== "number" || !Number.isInteger(code) || !data || typeof data !== "object" || Array.isArray(data)) {
       return value;
     }
-    state.reasons.add(reason);
-    if (!available) return "";
-    let result = "";
-    for (const character of value) {
-      const next = result + character;
-      if (new TextEncoder().encode(next).byteLength > available) break;
-      result = next;
-    }
-    state[field] += new TextEncoder().encode(result).byteLength;
-    return result;
+    return { code, data };
   }
-  function isTimedOut(state) {
-    if (performance.now() - state.startedAt < captureBudget.maxDurationMs) return false;
-    state.reasons.add("TIME_BUDGET_EXCEEDED");
-    return true;
+
+  // src/live-screen-capture-plan.ts
+  function liveScreenCapturePlan(input) {
+    const collectInternalApi = input.internalApiEnabled && input.internalApiEligible;
+    return {
+      collectInternalApi,
+      // A pulse named and surfaced as API must never silently become a DOM pulse.
+      // Formal snapshots retain DOM evidence for fallback and API/DOM calibration.
+      collectDom: input.mode === "SNAPSHOT"
+    };
   }
-  function isCaptureVisibleElement(element) {
-    let current = element;
-    while (current) {
-      if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") return false;
-      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(current.tagName)) return false;
-      const style = window.getComputedStyle(current);
-      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0") return false;
-      current = current.parentElement;
+
+  // src/live-screen-metric-merge.ts
+  function mergeLiveScreenMetrics(domMetrics, apiMetrics) {
+    const apiMetricKeys = new Set(apiMetrics.map((metric) => String(metric.key)));
+    const comparableDomMetrics = domMetrics.filter((metric) => !apiMetricKeys.has(String(metric.key)) || isComparableDomMetric(metric));
+    const domByKey = groupByMergeKey(comparableDomMetrics);
+    const apiByKey = groupByMergeKey(apiMetrics);
+    const keys = /* @__PURE__ */ new Set([...domByKey.keys(), ...apiByKey.keys()]);
+    return [...keys].flatMap((key) => {
+      const dom = domByKey.get(key) || [];
+      const api = apiByKey.get(key) || [];
+      if (dom.length > 1 || api.length > 1) return invalidateDuplicateSourceMetrics(dom, api);
+      return mergePair(dom[0], api[0]);
+    });
+  }
+  function liveScreenMetricsForMode(mode, domMetrics, apiMetrics) {
+    return mode === "PULSE" ? apiMetrics : mergeLiveScreenMetrics(domMetrics, apiMetrics);
+  }
+  function mergePair(domMetric, apiMetric) {
+    if (!domMetric && !apiMetric) return [];
+    const dom = domMetric ? toCandidate(domMetric) : null;
+    const api = apiMetric ? toCandidate(apiMetric) : null;
+    if (!api) return domMetric ? [withSource(domMetric, "DOM_TEXT", dom, null, "\u4EC5 DOM \u5B57\u6BB5\u6709\u6548")] : [];
+    if (!dom) return [withSource(apiMetric, "INTERNAL_API", null, api, "\u4EC5 API \u5B57\u6BB5\u6709\u6548")];
+    const scopeConflicts = api.scopeExplicit && dom.scopeExplicit && api.scope !== dom.scope;
+    if (api.unit !== dom.unit || api.timeRange !== dom.timeRange || scopeConflicts) {
+      return [conflict(apiMetric, dom, api, "\u5355\u4F4D\u3001\u5468\u671F\u6216\u4E1A\u52A1\u53E3\u5F84\u4E0D\u4E00\u81F4")];
     }
-    return true;
+    if (equivalent(domMetric, apiMetric)) return [withSource(apiMetric, "API_AND_DOM", dom, api, "API \u4E0E DOM \u5728\u5C55\u793A\u7CBE\u5EA6\u5185\u4E00\u81F4")];
+    return [conflict(apiMetric, dom, api, "API \u4E0E DOM \u6570\u503C\u51B2\u7A81")];
+  }
+  function withSource(metric, sourceStatus, dom, api, selectionReason) {
+    const evidence = metric.rawEvidence || { sourceType: metric.metricSource || "UNKNOWN" };
+    return {
+      ...metric,
+      rawEvidence: { ...evidence, sourceStatus, domCandidate: dom || void 0, apiCandidate: api || void 0, selectionReason }
+    };
+  }
+  function conflict(base, dom, api, selectionReason) {
+    return {
+      ...base,
+      value: null,
+      confidence: 0.1,
+      rawEvidence: {
+        ...base.rawEvidence || { sourceType: "INTERNAL_API" },
+        sourceStatus: "SOURCE_CONFLICT",
+        domCandidate: dom,
+        apiCandidate: api,
+        selectionReason,
+        validationStatus: "INVALID",
+        validationReasons: [.../* @__PURE__ */ new Set([...base.rawEvidence?.validationReasons || [], "SOURCE_CONFLICT"])]
+      }
+    };
+  }
+  function toCandidate(metric) {
+    const evidence = metric.rawEvidence;
+    const value = metricValueText(metric, metricValueSemantic(String(metric.key))) || "";
+    return {
+      value,
+      displayValue: evidence?.displayValue || value,
+      unit: metric.unit || null,
+      timeRange: evidence?.timeRange || "UNKNOWN",
+      displayPrecision: evidence?.displayPrecision ?? 0,
+      fieldPath: evidence?.componentPath || evidence?.path || evidence?.jsonPath || "unknown",
+      fieldLabel: evidence?.fieldLabel || metric.name,
+      scope: evidence?.semanticScope || String(metric.key),
+      scopeExplicit: Boolean(evidence?.semanticScope)
+    };
+  }
+  function mergeKey(metric) {
+    const evidence = metric.rawEvidence;
+    return `${metric.key}|${evidence?.timeRange || "UNKNOWN"}`;
+  }
+  function isComparableDomMetric(metric) {
+    const evidence = metric.rawEvidence;
+    return metric.value != null && String(metric.value).trim() !== "" && evidence?.validationStatus !== "INVALID" && Boolean(evidence?.timeRange && evidence.timeRange !== "UNKNOWN");
+  }
+  function groupByMergeKey(metrics) {
+    const grouped = /* @__PURE__ */ new Map();
+    for (const metric of metrics) {
+      const key = mergeKey(metric);
+      grouped.set(key, [...grouped.get(key) || [], metric]);
+    }
+    return grouped;
+  }
+  function invalidateDuplicateSourceMetrics(domMetrics, apiMetrics) {
+    const reason = "\u540C\u4E00\u6765\u6E90\u5B58\u5728\u91CD\u590D\u4E1A\u52A1\u5B57\u6BB5\uFF0C\u5DF2\u505C\u6B62\u81EA\u52A8\u5408\u5E76";
+    const withCandidates = [
+      ...domMetrics.map((metric) => withSource(metric, "DOM_TEXT", toCandidate(metric), null, reason)),
+      ...apiMetrics.map((metric) => withSource(metric, "INTERNAL_API", null, toCandidate(metric), reason))
+    ];
+    return withCandidates.map((metric) => ({
+      ...metric,
+      value: null,
+      confidence: 0.1,
+      rawEvidence: {
+        ...metric.rawEvidence || { sourceType: metric.metricSource || "UNKNOWN" },
+        validationStatus: "INVALID",
+        validationReasons: [.../* @__PURE__ */ new Set([...metric.rawEvidence?.validationReasons || [], "FIELD_BINDING_AMBIGUOUS"])]
+      }
+    }));
+  }
+  function equivalent(dom, api) {
+    const domValue = metricValueText(dom, metricValueSemantic(String(dom.key)));
+    const apiValue = metricValueText(api, metricValueSemantic(String(api.key)));
+    if (domValue == null || apiValue == null) return false;
+    const precision = Math.max(dom.rawEvidence?.displayPrecision ?? 0, api.rawEvidence?.displayPrecision ?? 0);
+    return decimalDifferenceWithinDisplayPrecision(domValue, apiValue, precision);
+  }
+  function decimalDifferenceWithinDisplayPrecision(left, right, precision) {
+    const leftDecimal = decimalParts(left);
+    const rightDecimal = decimalParts(right);
+    if (!leftDecimal || !rightDecimal) return false;
+    const commonScale = Math.max(leftDecimal.fractionDigits, rightDecimal.fractionDigits, precision);
+    const leftScaled = leftDecimal.integer * pow10(commonScale - leftDecimal.fractionDigits);
+    const rightScaled = rightDecimal.integer * pow10(commonScale - rightDecimal.fractionDigits);
+    const difference = leftScaled >= rightScaled ? leftScaled - rightScaled : rightScaled - leftScaled;
+    return difference * 2n * pow10(precision) <= pow10(commonScale);
+  }
+  function decimalParts(value) {
+    const matched = value.match(/^(-?)(\d+)(?:\.(\d+))?$/);
+    if (!matched) return null;
+    const fraction = matched[3] || "";
+    const unsigned = BigInt(`${matched[2]}${fraction}`);
+    return {
+      integer: matched[1] === "-" ? -unsigned : unsigned,
+      fractionDigits: fraction.length
+    };
+  }
+  function pow10(exponent) {
+    return 10n ** BigInt(exponent);
+  }
+
+  // src/live-screen-pulse-page.ts
+  function isExactLiveScreenPage(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && url.hostname === "eos.douyin.com" && url.pathname === "/dp/liveScreen";
+    } catch {
+      return false;
+    }
+  }
+  function livePulseRouteDetection(detected) {
+    const evidence = "\u5B9E\u65F6 API \u8109\u51B2\uFF1A\u7CBE\u786E\u76F4\u64AD\u6570\u636E\u5927\u5C4F URL";
+    return {
+      routeKey: "LIVE_DATA_SCREEN",
+      source: "PAGE_TYPE",
+      confidence: 0.98,
+      manuallyConfirmed: false,
+      evidence: detected.evidence.includes(evidence) ? [...detected.evidence] : [...detected.evidence, evidence]
+    };
+  }
+  function livePulsePageContext(input) {
+    const hasRoomId = Boolean(input.roomId);
+    const routeDetection = livePulseRouteDetection(input.routeDetection);
+    return {
+      pageType: "LIVE_DATA_SCREEN",
+      routeKey: routeDetection.routeKey,
+      routeDetection,
+      livePulseEligible: hasRoomId,
+      livePulseRoomId: input.roomId,
+      livePulseFailureCode: hasRoomId ? null : "ROOM_ID_UNAVAILABLE"
+    };
+  }
+
+  // src/live-pulse-schedule.ts
+  var livePulseCadenceMs = 5e3;
+  var livePulseUploadSafetyIntervalMs = 4100;
+  function nextLivePulseAfter(pulseStartedAt, uploadCompletedAt = pulseStartedAt, cadenceMs = livePulseCadenceMs, uploadSafetyIntervalMs = livePulseUploadSafetyIntervalMs) {
+    if (!Number.isFinite(pulseStartedAt) || !Number.isFinite(uploadCompletedAt) || !Number.isInteger(cadenceMs) || cadenceMs <= 0 || !Number.isInteger(uploadSafetyIntervalMs) || uploadSafetyIntervalMs <= 0) {
+      throw new Error("LIVE_PULSE_CADENCE_INVALID");
+    }
+    return Math.max(pulseStartedAt + cadenceMs, uploadCompletedAt + uploadSafetyIntervalMs);
   }
 
   // src/content.ts
   var pageActivityTimer = null;
+  var activePulseController = null;
+  var activeLivePulseLoop = null;
+  var livePulseLoopGeneration = 0;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startContentRuntime, { once: true });
   else startContentRuntime();
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === MESSAGE.START_COLLECTION) {
-      const snapshot = collectSnapshot(message.payload?.collectionRunId || null, message.payload?.routeOverride || null);
-      sendResponse({ ok: true, snapshot });
+      void collectSnapshot(
+        message.payload?.collectionRunId || null,
+        message.payload?.routeOverride || null,
+        message.payload?.liveScreenInternalApiEnabled === true,
+        message.payload?.collectionMode === "PULSE" ? "PULSE" : "SNAPSHOT"
+      ).then((snapshot2) => sendResponse({ ok: true, snapshot: snapshot2 })).catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "\u9875\u9762\u91C7\u96C6\u5931\u8D25" }));
       return true;
     }
+    if (message?.type === MESSAGE.BEGIN_LIVE_PULSE_LOOP) {
+      startLivePulseLoop({
+        collectionRunId: typeof message.payload?.collectionRunId === "string" ? message.payload.collectionRunId : null,
+        liveScreenInternalApiEnabled: message.payload?.liveScreenInternalApiEnabled === true
+      });
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
+      stopActiveLivePulseLoop();
+      sendResponse({ ok: true });
+      return false;
+    }
     if (message?.type === MESSAGE.GET_PAGE_CONTEXT) {
-      sendResponse({ ok: true, ...collectPageContext() });
+      sendResponse({ ok: true, ...collectPageContext(), tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN" });
       return true;
     }
     return false;
   });
   function startContentRuntime() {
     startPageActivityHeartbeat();
+    document.addEventListener("visibilitychange", () => {
+      reportPageActivity();
+    });
+    window.addEventListener("pagehide", () => {
+      reportPageActivity();
+    });
   }
-  function collectSnapshot(collectionRunId, routeOverride) {
+  function startLivePulseLoop(input) {
+    stopActiveLivePulseLoop();
+    const loop = {
+      generation: ++livePulseLoopGeneration,
+      collectionRunId: input.collectionRunId,
+      liveScreenInternalApiEnabled: input.liveScreenInternalApiEnabled,
+      timer: null,
+      running: false
+    };
+    activeLivePulseLoop = loop;
+    void runLivePulseLoop(loop);
+  }
+  function stopActiveLivePulseLoop() {
+    const loop = activeLivePulseLoop;
+    activeLivePulseLoop = null;
+    if (loop?.timer != null) window.clearTimeout(loop.timer);
+    activePulseController?.abort();
+    activePulseController = null;
+  }
+  async function runLivePulseLoop(loop) {
+    if (activeLivePulseLoop !== loop || loop.running) return;
+    loop.running = true;
+    const pulseStartedAt = Date.now();
+    let payload;
+    try {
+      payload = {
+        pulseStartedAt,
+        snapshot: await collectSnapshot(
+          loop.collectionRunId,
+          null,
+          loop.liveScreenInternalApiEnabled,
+          "PULSE"
+        )
+      };
+    } catch (error) {
+      payload = {
+        pulseStartedAt,
+        error: error instanceof Error ? error.message : "PULSE_CAPTURE_FAILED"
+      };
+    } finally {
+      loop.running = false;
+    }
+    if (activeLivePulseLoop !== loop) return;
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: MESSAGE.SUBMIT_LIVE_PULSE,
+        payload
+      });
+      if (activeLivePulseLoop !== loop || response?.stop) {
+        stopActiveLivePulseLoop();
+        return;
+      }
+      const nextDelayMs = Number.isFinite(response?.nextDelayMs) ? Math.max(0, Number(response?.nextDelayMs)) : Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now()) - Date.now());
+      loop.timer = window.setTimeout(() => void runLivePulseLoop(loop), nextDelayMs);
+    } catch {
+      stopActiveLivePulseLoop();
+    }
+  }
+  async function collectSnapshot(collectionRunId, routeOverride, liveScreenInternalApiEnabled = false, collectionMode = "SNAPSHOT") {
+    if (collectionMode === "PULSE" && isLiveEnded()) throw new Error("LIVE_ENDED");
     const budget = createCaptureBudgetState();
-    const rawDomText = collectBudgetedVisibleText(document, budget);
-    const rawTableData = collectBudgetedTables(document, budget);
-    const baseAdapter = selectPageAdapter({ document, url: window.location.href, title: document.title, visibleText: rawDomText, tables: rawTableData });
-    const routeDetection = detectCurrentRoute(rawDomText, baseAdapter.pageType, routeOverride);
+    const rawDomText = collectionMode === "PULSE" ? "" : collectBudgetedVisibleText(document, budget);
+    const rawTableData = collectionMode === "PULSE" ? [] : collectBudgetedTables(document, budget);
+    const isLiveApiPulse = collectionMode === "PULSE" && isExactLiveScreenPage(window.location.href);
+    const baseAdapter = selectPageAdapter({
+      document,
+      url: window.location.href,
+      title: document.title,
+      visibleText: rawDomText,
+      tables: rawTableData,
+      ...isLiveApiPulse ? { routeKey: "LIVE_DATA_SCREEN" } : {}
+    });
+    const detectedRoute = detectCurrentRoute(rawDomText, baseAdapter.pageType, routeOverride);
+    const routeDetection = isLiveApiPulse ? livePulseRouteDetection(detectedRoute) : detectedRoute;
     const adapterInput = { document, url: window.location.href, title: document.title, visibleText: rawDomText, tables: rawTableData, routeKey: routeDetection.routeKey };
     const adapter = selectPageAdapter(adapterInput);
-    const visibleMetricsJson = adapter.extractMetrics(adapterInput);
+    const isLiveScreen = adapter.pageType === "LIVE_DATA_SCREEN" && isExactLiveScreenPage(window.location.href);
+    const roomId = readRoomId();
+    const internalApiEligible = isLiveScreen && Boolean(roomId.value) && (collectionMode === "PULSE" || routeDetection.routeKey === "LIVE_DATA_SCREEN");
+    const capturePlan = liveScreenCapturePlan({
+      mode: collectionMode,
+      internalApiEnabled: liveScreenInternalApiEnabled,
+      internalApiEligible
+    });
+    const domMetrics = capturePlan.collectDom ? adapter.extractMetrics(adapterInput) : [];
+    const pulseController = collectionMode === "PULSE" && capturePlan.collectInternalApi ? new AbortController() : null;
+    if (pulseController) activePulseController = pulseController;
+    const api = isLiveScreen ? await collectLiveScreenInternalApi({
+      enabled: capturePlan.collectInternalApi,
+      roomId: roomId.value,
+      roomIdSource: roomId.source,
+      roomIdEvidence: roomId.evidence,
+      mode: collectionMode,
+      signal: pulseController?.signal
+    }) : null;
+    if (activePulseController === pulseController) activePulseController = null;
+    const visibleMetricsJson = liveScreenMetricsForMode(collectionMode, domMetrics, api?.metrics || []);
     const captureMeta = applyCaptureBudget(adapter.extractCoverage(adapterInput, visibleMetricsJson), budget);
+    const isPulse = collectionMode === "PULSE";
     return sanitizeSnapshotPayload({
       pageType: adapter.pageType,
       sourceUrl: window.location.href,
@@ -6078,44 +7042,67 @@ ${input.visibleText.slice(0, 5e4)}`;
       // Visible text is used only during this capture to derive safe fields; it is never persisted or uploaded.
       rawDomText: "",
       rawNetworkJson: [],
-      rawTableData,
+      rawTableData: isPulse ? [] : rawTableData,
       visibleMetricsJson,
       screenshotUrl: null,
       localCollectedAt: (/* @__PURE__ */ new Date()).toISOString(),
       collectionRunId: collectionRunId || null,
       routeKey: routeDetection.routeKey,
-      captureMeta: { ...captureMeta, routeDetection }
+      captureMeta: { ...captureMeta, routeDetection, ...api ? { liveScreenInternalApi: api.captureMeta } : {} }
     });
+  }
+  function readRoomId() {
+    const urlRoomIds = new URL(window.location.href).searchParams.getAll("room_id");
+    const domRoomIds = [...document.querySelectorAll("[data-room-id]")].map((element) => element.dataset.roomId?.trim() || "");
+    return resolveLiveScreenRoomId({ urlRoomIds, domRoomIds });
   }
   function startPageActivityHeartbeat() {
     if (pageActivityTimer != null) window.clearInterval(pageActivityTimer);
-    const emit = () => {
-      const context = collectPageContext();
-      chrome.runtime.sendMessage({
-        type: MESSAGE.PAGE_ACTIVITY,
-        payload: {
-          currentUrl: window.location.href,
-          pageType: context.pageType,
-          routeKey: context.routeKey,
-          collectable: true,
-          tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
-          observedAt: (/* @__PURE__ */ new Date()).toISOString()
-        }
-      }, () => void chrome.runtime.lastError);
-    };
-    emit();
-    pageActivityTimer = window.setInterval(emit, 5e3);
+    reportPageActivity();
+    pageActivityTimer = window.setInterval(reportPageActivity, 5e3);
+  }
+  function reportPageActivity() {
+    const context = collectPageContext();
+    chrome.runtime.sendMessage({
+      type: MESSAGE.PAGE_ACTIVITY,
+      payload: {
+        currentUrl: window.location.href,
+        pageType: context.pageType,
+        routeKey: context.routeKey,
+        collectable: isSupportedExtensionCollectionUrl(window.location.href),
+        tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
+        observedAt: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    }, () => void chrome.runtime.lastError);
+  }
+  function isLiveEnded() {
+    if (new URL(window.location.href).pathname !== "/dp/liveScreen") return false;
+    const text = document.body?.innerText?.slice(0, 2e4) || "";
+    return /直播已结束|本场直播已结束|直播结束/.test(text);
   }
   function collectPageContext() {
     const routeDetection = detectCurrentRoute("");
     const baseInput = { document, url: window.location.href, title: document.title, visibleText: "", tables: [] };
+    if (isExactLiveScreenPage(window.location.href)) {
+      const roomId = readRoomId().value;
+      return {
+        currentUrl: window.location.href,
+        ...livePulsePageContext({
+          routeDetection,
+          roomId
+        })
+      };
+    }
     const baseAdapter = selectPageAdapter(baseInput);
     const adapter = selectPageAdapter({ ...baseInput, routeKey: routeDetection.routeKey });
     return {
       currentUrl: window.location.href,
       pageType: adapter.pageType,
       routeKey: routeDetection.routeKey,
-      routeDetection
+      routeDetection,
+      livePulseEligible: false,
+      livePulseRoomId: null,
+      livePulseFailureCode: null
     };
   }
   function detectCurrentRoute(rawDomText, pageType, manualOverride) {
@@ -6138,9 +7125,9 @@ ${input.visibleText.slice(0, 5e4)}`;
       'nav a[class*="active" i]',
       'nav li[class*="active" i]'
     ].join(",");
-    return [...document.querySelectorAll(selector)].filter(isCaptureVisibleElement).map((element) => (element.textContent || "").trim()).filter((value) => value.length > 0 && value.length <= 20).slice(0, 20);
+    return [...document.querySelectorAll(selector)].filter((element) => isCaptureVisibleElement(element)).map((element) => (element.textContent || "").trim()).filter((value) => value.length > 0 && value.length <= 20).slice(0, 20);
   }
   function visibleHeadings() {
-    return [...document.querySelectorAll("h1,h2,h3,[role=heading]")].filter(isCaptureVisibleElement).map((element) => (element.textContent || "").trim()).filter(Boolean).slice(0, 50);
+    return [...document.querySelectorAll("h1,h2,h3,[role=heading]")].filter((element) => isCaptureVisibleElement(element)).map((element) => (element.textContent || "").trim()).filter(Boolean).slice(0, 50);
   }
 })();

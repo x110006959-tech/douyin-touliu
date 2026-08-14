@@ -13,7 +13,9 @@ import {
   canConfirmMetric,
   canModifyMetric,
   ensureReviewMetricsForTask,
+  isSourceConflictMetric,
   normalizeReviewPatch,
+  resolveSourceConflictReview,
   toReviewedMetricDTO,
   validateCurrentReviewedMetricSnapshot
 } from "../review-metrics.js";
@@ -83,19 +85,25 @@ export function createReviewMetricRouter() {
         );
         if (!snapshotCheck.ok) return snapshotCheck;
 
-        const patch = normalizeReviewPatch(metric, {
+        const conflictResolution = resolveSourceConflictReview(metric, {
           ...parsed.data,
           reviewedValue: reviewedValueInput.value || undefined,
           timeRange: timeRangeInput.value || undefined
         });
-        if (patch.reviewStatus === "CONFIRMED" && !canConfirmMetric(metric)) return { error: "METRIC_EVIDENCE_INVALID" as const };
+        if (!conflictResolution.ok) return conflictResolution;
+        const patch = conflictResolution.patch || normalizeReviewPatch(metric, {
+          ...parsed.data,
+          reviewedValue: reviewedValueInput.value || undefined,
+          timeRange: timeRangeInput.value || undefined
+        });
+        if (patch.reviewStatus === "CONFIRMED" && !isSourceConflictMetric(metric) && !canConfirmMetric(metric)) return { error: "METRIC_EVIDENCE_INVALID" as const };
         if (!canModifyMetric(patch)) return { error: "METRIC_TIME_RANGE_REQUIRED" as const };
         const now = new Date();
         const current = await tx.reviewedMetric.update({
           where: { id: metric.id },
           data: reviewMetricUpdateData(metric, patch, user.id, now)
         });
-        if (patch.reviewStatus === "CONFIRMED") {
+        if (patch.reviewStatus === "CONFIRMED" && !isSourceConflictMetric(metric)) {
           await recordMetricBindingCalibration(tx, {
             workspaceId: task.project.workspaceId,
             routeKey: snapshotCheck.snapshot.routeKey,
@@ -155,12 +163,18 @@ export function createReviewMetricRouter() {
             item.expectedSnapshotUpdatedAt
           );
           if (!snapshotCheck.ok) return snapshotCheck;
-          const patch = normalizeReviewPatch(metric, {
+          const conflictResolution = resolveSourceConflictReview(metric, {
             ...item,
             reviewedValue: item.reviewedValueInput.value || undefined,
             timeRange: item.timeRangeInput.value || undefined
           });
-          if (patch.reviewStatus === "CONFIRMED" && !canConfirmMetric(metric)) return { error: "METRIC_EVIDENCE_INVALID" as const };
+          if (!conflictResolution.ok) return conflictResolution;
+          const patch = conflictResolution.patch || normalizeReviewPatch(metric, {
+            ...item,
+            reviewedValue: item.reviewedValueInput.value || undefined,
+            timeRange: item.timeRangeInput.value || undefined
+          });
+          if (patch.reviewStatus === "CONFIRMED" && !isSourceConflictMetric(metric) && !canConfirmMetric(metric)) return { error: "METRIC_EVIDENCE_INVALID" as const };
           if (!canModifyMetric(patch)) return { error: "METRIC_TIME_RANGE_REQUIRED" as const };
         }
 
@@ -168,7 +182,13 @@ export function createReviewMetricRouter() {
         const updated = await Promise.all(reviewInputs.map((item) => {
           const metric = byId.get(item.metricId);
           if (!metric) throw new Error("REVIEW_METRIC_NOT_FOUND");
-          const patch = normalizeReviewPatch(metric, {
+          const conflictResolution = resolveSourceConflictReview(metric, {
+            ...item,
+            reviewedValue: item.reviewedValueInput.value || undefined,
+            timeRange: item.timeRangeInput.value || undefined
+          });
+          if (!conflictResolution.ok) throw new Error(conflictResolution.error);
+          const patch = conflictResolution.patch || normalizeReviewPatch(metric, {
             ...item,
             reviewedValue: item.reviewedValueInput.value || undefined,
             timeRange: item.timeRangeInput.value || undefined
@@ -182,7 +202,7 @@ export function createReviewMetricRouter() {
         await Promise.all(updated.map(async (metric) => {
           const previous = byId.get(metric.id);
           const snapshot = previous?.snapshotId ? snapshotsById.get(previous.snapshotId) : null;
-          if (!previous || !snapshot || metric.reviewStatus !== "CONFIRMED") return;
+          if (!previous || !snapshot || metric.reviewStatus !== "CONFIRMED" || isSourceConflictMetric(previous)) return;
           await recordMetricBindingCalibration(tx, {
             workspaceId: task.project.workspaceId,
             routeKey: snapshot.routeKey,
@@ -287,7 +307,19 @@ function reviewMetricUpdateData(
     reviewedValue: patch.reviewedValue,
     reviewStatus: patch.reviewStatus,
     timeRange: patch.timeRange || metric.timeRange,
-    ...(patch.reviewStatus === "MODIFIED"
+    ...(patch.sourceSelection
+      ? {
+          rawEvidence: toJson({
+            ...originalEvidence,
+            manualSourceSelection: patch.sourceSelection,
+            selectionReason: patch.sourceSelection === "IGNORE"
+              ? "人工忽略 API/DOM 冲突字段"
+              : `人工选择 ${patch.sourceSelection} 候选值`,
+            validationStatus: patch.reviewStatus === "IGNORED" ? "INVALID" : "TRUSTED",
+            validationReasons: patch.reviewStatus === "IGNORED" ? ["SOURCE_CONFLICT_IGNORED"] : []
+          })
+        }
+      : patch.reviewStatus === "MODIFIED"
       ? {
           metricSource: "MANUAL_INPUT" as const,
           rawEvidence: toJson({
@@ -335,11 +367,14 @@ function reviewMetricAuditDetail(
   };
 }
 
-function sendReviewMetricError(res: Parameters<typeof sendError>[0], error: "TASK_NOT_FOUND" | "REVIEW_METRIC_NOT_FOUND" | "SNAPSHOT_NOT_CURRENT" | "SNAPSHOT_UNVERIFIED" | "METRIC_EVIDENCE_INVALID" | "METRIC_TIME_RANGE_REQUIRED") {
+function sendReviewMetricError(res: Parameters<typeof sendError>[0], error: "TASK_NOT_FOUND" | "REVIEW_METRIC_NOT_FOUND" | "SNAPSHOT_NOT_CURRENT" | "SNAPSHOT_UNVERIFIED" | "METRIC_EVIDENCE_INVALID" | "METRIC_TIME_RANGE_REQUIRED" | "SOURCE_CONFLICT_SELECTION_REQUIRED" | "SOURCE_CONFLICT_SELECTION_INVALID" | "SOURCE_CONFLICT_VALUE_MISMATCH") {
   if (error === "TASK_NOT_FOUND") return sendError(res, 404, error, "采集任务不存在");
   if (error === "REVIEW_METRIC_NOT_FOUND") return sendError(res, 404, error, "复核指标不存在或不属于该任务");
   if (error === "SNAPSHOT_UNVERIFIED") return sendError(res, 409, error, "账号和路线确认后才能校准指标");
   if (error === "METRIC_EVIDENCE_INVALID") return sendError(res, 409, error, "字段、单位、周期或页面位置校验异常，请逐项修改后再确认");
   if (error === "METRIC_TIME_RANGE_REQUIRED") return sendError(res, 409, error, "修改指标时必须明确填写统计周期");
+  if (error === "SOURCE_CONFLICT_SELECTION_REQUIRED") return sendError(res, 409, error, "API 与 DOM 值冲突，请明确选择 API、DOM 或忽略");
+  if (error === "SOURCE_CONFLICT_SELECTION_INVALID") return sendError(res, 409, error, "冲突字段只能选择 API、DOM 或忽略，不能自由修改数值");
+  if (error === "SOURCE_CONFLICT_VALUE_MISMATCH") return sendError(res, 409, error, "所选冲突候选值与原始 API/DOM 证据不一致");
   return sendError(res, 409, "SNAPSHOT_NOT_CURRENT", "只能校准当前路线的最新快照，请刷新后重试");
 }

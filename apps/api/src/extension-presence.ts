@@ -75,7 +75,7 @@ export function getExtensionStatus(input: {
   }
 
   if (input.activeCredentialIds.length) {
-    return emptyStatus("PAIRED_NOT_CONNECTED", true, "账号已经安全配对，等待插件绑定当前任务并打开目标页面。");
+    return emptyStatus("PAIRED_NOT_CONNECTED", true, "服务器发现该账号存在有效历史授权；当前浏览器尚未完成本地凭证与当前任务心跳验证。");
   }
   return emptyStatus("UNPAIRED", false, "当前账号尚未配对采集插件，请生成任务配对码。");
 }

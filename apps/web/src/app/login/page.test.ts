@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { createLoginHref, getSafeReturnTo, loginDestination } from "../../lib/auth-redirect";
 
 const loginPageSource = readFileSync(
   fileURLToPath(new URL("./page.tsx", import.meta.url)),
@@ -25,5 +26,20 @@ describe("login page public registration visibility", () => {
     expect(authContextSource).toContain("const controller = new AbortController();");
     expect(authContextSource).toContain('apiFetch<{ csrfToken: string }>("/auth/me", null, { signal: controller.signal })');
     expect(authContextSource).toContain("if (active) setHydrated(true);");
+  });
+
+  it("returns to a safe in-app task after reauthentication", () => {
+    expect(loginPageSource).toContain('useSearchParams');
+    expect(loginPageSource).toContain('loginDestination(searchParams.get("returnTo"))');
+    expect(loginPageSource).toContain("router.push(returnTo)");
+    expect(createLoginHref("/tasks/task-1")).toBe("/login?returnTo=%2Ftasks%2Ftask-1");
+    expect(loginDestination("/tasks/task-1?step=pairing")).toBe("/tasks/task-1?step=pairing");
+  });
+
+  it("rejects external and malformed login return targets", () => {
+    expect(getSafeReturnTo("https://attacker.example.com")).toBeNull();
+    expect(getSafeReturnTo("//attacker.example.com")).toBeNull();
+    expect(getSafeReturnTo("/\\attacker.example.com")).toBeNull();
+    expect(loginDestination("https://attacker.example.com")).toBe("/dashboard");
   });
 });

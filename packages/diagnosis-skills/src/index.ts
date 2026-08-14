@@ -138,9 +138,10 @@ export const auditDataReadinessSkill: DiagnosisSkillDefinition = {
     const input = parseInput(rawInput);
     const readinessEvidence = input.evidenceCatalog.filter((item) => item.kind === "ROUTE" || item.id.startsWith("policy:data-review"));
     const decision = input.decisionInput;
+    const evidenceLayerReady = isFormalDiagnosisEvidenceLayer(decision);
     const blocking = [
       ...(decision.dataReviewStatus === "REVIEWED" ? [] : ["数据尚未全部人工复核"]),
-      ...(decision.metricLayer === "REVIEWED_METRIC" ? [] : ["诊断输入不是人工复核层"]),
+      ...(evidenceLayerReady ? [] : ["诊断输入不是已放行的正式证据层"]),
       ...((decision.collectionQuality?.missingRoutes || []).map((route) => `缺少路线 ${route}`)),
       ...((decision.collectionQuality?.staleRoutes || []).map((route) => `路线已过期 ${route}`))
     ];
@@ -209,8 +210,8 @@ export function buildDiagnosisEvidenceCatalog(input: DecisionEngineInput, simila
   evidence.push({
     id: "policy:data-review",
     kind: "POLICY",
-    label: "人工复核层",
-    value: input.dataReviewStatus === "REVIEWED" && input.metricLayer === "REVIEWED_METRIC"
+    label: "正式诊断证据层",
+    value: isFormalDiagnosisEvidenceLayer(input)
   });
   for (const route of input.collectionQuality?.routes || []) {
     evidence.push({
@@ -250,6 +251,17 @@ export function buildDiagnosisEvidenceCatalog(input: DecisionEngineInput, simila
     evidence.push({ id: `case:${item.id}`, kind: "CASE", label: "工作区相似案例", value: item.summary });
   }
   return z.array(diagnosisEvidenceSchema).parse(evidence);
+}
+
+function isFormalDiagnosisEvidenceLayer(input: DecisionEngineInput) {
+  if (input.dataReviewStatus !== "REVIEWED") return false;
+  if (input.metricLayer === "REVIEWED_METRIC") return true;
+  const evidence = input.realtimeEvidence;
+  return input.metricLayer === "REALTIME_API"
+    && evidence?.source === "LIVE_SCREEN_INTERNAL_API"
+    && evidence.routeKey === "LIVE_DATA_SCREEN"
+    && evidence.pageType === "LIVE_DATA_SCREEN"
+    && evidence.metricCount > 0;
 }
 
 export function requiredDomainSkills(availableRoutes: CollectionRouteKey[], hasSimilarCases: boolean): DiagnosisSkillId[] {

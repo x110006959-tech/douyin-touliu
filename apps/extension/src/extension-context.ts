@@ -26,6 +26,11 @@ export type ExtensionContext = {
     projects: ExtensionProject[];
   };
   collectionProtocolVersion: number;
+  liveScreenInternalApi: {
+    enabled: boolean;
+    contractVersion: string;
+    adapterVersion: string;
+  };
 };
 
 export type ExtensionContextProtocolCheck =
@@ -54,7 +59,8 @@ export function parseExtensionContext(value: unknown): ExtensionContext | null {
   const id = optionalString(account.id);
   const accountName = optionalString(account.accountName);
   const collectionProtocolVersion = value.collectionProtocolVersion;
-  if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1) return null;
+  const liveScreenInternalApi = value.liveScreenInternalApi;
+  if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1 || !isRecord(liveScreenInternalApi) || typeof liveScreenInternalApi.enabled !== "boolean" || !optionalString(liveScreenInternalApi.contractVersion) || !optionalString(liveScreenInternalApi.adapterVersion)) return null;
 
   const projects: ExtensionProject[] = [];
   for (const item of account.projects) {
@@ -82,7 +88,15 @@ export function parseExtensionContext(value: unknown): ExtensionContext | null {
     projects.push({ id: projectId, name: projectName, tasks });
   }
 
-  return { account: { id, accountName, projects }, collectionProtocolVersion };
+  return {
+    account: { id, accountName, projects },
+    collectionProtocolVersion,
+    liveScreenInternalApi: {
+      enabled: liveScreenInternalApi.enabled,
+      contractVersion: optionalString(liveScreenInternalApi.contractVersion)!,
+      adapterVersion: optionalString(liveScreenInternalApi.adapterVersion)!
+    }
+  };
 }
 
 export function refreshConfigFromContext(config: ExtensionConfig, context: ExtensionContext): ExtensionConfig | null {

@@ -74,11 +74,12 @@ describe("extension safety helpers", () => {
     expect(normalizeApiBaseUrl("https://user:secret@api.pxxis.cn")).toBeNull();
   });
 
-  it("allows every path on exact trusted platform hosts only", () => {
-    expect(isSupportedExtensionCollectionUrl("https://eos.douyin.com/any/user-opened/page")).toBe(true);
-    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/another/dashboard")).toBe(true);
+  it("allows only the two current collection pages", () => {
+    expect(isSupportedExtensionCollectionUrl("https://eos.douyin.com/any/user-opened/page")).toBe(false);
+    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/another/dashboard")).toBe(false);
     expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=1")).toBe(true);
-    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2?advid=1")).toBe(true);
+    expect(isSupportedExtensionCollectionUrl("https://eos.douyin.com/dp/liveScreen?room_id=1")).toBe(true);
+    expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn/lamp/pc/promotion/roi2?advid=1")).toBe(false);
     expect(isSupportedExtensionCollectionUrl("https://fake.eos.douyin.com/dp/liveScreen")).toBe(false);
     expect(isSupportedExtensionCollectionUrl("https://localads.chengzijianzhan.cn.attacker.example/page")).toBe(false);
     expect(isSupportedExtensionCollectionUrl("http://eos.douyin.com/dp/liveScreen")).toBe(false);

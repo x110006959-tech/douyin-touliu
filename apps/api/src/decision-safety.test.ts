@@ -1,9 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { collectionFreshnessPolicy } from "@douyin-local-life/shared";
-import { toCollectionRunDTO } from "./collection-runs.js";
+import { collectionFreshnessPolicy, type RealtimeMetricFrame, type VisibleMetric } from "@douyin-local-life/shared";
+import { requiredRoutesFromJson, toCollectionRunDTO } from "./collection-runs.js";
 import { buildDecisionInput, runDecisionEngine } from "./decision.js";
+import { evaluateDecisionReadiness } from "./decision-readiness.js";
 
 describe("V0.2 decision safety regressions", () => {
+  it("normalizes only the retired three-route default while preserving explicit legacy routes", () => {
+    expect(requiredRoutesFromJson([
+      "LOCAL_PROMOTION_DASHBOARD",
+      "LIVE_DATA_SCREEN",
+      "TASK_TABLE"
+    ])).toEqual(["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN"]);
+    expect(requiredRoutesFromJson(["TASK_TABLE"])).toEqual(["TASK_TABLE"]);
+    expect(requiredRoutesFromJson([
+      "LIVE_DATA_SCREEN",
+      "LIVE_PRODUCT_TAB",
+      "LIVE_TRAFFIC_TAB",
+      "LOCAL_PROMOTION_DASHBOARD",
+      "TASK_TABLE"
+    ])).toEqual([
+      "LIVE_DATA_SCREEN",
+      "LIVE_PRODUCT_TAB",
+      "LIVE_TRAFFIC_TAB",
+      "LOCAL_PROMOTION_DASHBOARD",
+      "TASK_TABLE"
+    ]);
+  });
+
   it("anchors decisions to the newest collection run even before its first snapshot", () => {
     const now = new Date();
     const input = buildDecisionInput({
@@ -353,4 +376,131 @@ describe("V0.2 decision safety regressions", () => {
     expect(input.tables).toEqual([]);
     expect(input.dataReviewStatus).toBe("UNREVIEWED");
   });
+
+  it("uses live overview realtime API pulses directly without requiring snapshot confirmation", () => {
+    const now = new Date("2026-08-13T13:15:00.000Z");
+    const task = liveOverviewRealtimeTask(now);
+    const input = buildDecisionInput(task, {
+      realtimeFrame: liveOverviewRealtimeFrame(now),
+      now: now.getTime()
+    });
+    const readiness = evaluateDecisionReadiness(task as never, input, { now: now.getTime() });
+
+    expect(input.metricLayer).toBe("REALTIME_API");
+    expect(input.dataReviewStatus).toBe("REVIEWED");
+    expect(input.realtimeEvidence).toMatchObject({
+      routeKey: "LIVE_DATA_SCREEN",
+      pageType: "LIVE_DATA_SCREEN",
+      metricCount: 3,
+      source: "LIVE_SCREEN_INTERNAL_API"
+    });
+    expect(input.metrics.map((metric) => metric.key).sort()).toEqual(["current_online", "gmv", "gpm"]);
+    expect(input.metrics.every((metric) => metric.source === "network" && metric.rawEvidence?.sourceType === "INTERNAL_API")).toBe(true);
+    expect(input.reviewCoverage).toMatchObject({ totalCount: 3, pendingCount: 0, confirmedCount: 3 });
+    expect(input.collectionQuality).toMatchObject({
+      completeness: 1,
+      missingRoutes: [],
+      staleRoutes: [],
+      blocksStrongActions: false
+    });
+    expect(readiness.ready).toBe(true);
+  });
+
+  it("does not let stale realtime pulses replace the formal live overview route", () => {
+    const now = new Date("2026-08-13T13:16:01.000Z");
+    const task = liveOverviewRealtimeTask(now);
+
+    expect(() => buildDecisionInput(task, {
+      realtimeFrame: liveOverviewRealtimeFrame(new Date(now.getTime() - 61_000)),
+      now: now.getTime()
+    })).toThrow("SNAPSHOT_REQUIRED");
+  });
 });
+
+function liveOverviewRealtimeTask(now: Date) {
+  return {
+    id: "live-realtime-task",
+    sourceUrl: "https://eos.douyin.com/dp/liveScreen?room_id=room-1&mode=main",
+    pageTitle: "直播数据大屏",
+    project: {
+      id: "live-realtime-project",
+      updatedAt: now,
+      businessType: "DOUYIN_LOCAL_LIFE",
+      subjectType: "SERVICE_PROVIDER",
+      operatorType: "SERVICE_PROVIDER_LIVE",
+      cooperationType: "SERVICE_PROVIDER_CONTRACT",
+      controlLevel: "MEDIUM",
+      subjectConfidence: 1,
+      serviceProviderName: "service-provider",
+      serviceMode: "代播",
+      serviceFee: null
+    },
+    snapshots: [],
+    reviewedMetrics: [],
+    routeSources: [{
+      routeKey: "LIVE_DATA_SCREEN",
+      label: "直播数据大屏概览",
+      required: true,
+      sourceUrl: "https://eos.douyin.com/dp/liveScreen?room_id=room-1&mode=main",
+      status: "ACTIVE",
+      updatedAt: now
+    }],
+    collectionRuns: [{
+      id: "live-realtime-run",
+      updatedAt: now,
+      requiredRoutesJson: ["LIVE_DATA_SCREEN"],
+      snapshots: [],
+      routeHealth: []
+    }]
+  };
+}
+
+function liveOverviewRealtimeFrame(now: Date): RealtimeMetricFrame {
+  return {
+    collectionTaskId: "live-realtime-task",
+    routeKey: "LIVE_DATA_SCREEN",
+    pageType: "LIVE_DATA_SCREEN",
+    observedAt: now.toISOString(),
+    receivedAt: now.toISOString(),
+    successfulEndpoints: ["key_index"],
+    metrics: [
+      internalApiPulseMetric("gmv", "直播间成交金额", 235371, "235,371"),
+      internalApiPulseMetric("current_online", "当前在线人数", 125, "125"),
+      internalApiPulseMetric("gpm", "GPM", 3360.47, "3,360.47")
+    ]
+  };
+}
+
+function internalApiPulseMetric(key: string, name: string, value: number, displayValue: string): VisibleMetric {
+  return {
+    key,
+    name,
+    value,
+    unit: null,
+    source: "network",
+    metricSource: "XHR_JSON",
+    confidence: 1,
+    rawEvidence: {
+      sourceType: "INTERNAL_API",
+      bindingKind: "CARD",
+      fieldLabel: name,
+      displayValue,
+      normalizedValue: String(value),
+      displayPrecision: 2,
+      unitSource: "DEFAULT",
+      timeRange: "实时",
+      timeRangeSource: "COMPONENT",
+      timeRangeLocation: "live-screen-key-index",
+      componentPath: `key_index.${key}`,
+      calibrationSignature: `LIVE_DATA_SCREEN|key_index|${key}`,
+      validationStatus: "TRUSTED",
+      validationReasons: [],
+      sourceStatus: "INTERNAL_API",
+      semanticScope: "LIVE_ROOM",
+      apiContractVersion: "2026-08-12.3",
+      apiAdapterVersion: "1.5.0",
+      endpointKey: "key_index",
+      evidencePurpose: "PULSE_ONLY"
+    }
+  };
+}

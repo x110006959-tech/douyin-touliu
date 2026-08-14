@@ -9,6 +9,7 @@ import {
   collectionRouteLabels,
   collectionRouteTemplates,
   cooperationTypeLabels,
+  isPrimaryCollectionRouteKey,
   operatorTypeLabels,
   subjectTypeLabels,
   type ActionProposalStatus,
@@ -108,6 +109,9 @@ export default function TaskDetailPage() {
     if (!token || !task) return;
     setBusy("pairing-code"); setError(""); setPairingMessage("");
     try {
+      if (webBridge.state === "VERSION_OUTDATED" || extensionStatus?.state === "VERSION_OUTDATED") {
+        throw new Error("当前插件协议不兼容。请先在扩展管理页重新加载当前本地插件，再生成或输入配对码。");
+      }
       const created = await apiFetch<PairingCodeResponse>("/extension/pairing-codes", token, {
         method: "POST",
         body: JSON.stringify({ accountProfileId: task.project.accountProfile.id, collectionTaskId: task.id })
@@ -200,10 +204,21 @@ export default function TaskDetailPage() {
   }
 
   if (!hydrated) return <AuthLoadingState />;
-  if (!token) return <AuthRequiredState />;
+  if (!token) return <AuthRequiredState returnTo={`/tasks/${encodeURIComponent(params.id)}`} />;
 
   if (!task) {
-    return <main className="mx-auto max-w-5xl px-6 py-8 text-sm text-muted">{error || "加载中..."}</main>;
+    if (!error) return <main className="mx-auto max-w-5xl px-6 py-8 text-sm text-muted">加载中...</main>;
+    const taskNotFound = error.includes("采集任务不存在");
+    return (
+      <main className="mx-auto flex min-h-[calc(100vh-12rem)] max-w-xl items-center px-6 py-8">
+        <Card className="w-full">
+          <p className="text-xs font-semibold text-primary">采集任务</p>
+          <CardTitle>{taskNotFound ? "采集任务不存在" : "暂时无法打开采集任务"}</CardTitle>
+          <p className="mb-5 text-sm text-muted">{taskNotFound ? "该链接对应的采集任务不存在，或已不属于当前工作台。" : error}</p>
+          <Link className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-white hover:opacity-90" href="/login">返回登录</Link>
+        </Card>
+      </main>
+    );
   }
 
   const latestSnapshot = task.snapshots[0];
@@ -213,15 +228,16 @@ export default function TaskDetailPage() {
     ? captureSummary.requiredRoutesCaptured
     : collectionRun
       ? collectionRun.quality.missingRoutes.length === 0
-      : task.routeSources.filter((route) => route.required).every((route) => route.status === "CAPTURED");
-  const extensionBoundToTask = Boolean(
-    (extensionStatus?.paired && extensionStatus.boundTaskId === task.id)
-    || (webBridge.response?.paired && webBridge.response.boundTaskId === task.id)
-  );
+      : task.routeSources.filter((route) => route.required && isPrimaryCollectionRouteKey(route.routeKey)).every((route) => route.status === "CAPTURED");
+  const extensionBoundToTask = Boolean(extensionStatus?.paired && extensionStatus.boundTaskId === task.id);
+  const extensionServerVerified = Boolean(extensionBoundToTask && extensionStatus?.lastHeartbeatAt);
+  const extensionConnectionBlocked = ["UNPAIRED", "PAIRED_NOT_CONNECTED", "BOUND_OTHER_TASK", "OFFLINE", "VERSION_OUTDATED", "ERROR"]
+    .includes(extensionStatus?.state || "UNPAIRED");
+  const pluginUpdateRequired = webBridge.state === "VERSION_OUTDATED" || extensionStatus?.state === "VERSION_OUTDATED";
   const extensionConnected = Boolean(
     webBridge.state === "READY"
-    && extensionBoundToTask
-    && extensionStatus?.state !== "VERSION_OUTDATED"
+    && extensionServerVerified
+    && !extensionConnectionBlocked
   );
   const reviewComplete = reviewMetrics.length > 0 && reviewMetrics.every((metric) => metric.reviewStatus !== "PENDING");
   const missingRequiredRoutes = captureSummary?.routes.filter((route) => route.required && !route.snapshotId) || [];
@@ -263,7 +279,13 @@ export default function TaskDetailPage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
       <header className="mb-6">
-        <Link className="mb-3 inline-block text-sm text-primary hover:underline" href={`/projects/${task.project.id}`}>返回项目</Link>
+        <Link
+          aria-label="返回上一级：项目详情"
+          className="mb-3 inline-flex h-10 items-center rounded-md border border-border bg-white px-4 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary"
+          href={`/projects/${task.project.id}`}
+        >
+          ← 返回上一级
+        </Link>
         <div>
           <p className="text-sm font-semibold text-primary">当前账号 / 项目 / 任务</p>
           <h1 className="mt-1 text-3xl font-bold">{task.project.accountProfile.accountName}</h1>
@@ -290,18 +312,19 @@ export default function TaskDetailPage() {
         <Card className="mb-4 border-primary/40">
           <p className="mb-1 text-xs font-semibold text-primary">{hasCapture ? "连接状态" : "第 1 步"}</p>
           <CardTitle>{hasCapture ? "恢复采集插件连接" : "连接采集插件"}</CardTitle>
-          <p className="mb-4 text-sm text-muted">{hasCapture ? "已有数据仍可复核；继续采集前，请恢复当前任务的插件连接。" : "网页会先确认插件与后台版本，再一键生成配对码并绑定当前任务。"} 配对不会读取平台密码或 Cookie。</p>
+          <p className="mb-4 text-sm text-muted">{hasCapture ? "历史采集数据已保留，但当前浏览器尚未确认连接。重新采集前必须恢复当前任务的插件连接。" : "网页会先确认插件与后台版本，再一键生成配对码并绑定当前任务。"} 服务器的历史授权不等于当前浏览器已经配对；只有网页桥接确认本地凭证且本机 API 收到当前任务心跳后才会进入采集步骤。配对不会读取平台密码或 Cookie。</p>
           <div className="grid gap-3 md:grid-cols-3">
             <Info label="网页桥接" value={webBridgeStateLabel(webBridge.state)} />
-            <Info label="配对状态" value={webBridge.response?.paired || extensionStatus?.paired ? "已安全配对" : "尚未配对"} />
-            <Info label="任务绑定" value={extensionBoundToTask ? "已绑定当前任务" : extensionStatusLabel(extensionStatus?.state)} />
+            <Info label="配对状态" value={webBridge.response?.paired ? "当前插件本地凭证已验证" : extensionStatus?.paired ? "服务器有历史授权，当前插件未验证" : "当前插件尚未配对"} />
+            <Info label="任务绑定" value={extensionServerVerified ? "本机 API 已确认当前任务" : extensionStatusLabel(extensionStatus?.state)} />
           </div>
           <div className={`mt-3 rounded-md border p-3 text-sm ${webBridge.state === "READY" ? "border-primary/30 bg-blue-50" : "border-amber-300 bg-amber-50"}`}>
             <strong>{webBridge.message}</strong>
             {webBridge.response ? <p className="mt-1 text-xs text-muted">插件 {webBridge.response.extensionVersion} · 协议 {webBridge.response.protocolVersion} · 构建 {webBridge.response.buildFingerprint}</p> : null}
+            {extensionStatus ? <p className="mt-2 text-xs text-muted"><strong>本机 API：</strong>{extensionStatus.message}</p> : null}
             {webBridge.state !== "READY" ? <p className="mt-2 text-xs text-muted">本地插件代码更新后，请在 chrome://extensions 中点击一次“重新加载”，然后刷新本任务页和目标后台页面。</p> : null}
           </div>
-          {hasCapture ? <p className="mt-3 text-sm text-muted">请先在已登录的目标后台打开下方任一页面并刷新，再重新检测；若本地任务绑定已丢失，再重新配对。</p> : null}
+          {hasCapture ? <p className="mt-3 text-sm text-muted">历史快照不会代替当前配对。请先在已登录的目标后台打开下方任一页面并刷新，再重新检测；只有任务绑定丢失或 API 校验失败时才需要重新配对。</p> : null}
           {pairingMessage ? <p className="mt-3 rounded-md border border-primary/30 bg-blue-50 p-3 text-sm text-primary">{pairingMessage}</p> : null}
           {pairingCode ? (
             <div className="mt-4 rounded-md border border-primary bg-blue-50 p-4 text-center">
@@ -313,7 +336,7 @@ export default function TaskDetailPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Button className="border border-border bg-white text-foreground" disabled={busy === "extension-status"} onClick={() => void refreshExtensionConnection()} type="button">{busy === "extension-status" ? "正在检测..." : "重新检测插件"}</Button>
             <Button disabled={busy === "pairing-code" || webBridge.state !== "READY"} onClick={() => createTaskPairingCode(false)} type="button">{busy === "pairing-code" ? "正在连接..." : hasCapture ? "重新绑定当前任务" : "一键连接采集插件"}</Button>
-            <Button className="border border-border bg-white text-foreground" disabled={busy === "pairing-code"} onClick={() => createTaskPairingCode(true)} type="button">生成手动配对码</Button>
+            <Button className="border border-border bg-white text-foreground" disabled={busy === "pairing-code" || pluginUpdateRequired} onClick={() => createTaskPairingCode(true)} type="button">{pluginUpdateRequired ? "请先重新加载插件" : "生成手动配对码"}</Button>
             <Link className="inline-flex h-10 items-center rounded-md border border-border bg-white px-4 text-sm font-medium" href="/extension">查看插件安装说明</Link>
           </div>
         </Card>
@@ -323,12 +346,12 @@ export default function TaskDetailPage() {
         <Card className="mb-4 border-primary/40">
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="mb-1 text-xs font-semibold text-primary">第 2 步</p>
+              <p className="mb-1 text-xs font-semibold text-primary">{extensionConnected ? "第 2 步" : "历史采集记录"}</p>
               <CardTitle>采集指定页面</CardTitle>
-              <p className="text-sm text-muted">打开下方页面；直播大屏需由你手动切换概览、商品或流量，再在插件中点击“采集并上传当前路线”。</p>
+              <p className="text-sm text-muted">{extensionConnected ? "巨量本地推数据页采集一次；直播数据大屏点击一次开启 API 持续采集。任务或计划列表不再采集。" : "以下内容仅用于查看历史数据。完成上方插件连接后，才可以再次采集当前页面。"}</p>
             </div>
             <span className={`rounded-md border px-3 py-2 text-sm ${extensionConnected ? "border-primary bg-blue-50 text-primary" : "border-amber-300 bg-amber-50"}`}>
-              {extensionConnected ? `插件已连接 · ${extensionStatus?.extensionVersion || "版本未知"}` : "插件当前离线，旧数据仍可复核"}
+              {extensionConnected ? `插件已连接 · ${extensionStatus?.extensionVersion || "版本未知"}` : "当前插件未连接，历史数据仅供复核"}
             </span>
           </div>
           {extensionStatus?.currentUrl ? (
@@ -339,7 +362,7 @@ export default function TaskDetailPage() {
             </div>
           ) : null}
           <div className="grid gap-3">
-            {(captureSummary?.routes || task.routeSources).map((route) => {
+            {(captureSummary?.routes || task.routeSources).filter((route) => isPrimaryCollectionRouteKey(route.routeKey)).map((route) => {
               const template = collectionRouteTemplates.find((item) => item.routeKey === route.routeKey);
               const diagnostic = "diagnostic" in route ? route.diagnostic : null;
               const state = diagnostic?.summaryStatus
@@ -548,7 +571,7 @@ function dimensionLabel(dimension: DecisionBusinessAnalysis["findings"][number][
 function extensionStatusLabel(state: ExtensionStatusDTO["state"] | undefined) {
   const labels: Record<ExtensionStatusDTO["state"], string> = {
     UNPAIRED: "未配对",
-    PAIRED_NOT_CONNECTED: "已配对，等待连接",
+    PAIRED_NOT_CONNECTED: "服务器有历史授权，等待当前插件验证",
     BOUND_OTHER_TASK: "已绑定其他任务",
     READY: "连接正常",
     PAGE_UNSUPPORTED: "当前页面不支持",

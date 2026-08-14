@@ -1,7 +1,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import { createHash } from "node:crypto";
-import { collectionRouteTemplates, extensionBridgeProtocolVersion, extensionCollectionProtocolVersion } from "@douyin-local-life/shared";
+import {
+  collectionRouteTemplates,
+  defaultCollectionRouteTemplates,
+  extensionBridgeProtocolVersion,
+  extensionCollectionProtocolVersion,
+  liveScreenInternalApiContracts,
+  liveScreenInternalApiAdapterVersion,
+  liveScreenInternalApiContractVersion,
+  type VisibleMetric
+} from "@douyin-local-life/shared";
 import { createServer } from "./server.js";
 import { takeLatestVerificationForTest } from "./email-verification.js";
 import { prisma } from "./prisma.js";
@@ -9,6 +18,7 @@ import { resetRateLimitBuckets } from "./rate-limit.js";
 import { processNextDecisionRun } from "./ai-diagnosis/worker.js";
 import { createSyntheticDiagnosisTransport } from "./ai-diagnosis/synthetic-evaluation.js";
 import { syntheticDiagnosisCases } from "@douyin-local-life/diagnosis-skills";
+import { liveScreenInternalApiEnabled } from "./live-screen-internal-api-config.js";
 
 type ApiEnvelope<T> =
   | { success: true; data: T; error: null }
@@ -543,12 +553,8 @@ describe("V0.1 API smoke flow", () => {
     const structuredSummary = await api<{
       structuredData: Array<{ kind: string; acceptedRowCount: number; rows: Array<{ taskId: string }> }>;
     }>(`/collection-tasks/${task.id}/capture-summary`, token);
-    expect(structuredSummary.structuredData).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: "TASK_ROWS",
-        acceptedRowCount: 1,
-        rows: [expect.objectContaining({ taskId: "task-row-1" })]
-      })
+    expect(structuredSummary.structuredData).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "TASK_ROWS" })
     ]));
   });
 
@@ -1508,7 +1514,7 @@ describe("V0.1 API smoke flow", () => {
       body: { projectId: project.id, pageTitle: "账号隔离任务" }
     });
     expect(replayedTask.id).toBe(firstTask.id);
-    expect(firstTask.routeSources.length).toBeGreaterThanOrEqual(5);
+    expect(firstTask.routeSources.map((route) => route.routeKey).sort()).toEqual(defaultCollectionRouteTemplates.map((route) => route.routeKey).sort());
     const routeUrl = "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=1837899261171721&room_id=7662599526045485834";
     const updatedRoute = await api<{ routeKey: string; sourceUrl: string | null }>(`/collection-tasks/${firstTask.id}/routes/LOCAL_PROMOTION_DASHBOARD`, token, {
       method: "PUT",
@@ -1595,6 +1601,7 @@ describe("V0.1 API smoke flow", () => {
     expect(pageIdentityIgnored.detectedAccountName).toBeNull();
     expect(pageIdentityIgnored.accountMatchEvidence).toBeNull();
     expect(pageIdentityIgnored.normalizedMetrics).toHaveLength(2);
+    await api(`/collection-tasks/${firstTask.id}/routes/LIVE_PRODUCT_TAB`, token, { method: "PUT", body: {} });
     const untrustedManualRouteSnapshot = await api<{
       id: string;
       updatedAt: string;
@@ -1688,7 +1695,7 @@ describe("V0.1 API smoke flow", () => {
     });
     const taskA = await api<{ id: string; routeSources: Array<{ routeKey: string; sourceUrl: string | null }> }>("/collection-tasks", token, { method: "POST", body: { projectId: projectA.id, pageTitle: "插件任务 A" } });
     const taskB = await api<{ id: string }>("/collection-tasks", token, { method: "POST", body: { projectId: projectB.id, pageTitle: "插件任务 B" } });
-    expect(taskA.routeSources.map((route) => route.routeKey).sort()).toEqual(collectionRouteTemplates.map((route) => route.routeKey).sort());
+    expect(taskA.routeSources.map((route) => route.routeKey).sort()).toEqual(defaultCollectionRouteTemplates.map((route) => route.routeKey).sort());
     expect(taskA.routeSources.every((route) => route.sourceUrl === null)).toBe(true);
 
     await apiError("/extension/pairing-codes/exchange", null, { method: "POST", body: { code: "000000" } }, "PAIRING_CODE_INVALID");
@@ -1709,14 +1716,81 @@ describe("V0.1 API smoke flow", () => {
     expect(persistedCredential.tokenHash).not.toBe(exchanged.token);
     expect(JSON.stringify(persistedCredential)).not.toContain(exchanged.token);
 
-    const context = await api<{ account: { id: string }; credential: { scopes: string[] }; collectionProtocolVersion: number }>("/extension/context", exchanged.token);
+    const context = await api<{
+      account: { id: string };
+      credential: { scopes: string[] };
+      collectionProtocolVersion: number;
+      liveScreenInternalApi: { enabled: boolean; contractVersion: string; adapterVersion: string };
+    }>("/extension/context", exchanged.token, {
+      headers: { "x-pxxis-collection-protocol": String(extensionCollectionProtocolVersion) }
+    });
+    await apiError("/extension/context", exchanged.token, {}, "EXTENSION_COLLECTION_PROTOCOL_MISMATCH");
     expect(context.account.id).toBe(accountA.id);
     expect(context.collectionProtocolVersion).toBe(extensionCollectionProtocolVersion);
+    expect(context.liveScreenInternalApi).toEqual({
+      enabled: liveScreenInternalApiEnabled(),
+      contractVersion: liveScreenInternalApiContractVersion,
+      adapterVersion: liveScreenInternalApiAdapterVersion
+    });
     await api(`/collection-tasks/${taskA.id}`, exchanged.token);
     await apiError(`/collection-tasks/${taskB.id}`, exchanged.token, {}, "EXTENSION_ACCOUNT_MISMATCH");
     const emptySummary = await api<{ snapshotCount: number; routes: Array<{ routeKey: string }> }>(`/collection-tasks/${taskA.id}/capture-summary`, token);
     expect(emptySummary.snapshotCount).toBe(0);
     expect(emptySummary.routes.length).toBeGreaterThan(0);
+    const snapshotCountBeforePulse = await prisma.dataSnapshot.count({ where: { taskId: taskA.id } });
+    await expect(api<{ pulseCount: number }>(`/collection-tasks/${taskA.id}/metric-pulses`, exchanged.token, {
+      method: "POST",
+      body: {
+        routeKey: "LIVE_DATA_SCREEN",
+        pageType: "LIVE_DATA_SCREEN",
+        localCapturedAt: new Date().toISOString(),
+        tabState: "HIDDEN",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?room_id=${suffix}`,
+        captureProtocolVersion: extensionCollectionProtocolVersion,
+        metrics: [metric("spend", "DOM 消耗", 100)],
+        captureMeta: captureMeta("LIVE_DATA_SCREEN", ["spend"])
+      }
+    })).resolves.toMatchObject({ pulseCount: 1 });
+    expect(await prisma.dataSnapshot.count({ where: { taskId: taskA.id } })).toBe(snapshotCountBeforePulse);
+    await apiError(`/collection-tasks/${taskA.id}/snapshots`, exchanged.token, {
+      method: "POST",
+      body: {
+        pageType: "LIVE_DATA_SCREEN",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?room_id=${suffix}`,
+        pageTitle: "关闭开关的 API 证据",
+        rawDomText: "",
+        rawNetworkJson: [],
+        rawTableData: [],
+        visibleMetricsJson: [{
+          key: "current_online_viewers",
+          name: "当前在线人数",
+          value: "12",
+          unit: null,
+          source: "network",
+          metricSource: "XHR_JSON",
+          rawEvidence: {
+            sourceType: "INTERNAL_API",
+            endpointKey: "key_index",
+            evidencePurpose: "PULSE_ONLY",
+            sourceStatus: "INTERNAL_API"
+          }
+        }],
+        localCollectedAt: new Date().toISOString(),
+        routeKey: "LIVE_DATA_SCREEN",
+        captureProtocolVersion: extensionCollectionProtocolVersion,
+        captureMeta: {
+          ...captureMeta("LIVE_DATA_SCREEN", ["current_online_viewers"]),
+          liveScreenInternalApi: {
+            enabled: true,
+            contractVersion: liveScreenInternalApiContractVersion,
+            adapterVersion: liveScreenInternalApiAdapterVersion,
+            roomIdSource: "URL",
+            endpointStatuses: [{ endpoint: "key_index", status: "SUCCESS", acceptedBytes: 100 }]
+          }
+        }
+      }
+    }, "LIVE_SCREEN_INTERNAL_API_DISABLED");
+    await api(`/collection-tasks/${taskA.id}/routes/LIVE_PRODUCT_TAB`, token, { method: "PUT", body: {} });
     const collectionRun = await api<{ id: string }>(`/collection-tasks/${taskA.id}/collection-runs`, exchanged.token, {
       method: "POST",
       body: { requiredRoutes: ["LIVE_PRODUCT_TAB"] }
@@ -1777,6 +1851,7 @@ describe("V0.1 API smoke flow", () => {
         visibleMetricsJson: [metric("spend", "消耗", 99)],
         localCollectedAt: new Date().toISOString(),
         routeKey: "LIVE_DATA_SCREEN",
+        captureProtocolVersion: extensionCollectionProtocolVersion - 1,
         captureMeta: {
           ...captureMeta("LIVE_DATA_SCREEN", ["spend"]),
           routeDetection: {
@@ -1844,6 +1919,9 @@ describe("V0.1 API smoke flow", () => {
       }
     }, "EXTENSION_SOURCE_URL_FORBIDDEN");
 
+    for (const route of collectionRouteTemplates.filter((item) => !defaultCollectionRouteTemplates.some((defaultRoute) => defaultRoute.routeKey === item.routeKey) && item.routeKey !== "LIVE_PRODUCT_TAB")) {
+      await api(`/collection-tasks/${taskA.id}/routes/${route.routeKey}`, token, { method: "PUT", body: {} });
+    }
     const fiveRouteRun = await api<{ id: string }>(`/collection-tasks/${taskA.id}/collection-runs`, exchanged.token, {
       method: "POST",
       body: { requiredRoutes: collectionRouteTemplates.map((route) => route.routeKey) }
@@ -1908,12 +1986,28 @@ describe("V0.1 API smoke flow", () => {
       overviewRouteKey: string | null;
       pendingRouteConfirmationCount: number;
       routes: Array<{ routeKey: string; snapshotId: string | null }>;
+      overviewMetrics: Array<{
+        metricKey: string;
+        metricValue: string;
+        displayValue: string | null;
+        originalValue: string | null;
+        reviewStatus: string;
+      }>;
     }>(`/collection-tasks/${taskA.id}/capture-summary`, token);
     expect(fiveRouteSummary.collectionRun).toMatchObject({ id: fiveRouteRun.id, status: "COMPLETED" });
     expect(fiveRouteSummary.overviewRouteKey).toBe("LOCAL_PROMOTION_DASHBOARD");
     expect(fiveRouteSummary.pendingRouteConfirmationCount).toBe(0);
     expect(fiveRouteSummary.routes).toHaveLength(5);
     expect(fiveRouteSummary.routes.every((route) => route.snapshotId)).toBe(true);
+    expect(fiveRouteSummary.overviewMetrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        metricKey: "spend",
+        metricValue: "4",
+        displayValue: "4",
+        originalValue: "4",
+        reviewStatus: "PENDING"
+      })
+    ]));
 
     await api("/extension/heartbeat", exchanged.token, {
       method: "POST",
@@ -1959,6 +2053,142 @@ describe("V0.1 API smoke flow", () => {
     const expiringPair = await api<{ code: string }>("/extension/pairing-codes", token, { method: "POST", body: { accountProfileId: accountB.id } });
     await prisma.extensionPairingCode.update({ where: { codeHash: hashForTest(expiringPair.code) }, data: { expiresAt: new Date(Date.now() - 1_000) } });
     await apiError("/extension/pairing-codes/exchange", null, { method: "POST", body: { code: expiringPair.code } }, "PAIRING_CODE_INVALID");
+  });
+
+  it("reuses stored live overview realtime evidence for ai diagnosis without snapshot confirmation", async () => {
+    const previous = process.env.LIVE_SCREEN_INTERNAL_API_ENABLED;
+    process.env.LIVE_SCREEN_INTERNAL_API_ENABLED = "true";
+    try {
+      const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const registered = await api<{ token: string }>("/auth/register", null, {
+        method: "POST",
+        body: { email: `realtime-worker-${suffix}@example.com`, password: "password123", name: "Realtime Worker" }
+      });
+      const token = registered.token;
+      const account = await api<{ id: string }>("/account-profiles", token, {
+        method: "POST",
+        body: { accountName: "实时 AI 账号", platformAccountId: `realtime-account-${suffix}` }
+      });
+      const project = await api<{ id: string }>("/projects", token, {
+        method: "POST",
+        body: {
+          accountProfileId: account.id,
+          name: "实时 AI 项目",
+          businessType: "DOUYIN_LOCAL_LIFE",
+          subjectType: "SERVICE_PROVIDER",
+          operatorType: "SERVICE_PROVIDER_LIVE",
+          cooperationType: "SERVICE_PROVIDER_CONTRACT",
+          controlLevel: "MEDIUM",
+          subjectConfidence: 1,
+          serviceProviderName: "实时服务商",
+          serviceMode: "代播",
+          serviceFee: 200
+        }
+      });
+      const task = await api<{ id: string }>("/collection-tasks", token, {
+        method: "POST",
+        body: { projectId: project.id, pageTitle: "实时直播概览" }
+      });
+      await api<{ id: string }>(`/collection-tasks/${task.id}/collection-runs`, token, {
+        method: "POST",
+        body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
+      });
+      const pairing = await api<{ code: string }>("/extension/pairing-codes", token, {
+        method: "POST",
+        body: { accountProfileId: account.id, collectionTaskId: task.id }
+      });
+      const exchanged = await api<{ token: string }>("/extension/pairing-codes/exchange", null, {
+        method: "POST",
+        body: { code: pairing.code, label: "实时验证插件" }
+      });
+      const context = await api<{ account: { id: string } }>("/extension/context", exchanged.token, {
+        headers: { "x-pxxis-collection-protocol": String(extensionCollectionProtocolVersion) }
+      });
+      expect(context.account.id).toBe(account.id);
+
+      const field = liveScreenInternalApiContracts.key_index.fields[0];
+      if (!field) throw new Error("Expected a realtime internal API field");
+      const roomId = String(Date.now()).slice(0, 13);
+      const realtimePulse = await api<{ pulseCount: number }>(`/collection-tasks/${task.id}/metric-pulses`, exchanged.token, {
+        method: "POST",
+        body: {
+          routeKey: "LIVE_DATA_SCREEN",
+          pageType: "LIVE_DATA_SCREEN",
+          localCapturedAt: new Date().toISOString(),
+          tabState: "VISIBLE",
+          sourceUrl: `https://eos.douyin.com/dp/liveScreen?room_id=${roomId}`,
+          captureProtocolVersion: extensionCollectionProtocolVersion,
+          metrics: [internalApiPulseMetric(field, 235371, "235,371")],
+          captureMeta: {
+            ...captureMeta("LIVE_DATA_SCREEN", [field.metricKey]),
+            liveScreenInternalApi: {
+              enabled: true,
+              contractVersion: liveScreenInternalApiContractVersion,
+              adapterVersion: liveScreenInternalApiAdapterVersion,
+              roomId,
+              roomIdSource: "URL",
+              roomIdEvidence: { urlRoomIds: [roomId], domRoomIds: [] },
+              endpointStatuses: [{
+                endpoint: "key_index",
+                status: "SUCCESS",
+                acceptedBytes: 100
+              }]
+            }
+          }
+        }
+      });
+      expect(realtimePulse.pulseCount).toBe(1);
+      expect(await prisma.dataSnapshot.count({ where: { taskId: task.id } })).toBe(0);
+
+      const queued = await api<{ id: string; inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null } }>(`/collection-tasks/${task.id}/decision-runs`, token, {
+        method: "POST",
+        body: {}
+      });
+      expect(queued.inputJson.metricLayer).toBe("REALTIME_API");
+      expect(queued.inputJson.realtimeEvidence).toMatchObject({
+        routeKey: "LIVE_DATA_SCREEN",
+        pageType: "LIVE_DATA_SCREEN"
+      });
+
+      const storedRun = await prisma.decisionRun.findUniqueOrThrow({ where: { id: queued.id } });
+      await prisma.decisionRun.update({
+        where: { id: queued.id },
+        data: {
+          inputJson: {
+            ...(storedRun.inputJson as Record<string, unknown>),
+            latestAnalysis: {
+              summary: "实时输入保持正式诊断兼容",
+              riskLevel: "LOW",
+              problems: [],
+              suggestions: [],
+              manualCheckItems: [],
+              confidence: 0.9
+            }
+          }
+        }
+      });
+      await prisma.dataSnapshot.deleteMany({ where: { taskId: task.id } });
+
+      await processNextDecisionRun({
+        workerId: `realtime-worker-${suffix}`,
+        transport: createSyntheticDiagnosisTransport(syntheticDiagnosisCases[0]!)
+      });
+
+      const completed = await api<{
+        status: string;
+        errorCode: string | null;
+        errorMessage: string | null;
+        inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null };
+      }>(`/decision-runs/${queued.id}`, token);
+      expect(completed).toMatchObject({ status: "SUCCEEDED", errorCode: null, errorMessage: null });
+      expect(completed.inputJson.metricLayer).toBe("REALTIME_API");
+      expect(completed.inputJson.realtimeEvidence).toMatchObject({
+        routeKey: "LIVE_DATA_SCREEN",
+        pageType: "LIVE_DATA_SCREEN"
+      });
+    } finally {
+      process.env.LIVE_SCREEN_INTERNAL_API_ENABLED = previous;
+    }
   });
 
   it("imports manual metrics idempotently and queues unknown columns", async () => {
@@ -2108,6 +2338,54 @@ function captureMeta(adapterId: string, fields: string[]) {
     acceptedBytes: 100,
     truncatedFields: [],
     truncationReasons: []
+  };
+}
+
+function internalApiPulseMetric(
+  field: (typeof liveScreenInternalApiContracts.key_index.fields)[number],
+  value: number,
+  displayValue: string
+): VisibleMetric {
+  return {
+    key: field.metricKey,
+    name: field.metricName,
+    value,
+    unit: field.unit,
+    source: "network",
+    metricSource: "XHR_JSON",
+    confidence: 1,
+    rawEvidence: {
+      sourceType: "INTERNAL_API",
+      bindingKind: "CARD",
+      fieldLabel: field.fieldLabel,
+      displayValue,
+      normalizedValue: String(value),
+      displayPrecision: field.displayPrecision,
+      unitSource: field.unit ? "DEFAULT" : "NONE",
+      timeRange: field.timeRange,
+      timeRangeSource: "COMPONENT",
+      timeRangeLocation: "internal-api-contract",
+      componentPath: field.fieldPath,
+      calibrationSignature: `${field.metricKey}|${field.timeRange}|${field.semanticScope}|${field.fieldPath}`,
+      validationStatus: "TRUSTED",
+      validationReasons: [],
+      sourceStatus: "INTERNAL_API",
+      apiCandidate: {
+        value: String(value),
+        displayValue,
+        unit: field.unit,
+        timeRange: field.timeRange,
+        displayPrecision: field.displayPrecision,
+        fieldPath: field.fieldPath,
+        fieldLabel: field.fieldLabel
+      },
+      selectionReason: "仅 API 字段有效",
+      semanticScope: field.semanticScope,
+      apiContractVersion: liveScreenInternalApiContractVersion,
+      apiAdapterVersion: liveScreenInternalApiAdapterVersion,
+      endpointKey: "key_index",
+      evidencePurpose: field.purpose
+    }
   };
 }
 

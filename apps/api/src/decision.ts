@@ -14,7 +14,8 @@ import {
   normalizeCollectionRouteKey,
   type ActionProposalDTO,
   type DecisionEngineInput,
-  type DecisionEngineOutput
+  type DecisionEngineOutput,
+  type RealtimeMetricFrame
 } from "@douyin-local-life/shared";
 import { structureTaskCollectionTables } from "@douyin-local-life/decision-engine";
 import { assessCollectionRunQuality } from "./collection-runs.js";
@@ -27,6 +28,10 @@ import {
 } from "./review-metrics.js";
 import { isConfirmableMetricEvidence } from "./metric-validation.js";
 import { applyTableCellReviews, projectSnapshotTables } from "./table-cell-reviews.js";
+import {
+  applyLiveOverviewRealtimeRouteCoverage,
+  liveOverviewRealtimeDecisionEvidence
+} from "./realtime-decision-evidence.js";
 
 export const strategyVersion = decisionRuleVersion;
 
@@ -110,20 +115,26 @@ export function buildDecisionInput(task: {
     }>;
     routeHealth?: Array<{ routeKey: string; consecutiveFailures: number }>;
   }>;
-}): DecisionEngineInput {
-  if (!task.snapshots.length) {
+}, options: {
+  realtimeFrame?: RealtimeMetricFrame | null;
+  now?: number;
+} = {}): DecisionEngineInput {
+  const realtimeDecisionEvidence = liveOverviewRealtimeDecisionEvidence(options.realtimeFrame, options.now);
+  if (!task.snapshots.length && !realtimeDecisionEvidence) {
     throw new Error("SNAPSHOT_REQUIRED");
   }
   const latestCollectionRun = task.collectionRuns?.[0];
   const collectionRun = latestCollectionRun;
   const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, collectionRun?.id);
-  const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
+  const realtimeCoveredRoutes = new Set(realtimeDecisionEvidence ? ["LIVE_DATA_SCREEN"] : []);
+  const reviewSnapshots = selectedSnapshots.filter((snapshot) => !realtimeCoveredRoutes.has(normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)));
+  const selectedSnapshotIds = new Set(reviewSnapshots.map((snapshot) => snapshot.id));
   const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
   const usableReviewedMetrics = selectedReviewedMetrics(latestReviewedMetrics);
   const hasPendingMetrics = latestReviewedMetrics.some((metric) => metric.reviewStatus === "PENDING");
-  const tableReview = assessTableReviewState(selectedSnapshots);
+  const tableReview = assessTableReviewState(reviewSnapshots);
   const hasUsableTableCells = tableReview.confirmedCount + tableReview.modifiedCount > 0;
-  const hasUntrustedEvidence = selectedSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
+  const hasUntrustedEvidence = reviewSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
     || latestReviewedMetrics.some((metric) => !isConfirmableMetricEvidence(metric.rawEvidence));
   const useReviewedEvidence = (usableReviewedMetrics.length > 0 || hasUsableTableCells)
     && !hasPendingMetrics
@@ -132,6 +143,18 @@ export function buildDecisionInput(task: {
   const collectionQuality = collectionRun
     ? assessCollectionRunQuality(collectionRun.requiredRoutesJson, collectionRun.snapshots, collectionRun.routeHealth)
     : undefined;
+  const reviewedEvidenceMetrics = useReviewedEvidence ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics).map((metric) => ({
+    ...metric,
+    value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value
+  })) : [];
+  const decisionMetrics = mergeRealtimeDecisionMetrics(reviewedEvidenceMetrics, realtimeDecisionEvidence?.metrics || []);
+  const reviewCoverageValue = mergeRealtimeReviewCoverage(
+    latestReviewedMetrics.length || tableReview.totalCount
+      ? mergeReviewCoverage(reviewCoverage(latestReviewedMetrics), tableReview)
+      : undefined,
+    realtimeDecisionEvidence?.metrics.length || 0
+  );
+  const realtimeOnly = Boolean(realtimeDecisionEvidence && !useReviewedEvidence);
 
   return {
     projectId: task.project.id,
@@ -149,12 +172,9 @@ export function buildDecisionInput(task: {
     },
     pageTitle: task.pageTitle || "",
     sourceUrl: task.sourceUrl || "",
-    metrics: useReviewedEvidence ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics).map((metric) => ({
-      ...metric,
-      value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value
-    })) : [],
-    tables: useReviewedEvidence ? selectedSnapshots.flatMap((snapshot) => projectDecisionTables(snapshot)) : [],
-    structuredCollectionData: useReviewedEvidence ? selectedSnapshots.flatMap((snapshot) => {
+    metrics: decisionMetrics,
+    tables: useReviewedEvidence ? reviewSnapshots.flatMap((snapshot) => projectDecisionTables(snapshot)) : [],
+    structuredCollectionData: useReviewedEvidence ? reviewSnapshots.flatMap((snapshot) => {
       const routeKey = normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType);
       const structured = structureTaskCollectionTables(projectDecisionTables(snapshot), {
         routeKey,
@@ -164,12 +184,11 @@ export function buildDecisionInput(task: {
     }) : [],
     visibleText: "",
     networkJsonSummary: [],
-    dataReviewStatus: useReviewedEvidence ? "REVIEWED" : "UNREVIEWED",
-    reviewCoverage: latestReviewedMetrics.length || tableReview.totalCount
-      ? mergeReviewCoverage(reviewCoverage(latestReviewedMetrics), tableReview)
-      : undefined,
-    metricLayer: "REVIEWED_METRIC",
-    collectionQuality
+    dataReviewStatus: useReviewedEvidence || realtimeDecisionEvidence ? "REVIEWED" : "UNREVIEWED",
+    reviewCoverage: reviewCoverageValue,
+    metricLayer: realtimeOnly ? "REALTIME_API" : "REVIEWED_METRIC",
+    collectionQuality: applyLiveOverviewRealtimeRouteCoverage(collectionQuality, realtimeDecisionEvidence?.summary, options.now),
+    ...(realtimeDecisionEvidence ? { realtimeEvidence: realtimeDecisionEvidence.summary } : {})
   };
 }
 
@@ -188,8 +207,9 @@ export function hasUntrustedCurrentEvidence(task: {
   }>;
   reviewedMetrics?: Array<{ snapshotId: string | null; rawEvidence: Prisma.JsonValue | null }>;
   collectionRuns?: Array<{ id: string }>;
-}) {
-  const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, task.collectionRuns?.[0]?.id);
+}, options: { coveredRoutes?: Set<string> } = {}) {
+  const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, task.collectionRuns?.[0]?.id)
+    .filter((snapshot) => !options.coveredRoutes?.has(normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)));
   const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
   return selectedSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
     || (task.reviewedMetrics || []).some((metric) => (
@@ -294,6 +314,28 @@ function mergeReviewCoverage(
     pendingCount: metrics.pendingCount + cells.pendingCount,
     totalCount: metrics.totalCount + cells.totalCount
   };
+}
+
+function mergeRealtimeReviewCoverage(
+  reviewedCoverage: ReturnType<typeof mergeReviewCoverage> | undefined,
+  realtimeMetricCount: number
+) {
+  if (!realtimeMetricCount) return reviewedCoverage;
+  const base = reviewedCoverage || { confirmedCount: 0, modifiedCount: 0, ignoredCount: 0, pendingCount: 0, totalCount: 0 };
+  return {
+    ...base,
+    confirmedCount: base.confirmedCount + realtimeMetricCount,
+    totalCount: base.totalCount + realtimeMetricCount
+  };
+}
+
+function mergeRealtimeDecisionMetrics(reviewedMetrics: DecisionEngineInput["metrics"], realtimeMetrics: DecisionEngineInput["metrics"]) {
+  if (!realtimeMetrics.length) return reviewedMetrics;
+  const realtimeKeys = new Set(realtimeMetrics.map((metric) => String(metric.key)));
+  return [
+    ...realtimeMetrics,
+    ...reviewedMetrics.filter((metric) => !realtimeKeys.has(String(metric.key)))
+  ];
 }
 
 function projectDecisionTables(snapshot: {

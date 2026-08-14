@@ -33,10 +33,20 @@ export const reportCollectionRouteFailureSchema = z.object({
   error: z.string().trim().min(1).max(500).optional()
 });
 
+const legacyDefaultRequiredCollectionRoutes: CollectionRouteKey[] = [
+  "LOCAL_PROMOTION_DASHBOARD",
+  "LIVE_DATA_SCREEN",
+  "TASK_TABLE"
+];
+
 export function requiredRoutesFromJson(value: Prisma.JsonValue | null | undefined): CollectionRouteKey[] {
   if (!Array.isArray(value)) return [...defaultRequiredCollectionRoutes];
   const routes = value.filter((route): route is CollectionRouteKey => collectionRouteKeys.includes(route as CollectionRouteKey));
-  return routes.length ? [...new Set(routes)] : [...defaultRequiredCollectionRoutes];
+  const uniqueRoutes = [...new Set(routes)];
+  if (sameCollectionRouteSet(uniqueRoutes, legacyDefaultRequiredCollectionRoutes)) {
+    return [...defaultRequiredCollectionRoutes];
+  }
+  return uniqueRoutes.length ? uniqueRoutes : [...defaultRequiredCollectionRoutes];
 }
 
 export function assessCollectionRunQuality(

@@ -39,6 +39,26 @@ export type MetricRawEvidence = {
   calibrationSignature?: string;
   validationStatus?: MetricValidationStatus;
   validationReasons?: string[];
+  sourceStatus?: "INTERNAL_API" | "DOM_TEXT" | "API_AND_DOM" | "SOURCE_CONFLICT";
+  apiCandidate?: MetricSourceCandidate;
+  domCandidate?: MetricSourceCandidate;
+  selectionReason?: string;
+  manualSourceSelection?: "API" | "DOM" | "IGNORE";
+  semanticScope?: string;
+  apiContractVersion?: string;
+  apiAdapterVersion?: string;
+  endpointKey?: string;
+  evidencePurpose?: "PULSE_ONLY" | "SNAPSHOT_EVIDENCE" | "SNAPSHOT_DISPLAY_ONLY";
+};
+
+export type MetricSourceCandidate = {
+  value: string;
+  displayValue: string;
+  unit: string | null;
+  timeRange: string;
+  displayPrecision: number;
+  fieldPath: string;
+  fieldLabel: string;
 };
 
 const currencyMetricKeys = new Set([
@@ -47,7 +67,7 @@ const currencyMetricKeys = new Set([
   "service_fee", "platform_subsidy", "ad_coupon", "rebate_coupon"
 ]);
 
-const percentageMetricKeys = new Set(["ctr", "complaint_rate", "refund_rate", "fulfillment_exception_rate"]);
+const percentageMetricKeys = new Set(["ctr", "product_click_rate", "product_conversion_rate", "live_room_click_rate", "complaint_rate", "refund_rate", "fulfillment_exception_rate"]);
 const roiMetricKeys = new Set(["pay_roi", "full_domain_pay_roi", "verify_roi", "gross_profit_roi", "target_roi"]);
 
 export function metricValueSemantic(metricKey: string): MetricValueSemantic {
