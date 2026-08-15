@@ -1,5 +1,11 @@
 # Deployment State
 
+## 2026-08-16 v0.2.4 发布制品与 GitHub Release（非商店上架）
+
+- 已从干净 `main`（`48b3758adf51`）构建生产版 zip 并通过制品安全校验，发布到 GitHub Release `v0.2.4`，资产为 zip 与 sha256。
+- 这是发布制品与版本标记，不是 Chrome Web Store 上架，也不是服务器部署、DNS 或流量切换；未执行 migration、`db push`、业务数据写入或平台操作。
+- 本地运行态、PostgreSQL、API/Web 容器与采集协议均未改动。
+
 ## 2026-08-14 本机经营数据统一大屏运行态（非生产部署）
 
 - 本机 Web 已切换为 `pxxis-prelaunch-20260713-web:unified-dashboard-20260814`，继续绑定 `127.0.0.1:3300`，构建时注入 `NEXT_PUBLIC_API_URL=http://127.0.0.1:4300`；容器健康检查通过，首页 HTTP 200。

@@ -2,6 +2,25 @@
 
 > 当前执行项以本文最上方最新日期为准；下方旧“待完成/下一步”仅用于历史追溯，若与本节冲突，以本节和最新安全边界为准。
 
+## 2026-08-16 v0.2.4 生产版发布包与 GitHub 发布
+
+### 已完成
+
+- 从干净 `main`（`48b3758adf51`）构建生产版扩展发布包 `apps/extension/release/collector-v0.2.4-48b3758adf51.zip`，并通过 `artifact-policy` 生产制品安全校验（生产权限、Host、Content Script 白名单与禁用标记检查）。
+- 发布包元数据：产品 `0.2.4`、source fingerprint `1a4bc20a9d72`、Schema `20260731_v035_ai_skill_diagnosis`、`buildTarget=production`、`localTestOnly=false`；sha256 `eb2dc55bff630b2df938253d57281bac0e6960fac3148de0bdca4b97f509dab6`。
+- 已提交发布制品并创建标注 tag `v0.2.4`，推送到 `origin/main` 与远端 tag `v0.2.4`。
+- 已创建 GitHub Release [v0.2.4](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.4)，并上传 zip 与 sha256 两个资产。
+
+### 待人工确认
+
+1. 是否继续将生产版 zip 上传到 Chrome Web Store（首次上架需开发者账号、商店条目、隐私政策与权限说明，并需人工登录开发者后台）。
+2. 确认发布版本号无需再升版（当前沿用 `0.2.4`，与各 workspace 包和 manifest 一致）。
+
+### 约束
+
+- 未修改 Prisma Schema、数据库、迁移、对外接口、采集协议或 Extension 源码；未执行 `db push`、生产部署或平台自动操作。
+- Chrome Web Store 上传尚未开始，待用户确认目标与账号状态。
+
 ## 2026-08-14 经营数据统一大屏（代码与本机运行态已完成，待真实任务刷新确认）
 
 ### 已完成

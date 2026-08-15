@@ -2,6 +2,12 @@
 
 > 当前有效状态以本文最上方最新日期为准；下方同名版本、旧指纹和旧测试数量均为历史交接记录，不再代表当前源码。
 
+## 2026-08-16 v0.2.4 发布交接
+
+- 生产版扩展 zip 已构建：`apps/extension/release/collector-v0.2.4-48b3758adf51.zip`，source fingerprint `1a4bc20a9d72`，sha256 `eb2dc55bff630b2df938253d57281bac0e6960fac3148de0bdca4b97f509dab6`。
+- tag `v0.2.4` 与发布制品已推送；GitHub Release https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.4 已创建。
+- Chrome Web Store 尚未上架；如继续上架，需用户已登录开发者后台并提供商店条目、隐私政策与权限说明。
+
 ## 2026-08-14 经营数据统一大屏与采集线路交接
 
 - 采集校准页已改为“经营数据大屏”：原独立“API 实时数据”和“全任务核心指标”合并为一个“经营数据总览”。页面只表达“投放经营 / 直播现场 / 持续更新”，不再向运营用户展示 API、端点等技术口径。
