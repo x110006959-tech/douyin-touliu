@@ -5,7 +5,7 @@
 - 已将实时采集、经营大屏、本地推受限内部 API、扩展状态隔离与对应回归测试提交到源码基线 `4ddacd590d55`；版本一致性为 `0.2.5`。
 - 已通过 `corepack pnpm lint`、`typecheck`、`build`、`test`、Prisma `validate`/`generate` 与 `git diff --check`；全仓测试为 493 项，其中 API 29 个测试文件、143 项测试通过。
 - 已按仓库发布脚本生成生产扩展包 `apps/extension/release/collector-v0.2.5-4ddacd590d55.zip`，`localTestOnly=false`；SHA-256 为 `95ac90bb5bb7637d47c6586cd0db787702a201b93d2fdfdb3ef283b2b7f7b94b`。
-- 计划将当前最终提交标记为 `v0.2.5` 并推送 `main` 与标签，GitHub Release 地址为 [v0.2.5](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.5)。本次不执行生产部署、migration、`db push` 或任何平台操作；数据库、Prisma Schema 与业务数据不变。
+- 已将归档提交标记为 `v0.2.5` 并推送 `main` 与标签，GitHub Release 地址为 [v0.2.5](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.5)。本次不执行生产部署、migration、`db push` 或任何平台操作；数据库、Prisma Schema 与业务数据不变。
 
 ## 2026-08-28 本地推平台限流节拍收口
 
