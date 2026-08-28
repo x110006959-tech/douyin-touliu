@@ -18,7 +18,12 @@ export function AuthRequiredState({
       <Card>
         <CardTitle>需要重新登录</CardTitle>
         <p className="mb-4 text-sm text-muted">{message}</p>
-        <Link className="text-sm font-medium text-primary hover:underline" href={createLoginHref(returnTo)}>前往登录</Link>
+        <Link
+          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white transition hover:opacity-90"
+          href={createLoginHref(returnTo)}
+        >
+          返回登录
+        </Link>
       </Card>
     </main>
   );

@@ -60,6 +60,17 @@ export function latestRealtimeMetricFrame(collectionTaskId: string, now = Date.n
   return latest && now - latest.receivedAt <= pulseRetentionMs ? toRealtimeMetricFrame(collectionTaskId, latest) : null;
 }
 
+export function latestRealtimeMetricFrames(collectionTaskId: string, now = Date.now()) {
+  const latestByRoute = new Map<string, StoredPulse>();
+  for (const pulse of pulseStore.get(collectionTaskId) || []) {
+    if (now - pulse.receivedAt > pulseRetentionMs) continue;
+    latestByRoute.set(pulse.routeKey, pulse);
+  }
+  return [...latestByRoute.values()]
+    .sort((left, right) => left.receivedAt - right.receivedAt)
+    .map((pulse) => toRealtimeMetricFrame(collectionTaskId, pulse));
+}
+
 export function subscribeRealtimeMetricFrames(collectionTaskId: string, listener: MetricFrameListener) {
   const taskListeners = metricFrameListeners.get(collectionTaskId) || new Set<MetricFrameListener>();
   taskListeners.add(listener);
@@ -85,7 +96,7 @@ function toRealtimeMetricFrame(collectionTaskId: string, pulse: StoredPulse): Re
     observedAt: pulse.localCapturedAt,
     receivedAt: new Date(pulse.receivedAt).toISOString(),
     metrics: pulse.metrics,
-    successfulEndpoints: pulse.captureMeta.liveScreenInternalApi?.endpointStatuses
+    successfulEndpoints: (pulse.captureMeta.liveScreenInternalApi || pulse.captureMeta.localPromotionInternalApi)?.endpointStatuses
       .filter((status) => status.status === "SUCCESS")
       .map((status) => status.endpoint) || []
   };

@@ -1,11 +1,11 @@
 {
   "name": "@douyin-local-life/extension",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node scripts/build.mjs --target=local",
-    "build": "node scripts/build.mjs --target=local --dist-only",
+    "build": "node scripts/build.mjs --target=local",
     "build:local": "node scripts/build.mjs --target=local",
     "build:production": "node scripts/build.mjs --target=production",
     "package:candidates": "node scripts/package-candidates.mjs",

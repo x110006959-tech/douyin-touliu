@@ -28,6 +28,7 @@ describe("displayed metric value parsing", () => {
 
   it("maps metric semantics without inferring ROI as a percentage", () => {
     expect(metricValueSemantic("pay_roi")).toBe("ROI");
+    expect(metricValueSemantic("full_domain_gmv")).toBe("CURRENCY");
     expect(metricValueSemantic("ctr")).toBe("PERCENTAGE");
     expect(metricValueSemantic("product_conversion_rate")).toBe("PERCENTAGE");
   });

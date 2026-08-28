@@ -1,5 +1,240 @@
 # Project State
 
+## 2026-08-28 本地推 API 平台限流缓解
+
+- `liveReportPromoteMeta` 返回 `HTTP_429` 时仍按安全规则立即停止，不自动重试。
+- 用户已将直播和本地推实时采集统一为固定 30 秒节拍；本地推的 429 失败仍设置 60 秒人工重开冷却。
+- 解包 Extension 已重建；经营数据总览在收到实时帧后立即刷新，并明确显示实时 API 约每 30 秒更新一次。本机 3300 Web 已切换到 `dashboard-pulse-cadence-30s-20260828`，healthy、首页 HTTP 200；API `/ready` HTTP 200。未改采集端点、字段、数据库、Prisma 或 API 容器。全仓 lint/typecheck/build 与 493 项测试通过。
+
+## 2026-08-28 本机 Docker 资源清理
+
+- 已删除 5 个已停止、无挂载的本项目旧 Web/API 回退容器及其 5 个不再使用的旧项目镜像标签。
+- 当前本项目仅保留运行中的 Web、API、PostgreSQL；其他项目容器、所有 Docker 数据卷和业务数据库均保留。3300/4300 仍可用且健康。
+
+## 2026-08-28 经营大屏小时趋势已移除
+
+- 经营数据总览不再展示“小时趋势”卡片，页面在全域指标后直接进入主屏统计与后续采集线路。
+- `HOURLY_ROWS` 的采集数据、共享类型和服务端返回保持兼容，本次只收窄 Web 展示，没有数据删除、Schema 变化或采集范围变化。
+- Web 41 项及全仓 493 项测试通过，全仓 lint/typecheck/build 通过。
+- 本机 `127.0.0.1:3300` 已切换到 `pxxis-prelaunch-20260713-web:dashboard-no-hourly-trend-20260828`，容器 healthy、首页 HTTP 200，运行产物确认不含“小时趋势”；API 与 PostgreSQL 未替换。
+
+## 2026-08-28 本地推指标直显修复
+
+- 本地推 API 每轮实际成功上传 13 项，但旧经营大屏把其中同名字段并入直播卡，下半区只剩 5 个全域字段；在当前帧它们都为 `0`，造成“下方没有数据”的误导。
+- 下半区现固定按本地推实时帧直接展示完整 13 项，依共享采集契约排序；上方仅展示直播路线。两条路线继续独立，不相加、不换算、不以历史或模拟值覆盖真实零值。
+- 本机 Web 运行镜像更新为 `pxxis-prelaunch-20260713-web:dashboard-local-direct-20260828`，3300 healthy、API 4300 ready。已通过 Web typecheck、41 项测试、production build 和根目录 lint；无数据库、Schema、采集或生产环境变更。
+
+## 2026-08-28 经营大屏视觉二次调整
+
+- 用户截图反馈原全域区仍显得浅色、紧凑且与主屏不协调后，已将该区改为统一的深蓝/蓝紫信息层级；关键全域数据卡扩大为优先三列布局和更大数值字号。
+- 全域区不再显示候选数量或候选展开项，采集到的主值直接显示；完整来源、复核和冲突证据仍由既有详细数据区域承载，真实零值、缺失值和安全数据边界不变。
+- 本机 Web 运行镜像为 `pxxis-prelaunch-20260713-web:dashboard-harmony-20260828`，3300 healthy、HTTP 200；API 4300 `/ready` HTTP 200。已通过 Web 41 项测试、全仓 typecheck 与 build；无 Prisma、数据库、采集或生产环境变更。
+
+## 2026-08-28 经营大屏全域数据视觉收口
+
+- 全域经营区、概览标题和采集线路已统一为蓝紫/深靛的信息层级；卡片不再以白底从主大屏中割裂，桌面采用紧凑 5 列指标网格，窄屏按既有响应式规则自然折行。
+- 数据展示语义保持可信：全域指标继续只取本地推路线，实时 API 的真实 0 不会被伪造成历史非零值；缺失、无效、忽略和冲突分别保留状态及可展开的来源详情。
+- 已完成根目录 lint、typecheck、test（Shared 62、Extension 189、Web 41、Decision Engine 39、Diagnosis Skills 5、LLM 14、API 142，合计 492）、build、Prisma validate/generate 与 diff check。未改数据库、Schema、采集范围、运行容器或生产环境。
+
+## 2026-08-28 本机 Docker 资源状态
+
+- 已清理本机项目历史回退资源：5 个退出的 `pxxis-prelaunch-20260713` Web/API 容器及其未使用旧镜像标签已删除。
+- 当前保留并运行：Web `dashboard-route-gate-20260828`、API `local-plugin-v0.2.5`、PostgreSQL；Web/API/PostgreSQL 均 healthy，3300/4300 健康检查正常。
+- 未删除 Docker 数据卷，未修改数据库、配置、Schema、采集数据或其他项目容器。
+
+## 2026-08-28 采集页大屏入口路线门禁
+
+- 任务第 2 步新增显式“下一步：进入经营数据大屏”。两条主路线未齐全时展示灰色禁用态和缺少路线；两条均具备完整实时指标或正式采集结果后才启用。
+- 直播实时路线以 7 项白名单核心指标判定，本地推实时路线以 13 项 API 白名单指标判定；任何部分实时帧都不能放行。正式采集结果仍兼容既有 `UPLOADED` 状态。
+- 页面停留期间完成最后一条路线会自动跳转；已完成后返回此页仍可手动进入大屏。没有修改采集范围、API、数据库、Prisma Schema 或诊断正式门禁。
+- 本机 `3300` Web 已更新为 `pxxis-prelaunch-20260713-web:dashboard-route-gate-20260828`，healthy、HTTP 200；API 与数据库运行态未改变。
+
+## 2026-08-28 经营大屏本机运行态已更新
+
+- 用户截图的页面与已改造的源码不一致，根因是本机 `3300` 端口仍在运行 2026-08-27 的旧 Web 镜像，而不是数据投影或页面组件回退。
+- 当前 `pxxis-prelaunch-20260713-web-1` 已切换至 `pxxis-prelaunch-20260713-web:dashboard-overview-20260828`，容器 healthy、首页 HTTP 200；独立浏览器标签页已确认任务页含“经营数据总览”“直播间成交金额”“投放经营 / 全域数据”等新版结构。
+- API 保持 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5`、PostgreSQL/数据卷/Schema/业务数据/Extension 均未改动。旧 Web 容器以 `pxxis-prelaunch-20260713-web-1-before-dashboard-overview-20260828` 停止保留，供本机人工回退。
+- 这只是本机验收运行态的 Web 展示更新，不是生产部署；已打开的旧浏览器标签页需要硬刷新或重新进入任务大屏。
+
+## 2026-08-28 经营大屏合并投影与视觉改版
+
+- API 的 `CollectionDashboardDTO` 现在以新增 `overviewCards` 提供统一显示投影：直播间成交金额、订单、GPM、观看时长、在线人数、转化率等主卡按实时 API → 直播快照 → 本地推同口径候选选择；全域消耗、成交金额、订单、支付 ROI、商品点击保持本地推口径，不跨范围求和。
+- 每张卡携带来源路线、来源类型、更新时间、复核状态、候选来源、统计范围和冲突状态；不返回平台原始响应、Cookie 或 Token。缺失、空值、忽略、非法和冲突均有明确状态，原始证据仍走既有详情/复核链路。
+- Web 任务页已换成深色渐变主卡 + 指标网格布局，并保留真实小时趋势、采集线路、详细表格、人工校准和诊断入口；实时帧按 `routeKey` 通过共享规则重新投影，直播与本地推不会串线。
+- 本轮没有 Extension 采集范围、数据库字段、Prisma Schema、正式诊断输入或生产配置变化。定向 Shared/Web/API 回归与根目录 typecheck、test（共 492 项）、build、lint、Prisma validate/generate 均已通过。
+
+## 2026-08-28 插件版本 0.2.5 本机联调状态
+
+- 根包与全部工作区包已同步为 `0.2.5`；本地解包 Extension 已重建到 `apps/extension/release/local-unpacked-test-extension`，manifest/build metadata 为 `0.2.5`，Bridge `8`、采集协议 `8`、源码指纹 `a8ed2e9f7b77`。
+- 本地推 API 契约保持 `2026-08-28.1 / Adapter 1.2.0` 和 13 项目标不变；没有新增“整体支付ROI”，`full_domain_pay_roi` 仍为唯一支付 ROI API 键。
+- 本机 4300 端口 API 已更新到 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5`，`/ready` database ready，`/version` 产品/插件均为 `0.2.5`；旧容器保留回退，数据库、Schema、数据卷与业务数据未改动。
+- 这是本机验收版本，不代表生产发布或 Chrome 商店上架；Chrome 仍需用户手动重载并刷新目标页面。
+
+## 2026-08-28 双页 API 持续采集并行状态（待 Chrome 验收）
+
+- 已修复扩展 Service Worker 的错误全局互斥：直播数据大屏和本地推 `liveboard2` 现在按 `tabId` 各自维护 PulseState、页面活动、上传进度和最近停止结果，可同时采集。
+- 同一标签页仍保持单会话保护；标签关闭、导航、身份变化、危险响应和连续失败只影响对应标签页，不清理另一页的会话。
+- Popup 通过当前标签页筛选 `livePulses`，停止命令携带目标 `tabId`；旧版单状态存储可平滑解析为新按标签页对象。服务端无新增接口、Schema 或数据库字段。
+- 当前解包插件已重建，源码指纹 `a8ed2e9f7b77`；Extension 189 项、全仓 487 项测试以及 typecheck/lint 已通过。真实双页运行仍需用户重载插件并分别手动开启。
+
+## 2026-08-28 本地推截图字段核对与 13 项契约升级
+
+- 已对当前登录态页面做只读开发者检查，确认截图里的 13 个指标卡均有真实 DOM 展示值：前 8 项属于平台数据集分组 `group_total_data`，后 5 项属于 `roi2_promotion`。旧版 `4/7` 只反映旧插件白名单，不代表网页缺少数据。
+- 共享本地推 API 契约已升级为 `2026-08-28.1`，适配器为 `1.2.0`，API 目标键为 `total_watch_count`、`gmv`、`orders`、`gpm`、`live_viewers`、`clicks`、`average_watch_duration_seconds`、`current_online_viewers`、`spend`、`full_domain_gmv`、`full_domain_orders`、`full_domain_pay_roi`、`full_domain_product_clicks`。
+- 采集仍是固定 `pageMetrics` 元数据 + 固定 `statQuery` 两组值查询；仍只投影 `data.StatsData.Totals[metric].Value`，保留白名单、身份校验、敏感字段/大小/Schema 门禁和脱敏失败日志。`daily_budget` 继续 DOM-only，未借用到 API 目标。
+- `full_domain_*` 键用于实时脉冲区分“整体”与“全域”同名指标；MetricPulse/服务端证据校验允许字符串键，不增加 Prisma 字段或数据库迁移。
+- Popup 初始覆盖为 `0/13`；扩展侧栏按 `routeKey` 区分直播 7 项与本地推 13 项，未知路线只显示等待状态，避免旧 `0/7` 误导。
+- 最终本地解包制品为 `apps/extension/release/local-unpacked-test-extension`，指纹 `f4f61b2bb11d`；本轮扩展回归 47 项通过，完整 486 项测试（Extension 188）以及 lint、typecheck、build、Prisma validate/generate、version check 和 diff check 已通过。
+- 本机 4300 端口 API 已按授权切换到 `pxxis-prelaunch-20260713-api:local-promotion-api-20260828`，healthy 且 `/ready` 返回 database ready；容器内共享契约已核对为 `2026-08-28.1 / 1.2.0`，`/version` 提交为 `4ffdf9d3a639`。
+- 旧 API 已停止保留为 `pxxis-prelaunch-20260713-api-1-before-local-promotion-api-20260828`；Web 仍 healthy。已删除 4 个更早、无挂载的退出 API/Web 容器，运行中的数据库、缓存、网关、数据卷和业务数据未改变。
+- Chrome 真实登录态采集仍待用户手动重载最终解包插件并复测；当前尚无新版 13 项脉冲上传证据。
+
+## 2026-08-28 本地推真实脉冲复测：4/7
+
+- 用户截图显示最新插件已开启 API 持续采集，成功上传 3 次，覆盖 `4/7`，缺失“消耗、曝光量、点击量”。
+- 运行中 API 日志在对应时间段连续接受本地推脉冲，每次 `metricCount: 4`，`pageMetrics` 与 `statQuery` 均成功；服务端固定契约校验通过后才写入内存实时信号，因此这 4 项属于真实接口返回并通过白名单校验的字段。
+- 目前可确认的 4 项是 GMV/成交金额、成交订单数、整体支付 ROI、全域支付 ROI；服务端不保存原始平台响应，无法仅凭日志核对数值原文，数值对账仍需用户将平台卡片与同一时刻采集结果人工比较。
+- 缺失项不是接口整体故障：平台公开数据卡分组未提供可安全对应的消耗、曝光量、点击量；不把观看人数或分项点击/千次曝光借用为核心字段。下一轮根据 Popup 的脱敏日志继续定位账号实际元数据。
+
+## 2026-08-28 Chrome 只读复测状态
+
+- Chrome 只读发现精确 `liveboard2` 标签页仍在，URL 含完整广告/房间上下文；读取用户标签页 DOM 或开发者日志时连接超时，因此没有新的真实采集结果，也没有执行平台动作。
+- 最新本地制品为 `bacad9441bcc`，已确认 release 目录实际包含嵌套 `Groups` 分组解析和脱敏日志复制入口；真实验收必须由用户重载扩展、刷新页面并手动启动采集后提供指标覆盖和脱敏日志。
+- Extension 默认 `build` 现在会同步 `release/local-unpacked-test-extension`；只有显式传入 `--dist-only` 才只写入 `dist`，避免源码与用户重载制品再次不一致。
+- 静态前端包复核还确认“商品点击数”“千次曝光”不是可直接替代核心“点击量/曝光量”的同口径字段，白名单暂不扩大。
+- 无登录态只读请求能到达 `pageMetrics` 接口并返回“未登录”，进一步排除“接口完全不可达”，但仍没有登录态下的真实指标响应。
+- 本机 API `/ready` 与 `/version` 均返回 200，数据库 ready、产品 `0.2.4`、采集协议 `8`，当前未发现本机服务版本冲突。
+- 运行中的 API 容器已开启 `LOCAL_PROMOTION_INTERNAL_API_ENABLED=true`；近 24 小时服务端日志未发现新的本地推脉冲请求，说明用户尚未完成最新一轮实际采集。
+
+## 2026-08-27 本地推分段式部分采集状态
+
+- 用户现场的 `liveboard2` 页面可正常显示平台数据，但插件先停在 `pageMetrics / BUSINESS_ERROR`，补齐平台默认的 `advid` 后进一步暴露为 `NO_USABLE_METRICS`，说明请求上下文已修正而标签匹配仍需适配。
+- 本地推契约保持 `2026-08-26.1 / Adapter 1.1.1`，固定端点和七项白名单指标不变；已允许已批准标签的单位后缀归一化、缺失指标跳过，以及可恢复 statQuery 分组失败后继续尝试。若 `/v2 statQuery` 明确返回业务失败，仅对同一分组追加一次固定 `/v3` 兜底并记录 `V3_FALLBACK`；危险响应和结构漂移仍安全停止，不扩大指标口径。
+- 当前本地 unpacked 已同步重建为 `0.2.4 / Bridge 8 / bacad9441bcc`，release Service Worker 已核对包含嵌套 `Groups` 分组解析、`advid`、单位归一化、`PARTIAL_METRICS`、v2 业务失败后的固定 v3 兜底、可恢复分组继续逻辑和受限元数据诊断日志；Popup 高级面板新增脱敏采集日志、端点原因、未采到指标列表和一键复制日志入口，固定错误码同时显示中文解释，部分成功/备用接口也会留痕。无 Prisma Schema、migration、数据库业务数据、服务端配置或部署变化。
+- 平台公开前端包中的表格/趋势标签已做只读对账；其中“观看人数”仍明确排除在曝光量映射之外，表格专用字段不跨组件口径借用。
+- 平台公开包同时表明，账号命中 `userInfo.whiteList.bff_monorepo_data_interface` 时才切换 `/api/lamp/pc/v3`；当前插件以固定 `/v2` 为主，仅在明确业务失败时走一次受控 `/v3` 兜底，不做猜测式放宽。
+- 已通过全仓 lint、typecheck、test（484 项；Extension 187 项）、build、Prisma validate/generate、version check、git diff --check。真实 Chrome 仍需用户手动重载扩展并刷新平台页后复测实际可采集数量。
+
+## 2026-08-27 一键直连与本地推最终代码状态
+
+- 网页直连、Popup 手动兜底和服务端绑定均使用同一精确任务心跳语义；网页流程不产生 Popup 待确认状态，配对响应只返回脱敏结果。`PAIR_TASK` 仅接收 `code`、`apiBaseUrl`，`GET_STATUS`、`SYNC_CURRENT_TASK` 禁止接收网页 payload，任务上下文仅取受信发送标签页。
+- 任务页以连接代次隔离一键配对与 5 秒只读轮询，旧 Bridge/服务端结果不能覆盖新配对；只有本地凭证、当前任务绑定和服务端心跳三项同时成立才进入采集看板。瞬时心跳/上下文失败不再误生成新配对码。
+- 本地推契约为 `2026-08-26.1 / Adapter 1.1.1`。启动前精确核对服务端版本；元数据歧义、重复分组、逐端点累计字节超限、任一固定端点失败或重复指标均失败关闭，不记录原始响应或平台指标 ID。
+- 失败状态持续保留固定原因和 `pageMetrics`、`statQuery` 或 `metric-pulses` 最后端点；401/429、敏感响应、字节超限、Schema 漂移和身份变化立即停止，其他失败连续三次停止。
+- Extension 本地构建已改为直接打包当前 shared 源码并将构建脚本纳入指纹，避免源码为新版本但 unpacked 仍使用旧 dist。当前制品为 `0.2.4 / Bridge 8 / 4f976bd1ead0`，编译值已确认 Adapter `1.1.1`。
+- 已重新通过 Extension 178、Web 41、API 142、全仓 475 项测试；本轮最终 lint/typecheck/build、Prisma validate/generate、version check、git diff --check 也全部通过，本地 unpacked 已重建并核对 Adapter `1.1.1`。无 Prisma Schema、migration、数据库业务数据、运行配置或部署变化；真实 Chrome 重载与平台首轮请求待用户人工验收。
+- 已只读确认现有 Chrome 任务页仍加载此前的 `b67c76ea556c / 协议 8` 制品，且显示插件已连接、当前任务服务端已验证；它不是本轮 `4f976bd1ead0` 制品，不能代表最新网页直连或本地推首轮 API 采集已验收。精确 `liveboard2` 页刷新和用户手动启动持续采集仍待验收。
+
+## 2026-08-26 一键直连、持续采集状态与内部 API 契约收口
+
+- Popup 现在以最新渲染代次为准，并在启动/停止动作期间暂停只读轮询，避免旧的状态检查把持续采集按钮瞬间回退为“开始”。
+- 若首轮 API 请求已造成后台安全停止，点击成功提示不会覆盖最后的固定错误；用户可看到 `pageMetrics`/`statQuery` 等脱敏端点和可行动原因。
+- Service Worker 只允许当前采集会话停止自己；同一广告/直播身份的 SPA URL 更新不会误触发导航停止，跨页面持续采集占用不会被新请求静默替换。
+- Content Script 回调和上传请求携带会话 `loopId`，旧循环响应不能停止新循环；网页直连和 Popup 配对在兑换前拒绝已有其他任务的持续采集占用。
+- 已配对任务的自动切换在目标任务心跳成功后才提交本地配置；网页固定配对错误保持可行动的重新连接入口。
+- 本地推 `pageMetrics` 现只作为固定模块/数据集/分组/指标标签元数据入口，实际七项值只由固定 `statQuery` 的 `StatsData.Totals[metric].Value` 读取；平台 ID 仅按固定标签和三组白名单唯一匹配，未匹配或歧义即安全停止。
+- 本地推 API 请求范围、白名单指标、三次失败保护与安全停止边界未改变。Extension 167 项、全仓 461 项测试及 lint/typecheck/build、Prisma validate/generate、版本/差异检查已通过。
+- 本地 unpacked 当前为 `0.2.4 / Bridge 8 / 3c35e0fb2413`；真实 Chrome 重载、首轮请求和持续采集仍待人工验收，无数据库或运行配置变化。
+
+## 2026-08-26 登录失效入口补齐
+
+- 通用登录失效页和账号诊断工作台均提供明确的“返回登录”按钮。
+- 工作台仅对服务端 `UNAUTHORIZED` 显示该入口；跳转前清理会话并使用安全回跳地址，不影响普通接口错误提示。
+- Web 定向 typecheck 与 39 项测试通过；无数据库 Schema、运行配置、部署或插件行为变化。
+
+## 2026-08-26 一键直连与本地推失败诊断补漏状态
+
+- 网页 `PAIR_TASK` 已彻底与 Popup 待确认状态分离；配对凭证和绑定上下文在任务页精确心跳确认前不会落入本地存储。Popup 手动入口在可识别任务页时使用相同心跳语义。
+- 任务页桥接响应丢失的恢复路径已收口为只读轮询三项校验；固定错误码不再被轮询覆盖。版本检查覆盖采集协议与插件产品版本。
+- 本地推 API-only 失败诊断现在保留 `pageMetrics`/`statQuery` 或 `metric-pulses` 最后端点，原始服务端错误文本不进入状态；Schema 漂移、429、敏感响应、字节超限和身份变化安全停止，API 核心覆盖为 7 项。
+- 验证基线为 Extension 155、Web 39、全仓 448 项测试，lint/typecheck/build、Prisma validate/generate、version check、git diff --check 通过；本地 unpacked 为 `ce48849f4951`。
+- 未改变 Prisma Schema、migration、数据库业务数据、部署和平台动作边界；真实 Chrome 重载、网页直连和真实平台采集仍待用户人工验收。
+
+## 2026-08-26 当前连接与本地推状态
+
+- 网页一键连接已改为直接兑换并绑定当前任务，成功心跳确认后自动跳转采集看板；Popup 二次确认仍作为手动兜底入口。
+- 自动连接只信任 `sender.tab.url`，并强制核对配对码任务 ID，避免跨任务绑定。
+- 本地推 API-only 持续采集继续使用固定 `pageMetrics` + `statQuery` 白名单和三次失败保护，失败状态携带脱敏端点与固定原因。
+- 代码与测试已通过，真实 Chrome 重载、网页直连和真实平台接口响应仍待用户手动验收；未改变数据库 Schema、迁移、AI/Worker 或平台动作边界。
+
+## 2026-08-25 本地推旧 Content Script 防误启状态
+
+- 本地推 API 持续采集启动前新增本页 Content Script 与 Service Worker 构建指纹一致性检查。扩展重载但未刷新目标后台页时，系统会提示刷新该页，不会进入三次失败循环、不会请求平台 API，也不会回退 DOM。
+- 当前本地 unpacked 指纹为 `eb5e75cb9075`，产品版本仍为 `0.2.4`，Bridge/采集协议仍为 `8`。Extension typecheck、150 项测试与本地构建已通过。
+- 无 Prisma Schema、数据库、服务端容器、运行配置或安全边界变化；真实平台请求和人工首帧验收尚未发生。
+
+## 2026-08-25 扩展重载恢复与本机 Web 运行态
+
+- Chrome 已现场证明：重载 unpacked 扩展后，已打开任务页的旧 Content Script 会进入 `Extension context invalidated`，必须刷新页面才能加载新脚本；这不是服务端或新版 Service Worker 崩溃。
+- Web Bridge 已能脱敏返回 `EXTENSION_CONTEXT_INVALIDATED`，任务页异常区提供真正有效的“刷新当前页面”操作。新版 unpacked 指纹为 `36d8284e5dd7`，Bridge/产品版本仍为 `8 / 0.2.4`。
+- 本机 Web 运行镜像为 `pxxis-prelaunch-20260713-web:bridge-reload-recovery-20260825`，容器 healthy、任务页 HTTP 200；旧 Web 作为停止回退副本保留。API/PostgreSQL、端口、数据卷、Schema 和业务数据未变。
+- 全仓 lint、typecheck、442 项测试、build、Prisma validate/generate、version、Compose config 与 diff check 已通过。当前浏览器仍需重新加载新指纹并完成一次人工配对与真实持续采集验收。
+
+## 2026-08-25 API 持续采集稳定性与本地推 API-only 状态
+
+- 直播与本地推持续采集都允许源标签处于 `HIDDEN`；只有源标签真正刷新/离开精确页、身份变化、关闭或安全失败才停止。Content Script 与 Service Worker 的瞬时通信最多重试三次。
+- 本地推平台请求现在只在 Extension Service Worker 发起。Host permission 仍只包含精确受信域名；请求 URL 与请求体由共享固定契约生成，内容脚本不能指定任意端点。
+- 本地推 Popup 已没有 DOM 快照按钮，后台也拒绝本地推快照消息；实时帧继续只进入有界内存/SSE/已验证诊断证据，不增加 `DataSnapshot`。
+- 工程基线为 441 项测试，lint/typecheck/build、Prisma validate/generate、version/Compose/diff 检查全部通过。本地 unpacked 指纹为 `0718bfb63416`。
+- API/Web/PostgreSQL 容器、数据库 Schema、业务数据和配置均未改变；真实 Chrome 尚需手动重载并执行切标签与本地推首帧验收。
+
+## 2026-08-24 任务页 Extension 自动同步状态
+
+- 当前源码 Bridge 协议为 `8`，任务页支持首次进入自动检测并切换同一已配对账号下的当前任务；任务身份只由 Extension 从可信任务页 URL 获取，服务端账号上下文负责归属校验。
+- `GET_STATUS` 已是纯本地只读，5 秒轮询不会切换任务、刷新上下文或上报心跳；`SYNC_CURRENT_TASK` 只在首次进入或用户手动重新检测时执行。
+- 活动持续采集会阻断所有任务切换且不会被系统自动停止。凭证失效、异账号、API 超时和心跳失败都有独立失败码、说明和最小操作入口；正常状态不显示连接按钮。
+- 工程基线：lint、全仓 typecheck、436 项测试、全仓 build、Prisma validate/generate、version check、Compose config、diff check 通过。本地 unpacked 指纹为 `c0fefa29d3f6`。
+- 本机运行态已切换为当前工作树构建的 `task-auto-sync-bridge8-20260824` Web/API 镜像，两项容器 healthy；运行 Web/API 均为 Bridge 8，API database ready，Web HTTP 200。旧容器停止保留可回退。
+- PostgreSQL 仍为容器 `4b3e9e0a2120` 和数据卷 `pxxis-prelaunch-20260713_postgres-data`，核心表计数切换前后不变。Chrome 本机页面已只读识别 `0.2.4 / Bridge 8 / c0fefa29d3f6`；用户原任务页仍需刷新并人工验证具体异常场景。
+- 本轮无 Schema、migration、`db push`、业务数据写入、真实平台操作、commit、push 或生产部署。
+
+## 2026-08-22 Popup 本地推 API 状态隔离修复
+
+- 修复 Popup 将其他标签的直播 PULSE 投影到本地推页面的问题；本地推页现在只显示当前标签、当前 `LOCAL_PROMOTION_DASHBOARD` 路线的持续采集状态。
+- PULSE 区标题随页面切换为“巨量本地推 API 采集”或“直播 API 采集”，避免误导用户把直播状态当作本地推状态。
+- Extension typecheck、143 项测试和本地构建通过；unpacked 指纹为 `2d98d7dfa35e`。未修改后端、数据库或采集安全边界。
+
+## 2026-08-22 本机本地推 API 灰度运行态
+
+- 本机 API/Web 已切换至当前工作树构建的 `local-promotion-api-20260822` 镜像，地址仍为 `http://127.0.0.1:4300/3300`。
+- 仅该本机运行环境的 `LOCAL_PROMOTION_INTERNAL_API_ENABLED=true`；直播 API 开关继续为 `true`，AI 诊断继续为 `false`。默认配置和其他环境仍保持关闭。
+- `/ready` 已确认数据库就绪，Web 首页 HTTP 200；没有 Prisma Schema、migration 或业务数据变化。真实巨量页面采集尚未启动，仍待用户手动重载插件并开启。
+
+## 2026-08-22 本地推多路线实时链路最终代码状态
+
+- 本地推内部 API 开关已完整接入示例环境、Compose、测试环境与 Extension Context，默认始终为 `false`。
+- 本地推实时上传现在是严格 API-only：必须来自精确标准 origin/path、已配对 Extension、分离的 URL/DOM 身份证据、固定端点与固定字段；身份切换、来源冲突、值/字段证据不一致均失败关闭。
+- 实时内存、SSE 背压缓存、限流、DecisionRun 输入和 Worker 均按路线隔离；混合快照/实时输入不会因 Worker 独立进程而丢失实时证据。
+- Web 只有在连接有效且帧仍处于 60 秒新鲜窗口时显示持续采集，不会把保留期内的旧帧继续标为实时可用。
+- 当前工程基线为 433 项测试，lint/typecheck/build、Prisma validate/generate、版本与 Compose 配置检查全部通过；本地 unpacked 指纹 `a8e4d60ef126`。
+- 无数据库结构或业务数据变化，未部署；真实 Chrome 进行中直播验收仍未完成。
+
+## 2026-08-20 本地推 API 实时脉冲状态
+
+- Shared、Extension、API、Web 已完成本地推实时脉冲接入。契约版本 2026-08-19.1、Adapter 1.0.0，服务端开关默认 false。
+- 本地推 API 只上传七项稳定白名单指标；daily_budget 明确保持 DOM-only。服务端逐字段校验精确页面、身份、端点、字节限制、字段路径、契约版本和 PULSE_ONLY。
+- 实时内存帧按 routeKey 保存并通过 SSE 推送；决策构建支持多路线实时证据，实时帧不落 DataSnapshot，但可进入 DecisionRun.inputJson 的 realtimeEvidenceItems。
+- Popup 在本地推精确页面显示 API 持续采集控制，同时保留“采集并上传数据总览”DOM 入口；身份缺失/冲突时 API 控制不可用。
+- 根级 lint、typecheck、test、build、Prisma validate/generate 和 diff 检查已通过；无 Prisma Schema 或 migration 变更。
+- 真实 Chrome 登录态验收仍待用户手动完成，不能将本地测试通过写成真实平台字段已验证。
+
+
+## 2026-08-16 任务页直播数据大屏实时接入状态
+
+- 任务页已接入 `/collection-tasks/:id/signals/stream` 实时脉冲。`LIVE_DATA_SCREEN` 收到非空实时指标后，任务页路线卡片显示“API 持续采集中”，不再把无正式快照误判为“采集失败”。
+- 修改仅在前端任务页 `apps/web/src/app/tasks/[id]/page.tsx`；采集校准页既有实时处理逻辑未变。正式诊断仍只接受可信/已复核证据，实时脉冲不落 `DataSnapshot`。
+- 本机 Web 运行镜像已切换为 `pxxis-prelaunch-20260713-web:live-screen-realtime-20260816`，继续使用 `http://127.0.0.1:3300`；旧容器停止保留为 `pxxis-prelaunch-20260713-web-1-live-screen-rollback-20260816`。
+- API 仍为 `pxxis-prelaunch-20260713-api:new-table-confirm-20260816-v3`，PostgreSQL、数据卷、Prisma Schema、采集协议和 Extension 未修改。
+- 验证通过：Web typecheck、Web 36 项测试、根级 `typecheck`、根级 410 项测试、根级 `build`；浏览器实测直播数据大屏卡片显示“最近成功：刚刚 · API 持续采集 · 7 项指标”。
+
+## 2026-08-16 主按钮任务级确认放开状态
+
+- 主按钮“确认可信数据并生成诊断”现在会任务级确认全部 `PENDING` 指标和当前表格单元格，不再因 `INVALID`、未校准或缺少绑定证据而停在确认阶段。
+- 正式诊断门禁保持不变：这些异常证据仍为 `UNREVIEWED`，主按钮进入保守诊断区，不创建正式 `DecisionRun`。
+- 修改位于 API：`review-metrics.ts` 的任务级指标确认、`collection-dashboard.ts` 的任务级表格确认。
+- 本机 API 已切换为 `pxxis-prelaunch-20260713-api:new-table-confirm-20260816-v3`；Web、Prisma Schema、数据库、采集协议和 Extension 未修改。
+- 验证通过：API typecheck、API 130 项测试、根级 `typecheck`、根级 `build`；未执行 migration、`db push`、生产部署、提交或推送。
+
 ## 2026-08-16 v0.2.4 发布状态
 
 - 生产版扩展发布包 `collector-v0.2.4-48b3758adf51.zip` 已从干净 `main` 构建并通过生产制品安全校验，产品 `0.2.4`、source fingerprint `1a4bc20a9d72`。
@@ -787,3 +1022,17 @@
 - 服务端“历史授权”与当前 Chrome 本地凭证已经在界面上明确区分。空插件不能依据服务端历史授权自动恢复，因为服务端不下发凭证。
 - 本机 API/Web 已切换至 `20260808-protocol6-postmessage` 镜像，`127.0.0.1:4300/3300` 健康；PostgreSQL 与数据卷未修改，AI、Worker 和 `LIVE_SCREEN_INTERNAL_API_ENABLED` 继续关闭。
 - 实际 Chrome 现场仍注入旧 `Bridge 5 / 7861690c4cc4`，且本地 Web 登录会话已过期；协议 6 的真实自动恢复尚待用户手动重载扩展、重新登录后验收，不能仅凭构建和单元测试标记完成。
+
+## 2026-08-28 经营总览与本地推全域查询状态
+
+- Web 经营总览已经收敛为一块分层面板，并直接使用 `buildDashboardOverviewCards` 的统一语义卡片；同名直播/本地推指标不再在上下区域重复展示。
+- 本地推内部 API 当前固定为 3 个只读端点：`pageMetrics`、`getLiveReportPromoteMeta`、`statQuery`。元数据端点只在内存中提供直播时间区间与 roi2 广告 ID，不进入快照、日志或服务端业务数据。
+- `roi2_promotion` 查询现在具备平台页面实际使用的广告主、房间、时间区间和广告 ID 四类过滤条件；后 5 项全域指标不再因缺少过滤条件而固定返回 0。
+- 服务端会根据指标分组动态要求端点证据：基础指标要求 pageMetrics/statQuery；任何全域指标额外要求 promote metadata 成功。请求总量上限由 192 KiB 调整为三个端点合计 256 KiB，各端点独立上限仍生效。
+- 当前源码、测试和本地解包构建已完成，构建指纹 `aba831dcc7db`；未切换本机 API/Web 容器，未写数据库，真实登录页面最终验收待人工完成。
+
+## 2026-08-28 本机 API 运行契约已对齐
+
+- 当前 `127.0.0.1:4300` API 容器使用镜像 `pxxis-prelaunch-20260713-api:local-promotion-contract-v2-20260828`，运行中的共享契约为 `2026-08-28.2 / Adapter 1.2.1`，与本地 unpacked 插件 `aba831dcc7db` 一致。
+- API 容器、数据库检查均 healthy，`/ready` 返回 database ready，`/version` 保持产品 `0.2.5` 与采集协议 `8`；3300 Web 仍返回 HTTP 200。
+- 原 `local-plugin-v0.2.5` API 容器已停止保留为 `pxxis-prelaunch-20260713-api-1-before-contract-v2-20260828`。PostgreSQL、数据卷、Schema、Web 容器、AI/Worker 和生产环境均未变化。

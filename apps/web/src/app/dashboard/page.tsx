@@ -6,8 +6,9 @@ import { aiDisclaimer, extensionSafetyNotice, subjectTypeLabels, type BuildMetad
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { createLoginHref } from "@/lib/auth-redirect";
 
 type AccountProject = {
   id: string;
@@ -44,12 +45,15 @@ export default function DashboardPage() {
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [buildMetadata, setBuildMetadata] = useState<BuildMetadata | null>(null);
   const [error, setError] = useState("");
+  const [authExpired, setAuthExpired] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
   const [accountPendingDeletion, setAccountPendingDeletion] = useState<AccountProfile | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (!token) return;
+    setError("");
+    setAuthExpired(false);
     Promise.all([
       apiFetch<AccountProfile[]>("/account-profiles", token),
       apiFetch<SystemHealth>("/system-health", token),
@@ -58,7 +62,10 @@ export default function DashboardPage() {
       setAccounts(nextAccounts);
       setSystemHealth(nextHealth);
       setBuildMetadata(nextBuild);
-    }).catch((err) => setError(err instanceof Error ? err.message : "读取账号档案失败"));
+    }).catch((err) => {
+      setAuthExpired(err instanceof ApiError && err.code === "UNAUTHORIZED");
+      setError(err instanceof Error ? err.message : "读取账号档案失败");
+    });
   }, [token]);
 
   if (!hydrated) return <main className="flex min-h-screen items-center justify-center bg-[#f3f6fa] text-sm text-muted">正在确认登录状态...</main>;
@@ -184,7 +191,25 @@ export default function DashboardPage() {
         <Card><CardTitle>版本</CardTitle><p className="text-sm">{buildMetadata ? `${buildMetadata.productVersion} / ${buildMetadata.gitSha.slice(0, 8)}` : "-"}</p></Card>
       </section>
 
-      {error ? <div className="mb-4 rounded-md border border-danger px-3 py-2 text-sm text-danger">{error}</div> : null}
+      {error ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger px-3 py-2 text-sm text-danger" role="alert">
+          <span>{error}</span>
+          {authExpired ? (
+            <Link
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-danger px-3 text-sm font-medium text-white transition hover:opacity-90"
+              href={createLoginHref("/dashboard")}
+              onClick={(event) => {
+                event.preventDefault();
+                setToken(null);
+                window.location.replace(createLoginHref("/dashboard"));
+              }}
+              replace
+            >
+              返回登录
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       <section className="grid gap-4">
         {accounts.map((account) => {
           const latest = account.projects[0];

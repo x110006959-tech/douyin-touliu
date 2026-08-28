@@ -4050,7 +4050,7 @@
   };
   var NEVER = INVALID;
 
-  // ../../packages/shared/dist/safety.js
+  // ../../packages/shared/src/safety.ts
   var snapshotSafetyLimits = {
     rawDomTextChars: 2e5,
     pageTitleChars: 500,
@@ -4088,27 +4088,26 @@
   ]);
   function shouldRedactSensitiveKey(key) {
     const normalized = normalizeKey(key);
-    if (isCredentialReferenceKey(normalized))
-      return false;
+    if (isCredentialReferenceKey(normalized)) return false;
     return sensitiveExact.has(normalized) || sensitiveContains.some((part) => normalized.includes(part));
   }
   function sanitizeVisibleText(text, maxChars = snapshotSafetyLimits.stringChars) {
     let sanitized = truncateText(text, maxChars);
-    if (sanitized.includes("@"))
-      sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, redacted);
+    if (sanitized.includes("@")) sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, redacted);
     if (/\d/.test(sanitized)) {
       sanitized = sanitized.replace(/\b1[3-9]\d{9}\b/g, redacted).replace(/\b\d{17}[\dXx]\b/g, redacted);
     }
-    if (/bearer/i.test(sanitized))
-      sanitized = sanitized.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, `$1${redacted}`);
+    if (/bearer/i.test(sanitized)) sanitized = sanitized.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, `$1${redacted}`);
     if (/password|passwd|token|authorization|cookie|secret|session|credential/i.test(sanitized)) {
-      sanitized = sanitized.replace(/((?:password|passwd|token|authorization|cookie|secret|session|credential)\s*[:=]\s*)[^\s,;&]+/gi, `$1${redacted}`);
+      sanitized = sanitized.replace(
+        /((?:password|passwd|token|authorization|cookie|secret|session|credential)\s*[:=]\s*)[^\s,;&]+/gi,
+        `$1${redacted}`
+      );
     }
     return truncateText(sanitized, maxChars);
   }
   function sanitizeSensitiveData(value, depth = 0) {
-    if (depth > snapshotSafetyLimits.depth)
-      return truncated;
+    if (depth > snapshotSafetyLimits.depth) return truncated;
     const holder = {};
     const stack = [
       { input: value, parent: holder, key: "value", depth }
@@ -4147,19 +4146,15 @@
       const entries = [];
       let count = 0;
       for (const key in current.input) {
-        if (!Object.prototype.hasOwnProperty.call(current.input, key))
-          continue;
+        if (!Object.prototype.hasOwnProperty.call(current.input, key)) continue;
         entries.push([key, current.input[key]]);
         count += 1;
-        if (count >= snapshotSafetyLimits.objectKeys)
-          break;
+        if (count >= snapshotSafetyLimits.objectKeys) break;
       }
       for (let index = entries.length - 1; index >= 0; index -= 1) {
         const [key, raw] = entries[index];
-        if (shouldRedactSensitiveKey(key))
-          output[key] = redacted;
-        else
-          stack.push({ input: raw, parent: output, key, depth: current.depth + 1 });
+        if (shouldRedactSensitiveKey(key)) output[key] = redacted;
+        else stack.push({ input: raw, parent: output, key, depth: current.depth + 1 });
       }
     }
     return holder.value;
@@ -4170,8 +4165,7 @@
       url.username = url.username ? redacted : "";
       url.password = url.password ? redacted : "";
       for (const key of [...url.searchParams.keys()]) {
-        if (shouldRedactSensitiveKey(key))
-          url.searchParams.set(key, redacted);
+        if (shouldRedactSensitiveKey(key)) url.searchParams.set(key, redacted);
       }
       return truncateText(url.href, snapshotSafetyLimits.urlChars);
     } catch {
@@ -4179,7 +4173,12 @@
     }
   }
   function sanitizeCollectionSnapshotPayload(snapshot2) {
-    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot2;
+    const {
+      detectedAccountId: _detectedAccountId,
+      detectedAccountName: _detectedAccountName,
+      accountMatchEvidence: _accountMatchEvidence,
+      ...snapshotWithoutPageAccount
+    } = snapshot2;
     const truncatedFields = [
       ...snapshot2.rawDomText.length ? ["rawDomText"] : [],
       ...snapshot2.rawNetworkJson.length ? ["rawNetworkJson"] : [],
@@ -4193,7 +4192,10 @@
       // Page text may be used in memory to derive allowlisted fields, but is never part of a snapshot payload.
       rawDomText: "",
       rawNetworkJson: [],
-      rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot2.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
+      rawTableData: limitArrayValue(
+        sanitizeSensitiveData(snapshot2.rawTableData.slice(0, snapshotSafetyLimits.tableItems)),
+        snapshotSafetyLimits.networkTotalChars
+      ),
       visibleMetricsJson: (snapshot2.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
       screenshotUrl: snapshot2.screenshotUrl ? sanitizeCaptureUrl(snapshot2.screenshotUrl) : snapshot2.screenshotUrl
     };
@@ -4214,8 +4216,7 @@
     return sanitized;
   }
   function sanitizeVisibleMetric(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return sanitizeSensitiveData(value);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return sanitizeSensitiveData(value);
     const metric = value;
     const sanitized = sanitizeSensitiveData(metric);
     return {
@@ -4226,8 +4227,7 @@
   }
   function limitSerializedValue(value, maxChars) {
     const serialized = safeStringify(value);
-    if (serialized.length <= maxChars)
-      return value;
+    if (serialized.length <= maxChars) return value;
     return {
       truncated: true,
       originalChars: serialized.length,
@@ -4258,7 +4258,7 @@
     return normalizedKey.endsWith("id");
   }
 
-  // ../../packages/shared/dist/collection-routes.js
+  // ../../packages/shared/src/collection-routes.ts
   var collectionRouteKeys = [
     "LOCAL_PROMOTION_DASHBOARD",
     "LIVE_DATA_SCREEN",
@@ -4311,7 +4311,9 @@
       urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
     }
   ];
-  var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
+  var collectionRouteLabels = Object.fromEntries(
+    collectionRouteTemplates.map((route) => [route.routeKey, route.label])
+  );
   var collectionFreshnessPolicy = {
     agingAfterMs: 5 * 60 * 1e3,
     staleAfterMs: 10 * 60 * 1e3,
@@ -4329,7 +4331,7 @@
     return collectionRouteKeys.includes(value) ? value : "UNKNOWN";
   }
 
-  // ../../packages/shared/dist/decision-tables.js
+  // ../../packages/shared/src/decision-tables.ts
   var decisionTableCellSchema = external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean(), external_exports.null()]);
   var decisionTableInputSchema = external_exports.object({
     routeKey: external_exports.enum(collectionRouteKeys).nullable(),
@@ -4337,10 +4339,106 @@
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
-  // ../../packages/shared/dist/metric-value.js
+  // ../../packages/shared/src/metric-value.ts
   var metricValidationStatuses = ["TRUSTED", "REQUIRES_REVIEW", "INVALID"];
+  var currencyMetricKeys = /* @__PURE__ */ new Set([
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "cpa",
+    "target_cpa",
+    "gmv",
+    "full_domain_gmv",
+    "gpm",
+    "shelf_gmv",
+    "search_gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon"
+  ]);
+  var percentageMetricKeys = /* @__PURE__ */ new Set(["ctr", "product_click_rate", "product_conversion_rate", "live_room_click_rate", "complaint_rate", "refund_rate", "fulfillment_exception_rate"]);
+  var roiMetricKeys = /* @__PURE__ */ new Set(["pay_roi", "full_domain_pay_roi", "verify_roi", "gross_profit_roi", "target_roi"]);
+  function metricValueSemantic(metricKey) {
+    if (currencyMetricKeys.has(metricKey)) return "CURRENCY";
+    if (percentageMetricKeys.has(metricKey)) return "PERCENTAGE";
+    if (roiMetricKeys.has(metricKey)) return "ROI";
+    return "COUNT";
+  }
+  function parseDisplayedMetricValue(value, semantic = "UNKNOWN", declaredUnit) {
+    const displayValue = value == null ? "" : String(value).trim();
+    if (!displayValue || displayValue === "--" || displayValue === "-") {
+      return {
+        displayValue,
+        normalizedText: null,
+        displayPrecision: null,
+        multiplier: 1,
+        unit: null,
+        status: "REQUIRES_REVIEW",
+        reasons: ["VALUE_MISSING"]
+      };
+    }
+    const matched = displayValue.match(/^[¥￥]?\s*(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(万|千|w|W|k|K)?\s*(%|元|人民币|倍)?\s*$/);
+    if (!matched) {
+      return invalid(displayValue, "VALUE_FORMAT_INVALID");
+    }
+    const numeric = matched[1].replace(/,/g, "");
+    const suffix = matched[2] || "";
+    const explicitUnit = matched[3] || "";
+    const multiplier = /万|w/i.test(suffix) ? 1e4 : /千|k/i.test(suffix) ? 1e3 : 1;
+    const isPercent = explicitUnit === "%" || declaredUnit === "%";
+    const precision = numeric.split(".")[1]?.length || 0;
+    const normalizedText = scaleDecimal(numeric, multiplier, isPercent ? -2 : 0);
+    const reasons = [];
+    if (semantic === "ROI" && isPercent) reasons.push("ROI_CANNOT_USE_PERCENT_UNIT");
+    if (semantic === "ROI" && suffix) reasons.push("ROI_CANNOT_USE_QUANTITY_UNIT");
+    if (semantic === "ROI" && explicitUnit && explicitUnit !== "\u500D" && explicitUnit !== "%") reasons.push("ROI_UNIT_MISMATCH");
+    if (semantic === "PERCENTAGE" && !isPercent) reasons.push("PERCENT_UNIT_NOT_EXPLICIT");
+    if (semantic === "PERCENTAGE" && suffix) reasons.push("PERCENT_CANNOT_USE_QUANTITY_UNIT");
+    if (semantic === "PERCENTAGE" && explicitUnit && explicitUnit !== "%") reasons.push("PERCENT_UNIT_MISMATCH");
+    if (semantic === "CURRENCY" && (explicitUnit === "%" || explicitUnit === "\u500D")) reasons.push("CURRENCY_UNIT_MISMATCH");
+    if (semantic === "COUNT" && explicitUnit) reasons.push("COUNT_UNIT_MISMATCH");
+    return {
+      displayValue,
+      normalizedText,
+      displayPrecision: precision,
+      multiplier,
+      unit: explicitUnit || declaredUnit || null,
+      status: reasons.length ? "INVALID" : "REQUIRES_REVIEW",
+      reasons
+    };
+  }
+  function invalid(displayValue, reason) {
+    return {
+      displayValue,
+      normalizedText: null,
+      displayPrecision: null,
+      multiplier: 1,
+      unit: null,
+      status: "INVALID",
+      reasons: [reason]
+    };
+  }
+  function scaleDecimal(value, multiplier, decimalShift) {
+    const negative = value.startsWith("-");
+    const unsigned = negative ? value.slice(1) : value;
+    const [whole = "0", fraction = ""] = unsigned.split(".");
+    const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/, "") || "0";
+    const shift = (multiplier === 1e4 ? 4 : multiplier === 1e3 ? 3 : 0) - fraction.length + decimalShift;
+    let result;
+    if (shift >= 0) result = `${digits}${"0".repeat(shift)}`;
+    else {
+      const point = digits.length + shift;
+      result = point > 0 ? `${digits.slice(0, point)}.${digits.slice(point)}` : `0.${"0".repeat(-point)}${digits}`;
+    }
+    result = result.replace(/^0+(?=\d)/, "").replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+    return negative && result !== "0" ? `-${result}` : result;
+  }
 
-  // ../../packages/shared/dist/collection-diagnostics.js
+  // ../../packages/shared/src/collection-diagnostics.ts
   var collectionRouteDiagnosticStatuses = [
     "UPLOADED",
     "AGING",
@@ -4400,7 +4498,7 @@
     blocksStrongActions: external_exports.boolean()
   });
 
-  // ../../packages/shared/dist/collection-records.js
+  // ../../packages/shared/src/collection-records.ts
   var structuredCollectionDataVersion = "collection-records-v1";
   var nullableNumber = external_exports.number().finite().nullable();
   var provenanceSchema = external_exports.object({
@@ -4467,62 +4565,7 @@
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
-  // ../../packages/shared/dist/metric-keys.js
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "average_watch_duration_seconds",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "current_online_viewers",
-    "exposure_users",
-    "click_users",
-    "transaction_users",
-    "product_click_rate",
-    "product_conversion_rate",
-    "live_room_click_rate",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
-  var [, ...recordableMetricKeys] = metricKeys;
-
-  // ../../packages/shared/dist/live-screen-internal-api.js
+  // ../../packages/shared/src/live-screen-internal-api.ts
   var liveScreenRoomIdSources = ["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"];
   var liveScreenRoomIdPattern = /^\d{1,32}$/;
   var liveScreenInternalApiEndpointKeys = [
@@ -4669,19 +4712,205 @@
     if (urlRoomId && domRoomId && urlRoomId !== domRoomId) {
       return { value: null, source: "MISMATCH", evidence };
     }
-    if (urlRoomId && domRoomId)
-      return { value: urlRoomId, source: "URL_AND_DOM", evidence };
-    if (urlRoomId)
-      return { value: urlRoomId, source: "URL", evidence };
-    if (domRoomId)
-      return { value: domRoomId, source: "DOM", evidence };
+    if (urlRoomId && domRoomId) return { value: urlRoomId, source: "URL_AND_DOM", evidence };
+    if (urlRoomId) return { value: urlRoomId, source: "URL", evidence };
+    if (domRoomId) return { value: domRoomId, source: "DOM", evidence };
     return { value: null, source: "MISSING", evidence };
   }
   function normalizeRoomIds(values) {
     return [...new Set(values.map((value) => value?.trim() || "").filter((value) => liveScreenRoomIdPattern.test(value)))].slice(0, 2);
   }
 
-  // ../../packages/shared/dist/collection-capture.js
+  // ../../packages/shared/src/local-promotion-internal-api.ts
+  var localPromotionInternalApiContractVersion = "2026-08-28.2";
+  var localPromotionInternalApiAdapterVersion = "1.2.1";
+  var localPromotionInternalApiFrameId = "7405161088825688102";
+  var localPromotionInternalApiModuleId = "7405161354203529243";
+  var localPromotionInternalApiDataSetKey = "pc_data_liveboard_center_data_card";
+  var localPromotionInternalApiEndpointKeys = ["pageMetrics", "liveReportPromoteMeta", "statQuery"];
+  var localPromotionInternalApiEvidencePurposes = ["PULSE_ONLY"];
+  var localPromotionPulseMetricKeys = [
+    "total_watch_count",
+    "gmv",
+    "orders",
+    "gpm",
+    "live_viewers",
+    "clicks",
+    "average_watch_duration_seconds",
+    "current_online_viewers",
+    "spend",
+    "full_domain_gmv",
+    "full_domain_orders",
+    "full_domain_pay_roi",
+    "full_domain_product_clicks",
+    "daily_budget"
+  ];
+  var localPromotionApiMetricKeys = [
+    "total_watch_count",
+    "gmv",
+    "orders",
+    "gpm",
+    "live_viewers",
+    "clicks",
+    "average_watch_duration_seconds",
+    "current_online_viewers",
+    "spend",
+    "full_domain_gmv",
+    "full_domain_orders",
+    "full_domain_pay_roi",
+    "full_domain_product_clicks"
+  ];
+  var localPromotionInternalApiFields = [
+    { metricKey: "total_watch_count", metricName: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u7D2F\u8BA1\u89C2\u770B\u603B\u4EBA\u6570"] },
+    { metricKey: "gmv", metricName: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", "\u6574\u4F53\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "orders", metricName: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "gpm", metricName: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "live_viewers", metricName: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570"] },
+    { metricKey: "clicks", metricName: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] },
+    { metricKey: "average_watch_duration_seconds", metricName: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", unit: "s", semanticScope: "\u672C\u573A\u4EBA\u5747\u89C2\u770B\u65F6\u957F", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u4EBA\u5747\u89C2\u770B\u65F6\u957F"] },
+    { metricKey: "current_online_viewers", metricName: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570"] },
+    { metricKey: "spend", metricName: "\u5168\u57DF\u6D88\u8017(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6D88\u8017(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6D88\u8017", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6D88\u8017(\u5143)", "\u5168\u57DF\u6D88\u8017"] },
+    { metricKey: "full_domain_gmv", metricName: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "full_domain_orders", metricName: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "full_domain_pay_roi", metricName: "\u5168\u57DF\u652F\u4ED8ROI", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u652F\u4ED8ROI", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u652F\u4ED8 ROI", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u652F\u4ED8ROI", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF\u6295\u653EROI", "\u5168\u57DF\u6295\u653E ROI"] },
+    { metricKey: "full_domain_product_clicks", metricName: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] }
+  ];
+  var localPromotionInternalApiEndpointContracts = {
+    pageMetrics: {
+      key: "pageMetrics",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/pageMetrics",
+      maxResponseBytes: 96 * 1024,
+      fields: []
+    },
+    liveReportPromoteMeta: {
+      key: "liveReportPromoteMeta",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/getLiveReportPromoteMeta",
+      maxResponseBytes: 64 * 1024,
+      // 仅瞬时读取直播时间区间与当前广告 ID 白名单，用于构造 roi2_promotion 的固定过滤条件。
+      fields: []
+    },
+    statQuery: {
+      key: "statQuery",
+      method: "POST",
+      path: "/api/lamp/pc/v2/statistics/data/statQuery",
+      // 平台前端在账号命中 BFF 白名单时会把同一请求切到 v3；v2 仍是主路径，v3 仅作业务失败后的固定兜底。
+      fallbackPaths: ["/api/lamp/pc/v3/data/statQuery"],
+      maxResponseBytes: 96 * 1024,
+      fields: localPromotionInternalApiFields.filter((field) => field.endpoint === "statQuery")
+    }
+  };
+  function isExactLocalPromotionInternalApiPage(value) {
+    try {
+      const url = new URL(value);
+      return url.origin === "https://localads.chengzijianzhan.cn" && !url.username && !url.password && url.pathname === "/lamp/pc/liveboard2";
+    } catch {
+      return false;
+    }
+  }
+  function resolveLocalPromotionIdentity(input) {
+    const parsed = new URL(input.url);
+    const rawUrlEvidence = {
+      advid: parsed.searchParams.getAll("advid"),
+      roomId: parsed.searchParams.getAll("room_id"),
+      selectedAdvid: parsed.searchParams.getAll("selected_advid"),
+      selectedAwemeId: parsed.searchParams.getAll("selected_aweme_id")
+    };
+    const rawDomEvidence = {
+      advid: input.dom?.advid || [],
+      roomId: input.dom?.roomId || [],
+      selectedAdvid: input.dom?.selectedAdvid || [],
+      selectedAwemeId: input.dom?.selectedAwemeId || []
+    };
+    const urlEvidence = {
+      advid: normalizeIdentity(rawUrlEvidence.advid),
+      roomId: normalizeIdentity(rawUrlEvidence.roomId),
+      selectedAdvid: normalizeIdentity(rawUrlEvidence.selectedAdvid),
+      selectedAwemeId: normalizeIdentity(rawUrlEvidence.selectedAwemeId)
+    };
+    const domEvidence = {
+      advid: normalizeIdentity(rawDomEvidence.advid),
+      roomId: normalizeIdentity(rawDomEvidence.roomId),
+      selectedAdvid: normalizeIdentity(rawDomEvidence.selectedAdvid),
+      selectedAwemeId: normalizeIdentity(rawDomEvidence.selectedAwemeId)
+    };
+    const combinedEvidence = {
+      advid: normalizeIdentity([...urlEvidence.advid, ...domEvidence.advid]),
+      roomId: normalizeIdentity([...urlEvidence.roomId, ...domEvidence.roomId]),
+      selectedAdvid: normalizeIdentity([...urlEvidence.selectedAdvid, ...domEvidence.selectedAdvid]),
+      selectedAwemeId: normalizeIdentity([...urlEvidence.selectedAwemeId, ...domEvidence.selectedAwemeId])
+    };
+    const evidence = { url: urlEvidence, dom: domEvidence };
+    const hasInvalidEvidence = [...Object.values(rawUrlEvidence), ...Object.values(rawDomEvidence)].some((values2) => values2.some((value) => Boolean(value?.trim()) && !/^\d{1,64}$/.test(value.trim())));
+    const sourceConflict = hasInvalidEvidence || Object.keys(urlEvidence).some((key) => {
+      const urlValues = urlEvidence[key];
+      const domValues = domEvidence[key];
+      return urlValues.length > 1 || domValues.length > 1 || urlValues.length > 0 && domValues.length > 0 && urlValues[0] !== domValues[0];
+    });
+    const advertisingIds = normalizeIdentity([...combinedEvidence.advid, ...combinedEvidence.selectedAdvid]);
+    if (sourceConflict || Object.values(combinedEvidence).some((values2) => values2.length > 1) || advertisingIds.length > 1) {
+      return { advid: null, roomId: null, selectedAdvid: null, selectedAwemeId: null, source: "MISMATCH", evidence };
+    }
+    const values = {
+      advid: combinedEvidence.advid[0] || null,
+      roomId: combinedEvidence.roomId[0] || null,
+      selectedAdvid: combinedEvidence.selectedAdvid[0] || null,
+      selectedAwemeId: combinedEvidence.selectedAwemeId[0] || null
+    };
+    const hasUrl = Object.values(urlEvidence).some((values2) => values2.length > 0);
+    const hasDom = Object.values(domEvidence).some((values2) => values2.length > 0);
+    return { ...values, source: hasUrl && hasDom ? "URL_AND_DOM" : hasUrl ? "URL" : hasDom ? "DOM" : "MISSING", evidence };
+  }
+  function localPromotionIdentityKey(identity) {
+    return JSON.stringify({
+      advid: identity.advid,
+      roomId: identity.roomId,
+      selectedAdvid: identity.selectedAdvid,
+      selectedAwemeId: identity.selectedAwemeId
+    });
+  }
+  var localPromotionInternalApiRequestSchema = external_exports.object({
+    FrameId: external_exports.literal(localPromotionInternalApiFrameId),
+    ModuleId: external_exports.literal(localPromotionInternalApiModuleId),
+    DataSetKey: external_exports.literal(localPromotionInternalApiDataSetKey),
+    Metrics: external_exports.array(external_exports.string().regex(/^[A-Za-z0-9_]{1,128}$/)).min(1).max(localPromotionApiMetricKeys.length),
+    Filters: external_exports.object({
+      ConditionRelationshipType: external_exports.literal(1),
+      Conditions: external_exports.array(external_exports.union([
+        external_exports.object({
+          Field: external_exports.enum(["room_id", "advertiser_id", "is_order", "adlab_mode"]),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(2),
+          Operator: external_exports.union([external_exports.literal(6), external_exports.literal(7)])
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("stat_time"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{10,16}$/)).length(2),
+          Operator: external_exports.literal(9)
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("ad_id"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(200),
+          Operator: external_exports.literal(7)
+        }).strict()
+      ])).min(1).max(6)
+    }).strict().optional(),
+    PageParams: external_exports.object({ Limit: external_exports.literal(-1), Offset: external_exports.literal(0) }).strict()
+  }).strict();
+  var localPromotionInternalApiPageMetricsRequestSchema = external_exports.object({
+    frameId: external_exports.literal(localPromotionInternalApiFrameId),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+  var localPromotionInternalApiPromoteMetaRequestSchema = external_exports.object({
+    iesCoreUserId: external_exports.string().regex(/^\d{1,64}$/),
+    roomId: external_exports.string().regex(/^\d{1,64}$/),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+  function normalizeIdentity(values) {
+    return [...new Set(values.map((value) => value?.trim() || "").filter((value) => /^\d{1,64}$/.test(value)))].slice(0, 2);
+  }
+
+  // ../../packages/shared/src/collection-capture.ts
   var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
   var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricSourceStatuses = ["INTERNAL_API", "DOM_TEXT", "API_AND_DOM", "SOURCE_CONFLICT"];
@@ -4738,7 +4967,8 @@
     apiContractVersion: external_exports.string().max(50).optional(),
     apiAdapterVersion: external_exports.string().max(50).optional(),
     endpointKey: external_exports.string().max(100).optional(),
-    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional()
+    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional(),
+    routeKey: external_exports.enum(collectionRouteKeys).optional()
   });
   var visibleMetricSchema = external_exports.object({
     key: external_exports.string().min(1),
@@ -4756,6 +4986,12 @@
     status: external_exports.number().int().min(0).max(599),
     responseJson: external_exports.unknown(),
     capturedAt: external_exports.string().datetime()
+  });
+  var localPromotionIdentityEvidenceSchema = external_exports.object({
+    advid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    roomId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAdvid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAwemeId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2)
   });
   var captureMetaSchema = external_exports.object({
     adapterId: external_exports.string().min(1).max(100),
@@ -4811,6 +5047,29 @@
         intervalLabel: external_exports.string().min(1).max(100),
         liveViews: external_exports.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
       })).max(120).optional()
+    }).optional(),
+    localPromotionInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      identity: external_exports.object({
+        advid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        roomId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAdvid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAwemeId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        source: external_exports.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+        evidence: external_exports.object({
+          url: localPromotionIdentityEvidenceSchema,
+          dom: localPromotionIdentityEvidenceSchema
+        })
+      }),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.enum(localPromotionInternalApiEndpointKeys),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().min(0).max(384 * 1024),
+        reason: external_exports.string().max(100).optional()
+      })).max(localPromotionInternalApiEndpointKeys.length),
+      evidencePurpose: external_exports.enum(localPromotionInternalApiEvidencePurposes)
     }).optional()
   });
   var collectionSnapshotSchema = external_exports.object({
@@ -4840,7 +5099,76 @@
     captureProtocolVersion: external_exports.number().int().min(1).max(100).optional()
   });
 
-  // ../../packages/shared/dist/collection-dashboard.js
+  // ../../packages/shared/src/realtime-evidence.ts
+  var realtimeEvidenceSummarySchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    pageType: external_exports.enum(pageTypes),
+    observedAt: external_exports.string().datetime(),
+    receivedAt: external_exports.string().datetime(),
+    metricCount: external_exports.number().int().nonnegative(),
+    successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
+    source: external_exports.enum(["LIVE_SCREEN_INTERNAL_API", "LOCAL_PROMOTION_INTERNAL_API"])
+  });
+  function realtimeEvidenceRouteMatchesSource(evidence) {
+    return evidence.source === "LIVE_SCREEN_INTERNAL_API" ? evidence.routeKey === "LIVE_DATA_SCREEN" && evidence.pageType === "LIVE_DATA_SCREEN" : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD" && evidence.pageType === "LOCAL_PROMOTION_DASHBOARD";
+  }
+
+  // ../../packages/shared/src/metric-keys.ts
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/src/collection-dashboard.ts
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -4862,7 +5190,69 @@
     tableIndex: external_exports.number().int().min(0).max(3)
   });
 
-  // ../../packages/shared/dist/index.js
+  // ../../packages/shared/src/dashboard-overview.ts
+  var liveRealtimeMetricKeySet = new Set(liveScreenPulseCoreMetricKeys);
+  var localRealtimeMetricKeySet = new Set(localPromotionApiMetricKeys);
+  var overviewDefinitions = [
+    definition("live_gmv", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gmv"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gmv")
+    ]),
+    definition("live_current_online_viewers", "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "current_online_viewers"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "current_online_viewers")
+    ]),
+    definition("live_gpm", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gpm"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gpm")
+    ]),
+    definition("live_watch_duration", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "average_watch_duration_seconds"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "average_watch_duration_seconds")
+    ]),
+    definition("live_orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "orders"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "orders")
+    ]),
+    definition("live_transaction_users", "\u6210\u4EA4\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "transaction_users")
+    ]),
+    definition("live_conversion", "\u5546\u54C1\u8F6C\u5316\u7387", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "product_conversion_rate")
+    ]),
+    definition("local_total_watch_count", "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "total_watch_count")
+    ]),
+    definition("local_live_viewers", "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "live_viewers")
+    ]),
+    definition("local_clicks", "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "clicks")
+    ]),
+    definition("local_spend", "\u5168\u57DF\u6D88\u8017", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "spend")
+    ]),
+    definition("local_full_domain_gmv", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_gmv")
+    ]),
+    definition("local_full_domain_orders", "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_orders")
+    ]),
+    definition("local_full_domain_pay_roi", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_pay_roi")
+    ]),
+    definition("local_full_domain_product_clicks", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_product_clicks")
+    ])
+  ];
+  function definition(displayKey, label, scopeLabel, section, candidateReferences) {
+    return { displayKey, label, scopeLabel, section, candidateReferences };
+  }
+  function reference(routeKey, metricKey) {
+    return { routeKey, metricKey };
+  }
+
+  // ../../packages/shared/src/index.ts
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
     "SUBJECT_PENDING",
@@ -4931,7 +5321,7 @@
   var metricLayers = ["REVIEWED_METRIC", "REALTIME_API"];
   var observationWindows = ["30m", "2h", "1d", "custom"];
   var actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"];
-  var extensionBridgeProtocolVersion = 7;
+  var extensionBridgeProtocolVersion = 8;
   var extensionCollectionProtocolVersion = 8;
   var metricKeyLabels = {
     unknown: "\u672A\u77E5\u6307\u6807",
@@ -5058,7 +5448,9 @@
     \u503E\u659C\u9AD8\u6838\u9500\u95E8\u5E97: "ALLOCATE_HIGH_VERIFY_STORES",
     \u4E3B\u4F53\u8BC6\u522B\u6821\u51C6: "CALIBRATE_SUBJECT"
   };
-  var actionTypeToDiagnosisAction = Object.fromEntries(Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label]));
+  var actionTypeToDiagnosisAction = Object.fromEntries(
+    Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label])
+  );
   var diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"];
   var recommendationPriorities = ["P0", "P1", "P2"];
   var decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"];
@@ -5239,22 +5631,24 @@
     }
   });
   var bulkReviewMetricInputSchema = external_exports.object({
-    items: external_exports.array(external_exports.object({
-      metricId: external_exports.string().min(1),
-      expectedSnapshotUpdatedAt: external_exports.string().datetime(),
-      reviewedValue: external_exports.string().optional(),
-      timeRange: external_exports.string().trim().min(1).max(100).optional(),
-      sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
-      reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
-    }).superRefine((value, ctx) => {
-      if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          path: ["reviewedValue"],
-          message: "MODIFIED requires reviewedValue"
-        });
-      }
-    })).min(1)
+    items: external_exports.array(
+      external_exports.object({
+        metricId: external_exports.string().min(1),
+        expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+        reviewedValue: external_exports.string().optional(),
+        timeRange: external_exports.string().trim().min(1).max(100).optional(),
+        sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
+        reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+      }).superRefine((value, ctx) => {
+        if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+          ctx.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["reviewedValue"],
+            message: "MODIFIED requires reviewedValue"
+          });
+        }
+      })
+    ).min(1)
   });
   var confirmAllReviewMetricsInputSchema = external_exports.object({
     snapshotVersions: external_exports.array(external_exports.object({
@@ -5334,15 +5728,28 @@
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
     }).optional(),
-    realtimeEvidence: external_exports.object({
-      routeKey: external_exports.enum(collectionRouteKeys),
-      pageType: external_exports.enum(pageTypes),
-      observedAt: external_exports.string().datetime(),
-      receivedAt: external_exports.string().datetime(),
-      metricCount: external_exports.number().int().nonnegative(),
-      successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
-      source: external_exports.literal("LIVE_SCREEN_INTERNAL_API")
-    }).optional()
+    realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
+    realtimeEvidenceItems: external_exports.array(realtimeEvidenceSummarySchema).max(4).optional()
+  }).superRefine((input, context) => {
+    const items = input.realtimeEvidenceItems?.length ? input.realtimeEvidenceItems : input.realtimeEvidence ? [input.realtimeEvidence] : [];
+    const seenRoutes = /* @__PURE__ */ new Set();
+    items.forEach((evidence, index) => {
+      if (!realtimeEvidenceRouteMatchesSource(evidence)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index],
+          message: "\u5B9E\u65F6\u8BC1\u636E\u6765\u6E90\u4E0E\u8DEF\u7EBF\u4E0D\u5339\u914D"
+        });
+      }
+      if (seenRoutes.has(evidence.routeKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index, "routeKey"],
+          message: "\u540C\u4E00\u8DEF\u7EBF\u53EA\u80FD\u4FDD\u7559\u4E00\u4EFD\u6700\u65B0\u5B9E\u65F6\u8BC1\u636E"
+        });
+      }
+      seenRoutes.add(evidence.routeKey);
+    });
   });
   var decisionEngineOutputSchema = external_exports.object({
     engineVersion: external_exports.string().optional(),
@@ -5358,36 +5765,44 @@
       mode: external_exports.enum(decisionAnalysisModes).optional(),
       headline: external_exports.string().min(1),
       performanceSnapshot: external_exports.array(external_exports.string()),
-      findings: external_exports.array(external_exports.object({
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        conclusion: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string()),
-        riskLevel: external_exports.enum(riskLevels)
-      })),
-      recommendations: external_exports.array(external_exports.object({
-        priority: external_exports.enum(recommendationPriorities),
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        reason: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string().min(1)).optional(),
-        steps: external_exports.array(external_exports.string().min(1)),
-        verifyMetrics: external_exports.array(external_exports.string().min(1)),
-        ruleBoundary: external_exports.string().min(1)
-      })),
-      metricExplanations: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        value: external_exports.number().nullable(),
-        meaning: external_exports.string().min(1),
-        use: external_exports.string().min(1),
-        caveat: external_exports.string().min(1)
-      })),
-      ruleReferences: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        url: external_exports.string().url(),
-        scope: external_exports.string().min(1),
-        checkedAt: external_exports.string().min(1)
-      }))
+      findings: external_exports.array(
+        external_exports.object({
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          conclusion: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string()),
+          riskLevel: external_exports.enum(riskLevels)
+        })
+      ),
+      recommendations: external_exports.array(
+        external_exports.object({
+          priority: external_exports.enum(recommendationPriorities),
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          reason: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string().min(1)).optional(),
+          steps: external_exports.array(external_exports.string().min(1)),
+          verifyMetrics: external_exports.array(external_exports.string().min(1)),
+          ruleBoundary: external_exports.string().min(1)
+        })
+      ),
+      metricExplanations: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          value: external_exports.number().nullable(),
+          meaning: external_exports.string().min(1),
+          use: external_exports.string().min(1),
+          caveat: external_exports.string().min(1)
+        })
+      ),
+      ruleReferences: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          url: external_exports.string().url(),
+          scope: external_exports.string().min(1),
+          checkedAt: external_exports.string().min(1)
+        })
+      )
     }).optional(),
     calculatedMetrics: external_exports.object({
       serviceProviderAfterCost: external_exports.number().nullable().optional(),
@@ -5438,7 +5853,10 @@
     storeName: external_exports.string().trim().max(100).optional().nullable(),
     memo: external_exports.string().trim().max(1e3).optional().nullable()
   });
-  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine((value) => Object.keys(value).length > 0, { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" });
+  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine(
+    (value) => Object.keys(value).length > 0,
+    { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" }
+  );
   var deleteAccountProfileSchema = external_exports.object({
     accountName: external_exports.string().trim().min(1, "\u8BF7\u786E\u8BA4\u8981\u5220\u9664\u7684\u8D26\u53F7\u540D\u79F0")
   });
@@ -5485,11 +5903,13 @@
   function normalizeMetricLookupValue(value) {
     return value.toLowerCase().replace(/[（）()]/g, "").replace(/[\s_\-:/：，,。]+/g, "");
   }
-  var metricAliasLookup = new Map(metricKeys.flatMap((key) => [
-    [normalizeMetricLookupValue(key), key],
-    [normalizeMetricLookupValue(metricKeyLabels[key]), key],
-    ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
-  ]));
+  var metricAliasLookup = new Map(
+    metricKeys.flatMap((key) => [
+      [normalizeMetricLookupValue(key), key],
+      [normalizeMetricLookupValue(metricKeyLabels[key]), key],
+      ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
+    ])
+  );
 
   // src/build-target.ts
   var isLocalBuild = true;
@@ -5508,9 +5928,15 @@
     SUBMIT_LIVE_PULSE: "AI_DIAGNOSIS_SUBMIT_LIVE_PULSE",
     START_LIVE_PULSE: "AI_DIAGNOSIS_START_LIVE_PULSE",
     STOP_LIVE_PULSE: "AI_DIAGNOSIS_STOP_LIVE_PULSE",
+    BEGIN_LOCAL_PROMOTION_PULSE_LOOP: "AI_DIAGNOSIS_BEGIN_LOCAL_PROMOTION_PULSE_LOOP",
+    SUBMIT_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_SUBMIT_LOCAL_PROMOTION_PULSE",
+    START_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_START_LOCAL_PROMOTION_PULSE",
+    STOP_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_STOP_LOCAL_PROMOTION_PULSE",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     VERIFY_BOUND_CONTEXT: "AI_DIAGNOSIS_VERIFY_BOUND_CONTEXT",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
+    SYNC_CURRENT_TASK: "AI_DIAGNOSIS_SYNC_CURRENT_TASK",
+    PAIR_TASK_FROM_WEB: "AI_DIAGNOSIS_PAIR_TASK_FROM_WEB",
     REQUEST_PAIRING_CONFIRMATION: "AI_DIAGNOSIS_REQUEST_PAIRING_CONFIRMATION",
     CONFIRM_PAIRING: "AI_DIAGNOSIS_CONFIRM_PAIRING",
     CANCEL_PAIRING: "AI_DIAGNOSIS_CANCEL_PAIRING",
@@ -5575,7 +6001,9 @@
     const accountName = optionalString(account.accountName);
     const collectionProtocolVersion = value.collectionProtocolVersion;
     const liveScreenInternalApi = value.liveScreenInternalApi;
+    const localPromotionInternalApi = value.localPromotionInternalApi;
     if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1 || !isRecord(liveScreenInternalApi) || typeof liveScreenInternalApi.enabled !== "boolean" || !optionalString(liveScreenInternalApi.contractVersion) || !optionalString(liveScreenInternalApi.adapterVersion)) return null;
+    if (localPromotionInternalApi !== void 0 && (!isRecord(localPromotionInternalApi) || typeof localPromotionInternalApi.enabled !== "boolean" || !optionalString(localPromotionInternalApi.contractVersion) || !optionalString(localPromotionInternalApi.adapterVersion))) return null;
     const projects = [];
     for (const item of account.projects) {
       if (!isRecord(item)) return null;
@@ -5606,6 +6034,11 @@
         enabled: liveScreenInternalApi.enabled,
         contractVersion: optionalString(liveScreenInternalApi.contractVersion),
         adapterVersion: optionalString(liveScreenInternalApi.adapterVersion)
+      },
+      localPromotionInternalApi: {
+        enabled: isRecord(localPromotionInternalApi) ? localPromotionInternalApi.enabled === true : false,
+        contractVersion: isRecord(localPromotionInternalApi) ? optionalString(localPromotionInternalApi.contractVersion) : "unsupported",
+        adapterVersion: isRecord(localPromotionInternalApi) ? optionalString(localPromotionInternalApi.adapterVersion) : "unsupported"
       }
     };
   }
@@ -5654,7 +6087,9 @@
   }
 
   // src/live-pulse-schedule.ts
-  var livePulseCadenceMs = 5e3;
+  var livePulseCadenceMs = 3e4;
+  var localPromotionPulseCadenceMs = 3e4;
+  var localPromotionRateLimitCooldownMs = 6e4;
   var livePulseUploadSafetyIntervalMs = 4100;
   function nextLivePulseAfter(pulseStartedAt, uploadCompletedAt = pulseStartedAt, cadenceMs = livePulseCadenceMs, uploadSafetyIntervalMs = livePulseUploadSafetyIntervalMs) {
     if (!Number.isFinite(pulseStartedAt) || !Number.isFinite(uploadCompletedAt) || !Number.isInteger(cadenceMs) || cadenceMs <= 0 || !Number.isInteger(uploadSafetyIntervalMs) || uploadSafetyIntervalMs <= 0) {
@@ -5662,22 +6097,17 @@
     }
     return Math.max(pulseStartedAt + cadenceMs, uploadCompletedAt + uploadSafetyIntervalMs);
   }
-  function nextLivePulseAfterRateLimit(now, retryAfterMs) {
-    if (!Number.isFinite(now) || !Number.isFinite(retryAfterMs) || retryAfterMs <= 0) throw new Error("LIVE_PULSE_RETRY_AFTER_INVALID");
-    return now + Math.ceil(retryAfterMs);
+  function localPromotionRateLimitCooldownRemaining(occurredAt, now = Date.now()) {
+    if (!Number.isFinite(occurredAt) || !Number.isFinite(now)) return 0;
+    return Math.max(0, occurredAt + localPromotionRateLimitCooldownMs - now);
   }
 
   // src/live-pulse-status.ts
-  function normalizeLivePulseMetricKeys(value) {
-    if (!Array.isArray(value)) return [];
-    const supplied = new Set(value.filter((item) => typeof item === "string"));
-    return liveScreenPulseCoreMetricKeys.filter((key) => supplied.has(key));
-  }
   function safeLivePulseFailureReason(value) {
     if (typeof value !== "string") return void 0;
     const reason = value.trim();
     if (!reason || reason.length > 80) return void 0;
-    return /^(?:PULSE_(?:CAPTURE_FAILED|METRICS_MISSING|KEY_INDEX_NO_USABLE_METRICS|UPLOAD_(?:TIMEOUT|ABORTED)|NETWORK_ERROR)|REQUEST_FAILED|REQUEST_TIMEOUT|JSON_PARSE_FAILED|EMPTY_RESPONSE|BUSINESS_ERROR|HTTP_\d{3}|ABORTED)$/.test(reason) ? reason : void 0;
+    return /^(?:PULSE_(?:CAPTURE_FAILED|METRICS_MISSING|KEY_INDEX_NO_USABLE_METRICS|TRANSPORT_UNAVAILABLE|UPLOAD_(?:TIMEOUT|ABORTED)|NETWORK_ERROR)|(?:NO_USABLE_METRICS|REQUEST_FAILED|REQUEST_INVALID|REQUEST_TIMEOUT|JSON_PARSE_FAILED|EMPTY_RESPONSE|BUSINESS_ERROR|RATE_LIMITED|HTTP_\d{3}|ABORTED))$/.test(reason) ? reason : void 0;
   }
   function parseLivePulseOutcome(value, context) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -5686,9 +6116,14 @@
       return null;
     }
     const endpoint2 = typeof candidate.endpoint === "string" && context.endpointKeys.includes(candidate.endpoint) ? candidate.endpoint : void 0;
+    const routeKey = candidate.routeKey === "LIVE_DATA_SCREEN" || candidate.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? candidate.routeKey : void 0;
+    const tabId = Number.isSafeInteger(candidate.tabId) && Number(candidate.tabId) > 0 ? Number(candidate.tabId) : void 0;
+    if (candidate.routeKey !== void 0 && !routeKey || candidate.tabId !== void 0 && !tabId) return null;
     const lastFailureReason = safeLivePulseFailureReason(candidate.lastFailureReason);
     return typeof candidate.reason === "string" && candidate.reason.length > 0 && typeof candidate.taskId === "string" && candidate.taskId.length > 0 && typeof candidate.occurredAt === "string" && typeof candidate.failure === "boolean" ? {
       taskId: candidate.taskId,
+      ...routeKey ? { routeKey } : {},
+      ...tabId ? { tabId } : {},
       reason: candidate.reason,
       ...endpoint2 ? { endpoint: endpoint2 } : {},
       ...lastFailureReason ? { lastFailureReason } : {},
@@ -5700,6 +6135,11 @@
   }
 
   // src/live-pulse-failure.ts
+  function fatalLivePulseFailureReason(error, status) {
+    if (status === 401) return "HTTP_401";
+    if (status === 429) return error === "RATE_LIMITED" ? "RATE_LIMITED" : "HTTP_429";
+    return /^(?:HTTP_401|HTTP_429|SCHEMA_MISMATCH|SENSITIVE_RESPONSE|BYTE_LIMIT|TOTAL_BYTE_LIMIT|LIVE_ENDED|PAGE_INACTIVE|PULSE_TRANSPORT_UNAVAILABLE|LIVE_SCREEN_INTERNAL_API_(?:DISABLED|CONTRACT_MISMATCH|EVIDENCE_INVALID|PAGE_FORBIDDEN)|LIVE_SCREEN_(?:ROOM_ID_INVALID|PULSE_PURPOSE_INVALID)|LOCAL_PROMOTION_INTERNAL_API_(?:DISABLED|CONTRACT_MISMATCH|EVIDENCE_INVALID|PAGE_FORBIDDEN|EXTENSION_REQUIRED)|LOCAL_PROMOTION_(?:IDENTITY_INVALID|PULSE_PURPOSE_INVALID))$/.test(error) ? error : null;
+  }
   function advanceLivePulseFailure(previousFailures, reason, endpoint2) {
     const consecutiveFailures = Math.max(0, previousFailures) + 1;
     return {
@@ -5749,12 +6189,14 @@
       if (response.ok) {
         return { ok: true };
       }
-      const body = await response.json().catch(() => null);
       const retryAfterMs = response.status === 429 ? retryAfterMsFromHeader(response.headers.get("Retry-After")) : void 0;
       return {
         ok: false,
         status: response.status,
-        error: apiError(body) || `HTTP_${response.status}`,
+        // Server response text is not a client-side diagnostic contract. Keep
+        // only the status class so tokens, messages, or future response fields
+        // cannot enter the persisted pulse failure state.
+        error: response.status === 429 ? "RATE_LIMITED" : `HTTP_${response.status}`,
         ...retryAfterMs ? { retryAfterMs } : {}
       };
     } catch {
@@ -5775,14 +6217,6 @@
     const retryAt = Date.parse(value);
     if (!Number.isFinite(retryAt) || retryAt <= now) return void 0;
     return Math.min(maxMetricPulseRetryAfterMs, retryAt - now);
-  }
-  function apiError(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value) || !("error" in value)) return null;
-    const error = value.error;
-    if (!error || typeof error !== "object" || Array.isArray(error)) return null;
-    if ("code" in error && typeof error.code === "string" && error.code.trim()) return error.code;
-    if ("message" in error && typeof error.message === "string" && error.message.trim()) return error.message;
-    return null;
   }
 
   // src/task-page-bridge-recovery.ts
@@ -5809,26 +6243,16 @@
       observedAt
     };
   }
-  async function restoreTaskPageConnection(input) {
-    const refreshed = await input.refreshContext(input.timeoutMs);
-    if (!refreshed.ok) return refreshed;
-    const heartbeat = await input.reportHeartbeat(
-      createTaskPageConnectionActivity(input.taskPageUrl, input.observedAt),
-      input.timeoutMs
-    );
-    if (!heartbeat.ok) {
-      return { ok: false, error: heartbeat.error || "\u63D2\u4EF6\u8FDE\u63A5\u72B6\u6001\u6682\u65F6\u65E0\u6CD5\u540C\u6B65\u5230\u7F51\u9875\u3002" };
-    }
-    await input.appendLog("extension.connection_restored", { source: "task-page" });
-    return { ok: true };
+  function resolveTaskPageBinding(context, taskId) {
+    const project = context.account.projects.find((item) => item.tasks.some((task2) => task2.id === taskId));
+    const task = project?.tasks.find((item) => item.id === taskId);
+    return project && task ? { project, task } : null;
   }
-  async function restoreBoundTaskPageConnection(input) {
-    const taskPageUrl = input.sender.tab?.url || input.sender.url;
-    const taskPageTaskId = taskIdFromBridgePageUrl(taskPageUrl);
-    if (!input.paired || !input.boundTaskId || !taskPageUrl || taskPageTaskId !== input.boundTaskId) {
-      return { attempted: false };
-    }
-    return { attempted: true, result: await input.restore(taskPageUrl) };
+  function shouldBlockTaskSwitchForActivePulse(input) {
+    return input.hasActivePulse && input.boundTaskId !== input.targetTaskId;
+  }
+  function contextRefreshErrorCode(status) {
+    return status === 401 || status === 403 ? "PAIRING_REQUIRED" : "CONTEXT_REFRESH_FAILED";
   }
 
   // src/live-pulse-activity.ts
@@ -5850,10 +6274,672 @@
     }
   }
 
+  // src/live-pulse-tab-update.ts
+  function canKeepLivePulseForUrlUpdate(state, nextUrl) {
+    if (state.routeKey === "LIVE_DATA_SCREEN") {
+      return isExactLiveScreenPage(nextUrl) && liveScreenIdentityFromUrl(nextUrl) === state.identityKey;
+    }
+    if (!isExactLocalPromotionInternalApiPage(nextUrl)) return false;
+    const identity = resolveLocalPromotionIdentity({ url: nextUrl });
+    return identity.source !== "MISMATCH" && Boolean(identity.advid || identity.selectedAdvid) && localPromotionIdentityKey(identity) === state.identityKey;
+  }
+  function liveScreenIdentityFromUrl(value) {
+    try {
+      const url = new URL(value);
+      return resolveLiveScreenRoomId({
+        urlRoomIds: url.searchParams.getAll("room_id"),
+        domRoomIds: []
+      }).value;
+    } catch {
+      return null;
+    }
+  }
+
+  // src/local-promotion-internal-api.ts
+  var sensitiveResponsePattern = /cookie|token|authorization|secret|session|credential/i;
+  var totalResponseLimit = 256 * 1024;
+  var platformMetricNamePattern = /^[A-Za-z0-9_]{1,128}$/;
+  var localPromotionMetricType = 1;
+  var localPromotionInternalApiRequestTimeoutMs = 4e3;
+  async function collectLocalPromotionInternalApi(input) {
+    const identity = resolveLocalPromotionIdentity({ url: input.url, dom: input.domIdentity });
+    const endpointStatuses = [];
+    const baseMeta = {
+      contractVersion: localPromotionInternalApiContractVersion,
+      adapterVersion: localPromotionInternalApiAdapterVersion,
+      enabled: input.enabled,
+      identity: {
+        advid: identity.advid,
+        roomId: identity.roomId,
+        selectedAdvid: identity.selectedAdvid,
+        selectedAwemeId: identity.selectedAwemeId,
+        source: identity.source,
+        evidence: identity.evidence
+      },
+      endpointStatuses,
+      evidencePurpose: "PULSE_ONLY"
+    };
+    if (!input.enabled) return { metrics: [], captureMeta: baseMeta };
+    if (!isExactLocalPromotionInternalApiPage(input.url)) {
+      endpointStatuses.push(...skippedStatuses("PAGE_FORBIDDEN"));
+      return { metrics: [], captureMeta: baseMeta };
+    }
+    if (identity.source === "MISMATCH" || !identity.advid && !identity.selectedAdvid) {
+      endpointStatuses.push(...skippedStatuses("IDENTITY_UNAVAILABLE"));
+      return { metrics: [], captureMeta: baseMeta };
+    }
+    let acceptedTotal = 0;
+    const queryAdvid = identity.advid || identity.selectedAdvid || "";
+    const pageMetricsRequest = localPromotionInternalApiPageMetricsRequestSchema.safeParse({ frameId: localPromotionInternalApiFrameId, advid: queryAdvid });
+    if (!pageMetricsRequest.success) {
+      endpointStatuses.push({ endpoint: "pageMetrics", status: "FAILED", acceptedBytes: 0, reason: "REQUEST_INVALID" });
+      return { metrics: [], captureMeta: baseMeta };
+    }
+    const pageMetricsResponse = await requestEndpoint({
+      endpoint: "pageMetrics",
+      url: buildPageMetricsUrl(input.url, pageMetricsRequest.data.advid),
+      method: "GET",
+      query: pageMetricsRequest.data,
+      signal: input.signal,
+      limit: responseLimit("pageMetrics", acceptedTotal)
+    });
+    if (!pageMetricsResponse.ok) {
+      endpointStatuses.push({ endpoint: "pageMetrics", status: pageMetricsResponse.status, acceptedBytes: pageMetricsResponse.acceptedBytes, reason: pageMetricsResponse.reason });
+      return { metrics: [], captureMeta: baseMeta };
+    }
+    acceptedTotal += pageMetricsResponse.acceptedBytes;
+    const bindingsResult = resolveMetricBindings(pageMetricsResponse.value);
+    if (!bindingsResult.ok) {
+      endpointStatuses.push({
+        endpoint: "pageMetrics",
+        status: bindingsResult.reason === "BUSINESS_ERROR" ? "FAILED" : "ABORTED",
+        acceptedBytes: pageMetricsResponse.acceptedBytes,
+        reason: bindingsResult.reason
+      });
+      return { metrics: [], captureMeta: baseMeta, diagnostics: bindingsResult.diagnostics };
+    }
+    endpointStatuses.push({ endpoint: "pageMetrics", status: "SUCCESS", acceptedBytes: pageMetricsResponse.acceptedBytes });
+    const metrics = [];
+    const statQueryBindings = groupBindings(bindingsResult.bindings);
+    let roi2Context = null;
+    if (statQueryBindings.has("roi2_promotion")) {
+      const promoteMetaRequest = localPromotionInternalApiPromoteMetaRequestSchema.safeParse({
+        iesCoreUserId: identity.selectedAwemeId,
+        roomId: identity.roomId,
+        advid: queryAdvid
+      });
+      if (!promoteMetaRequest.success) {
+        endpointStatuses.push({ endpoint: "liveReportPromoteMeta", status: "FAILED", acceptedBytes: 0, reason: "IDENTITY_UNAVAILABLE" });
+        endpointStatuses.push({ endpoint: "statQuery", status: "SKIPPED", acceptedBytes: 0, reason: "PROMOTE_META_UNAVAILABLE" });
+        return { metrics: [], captureMeta: baseMeta, diagnostics: bindingsResult.diagnostics };
+      }
+      const promoteMetaResponse = await requestEndpoint({
+        endpoint: "liveReportPromoteMeta",
+        url: buildPromoteMetaUrl(input.url),
+        method: "GET",
+        query: promoteMetaRequest.data,
+        signal: input.signal,
+        limit: responseLimit("liveReportPromoteMeta", acceptedTotal)
+      });
+      if (!promoteMetaResponse.ok) {
+        endpointStatuses.push({ endpoint: "liveReportPromoteMeta", status: promoteMetaResponse.status, acceptedBytes: promoteMetaResponse.acceptedBytes, reason: promoteMetaResponse.reason });
+        endpointStatuses.push({ endpoint: "statQuery", status: "SKIPPED", acceptedBytes: 0, reason: "PROMOTE_META_UNAVAILABLE" });
+        return { metrics: [], captureMeta: baseMeta, diagnostics: bindingsResult.diagnostics };
+      }
+      acceptedTotal += promoteMetaResponse.acceptedBytes;
+      const parsedPromoteMeta = readPromoteMeta(promoteMetaResponse.value);
+      if (!parsedPromoteMeta.ok) {
+        endpointStatuses.push({ endpoint: "liveReportPromoteMeta", status: "ABORTED", acceptedBytes: promoteMetaResponse.acceptedBytes, reason: parsedPromoteMeta.reason });
+        endpointStatuses.push({ endpoint: "statQuery", status: "SKIPPED", acceptedBytes: 0, reason: "PROMOTE_META_UNAVAILABLE" });
+        return { metrics: [], captureMeta: baseMeta, diagnostics: bindingsResult.diagnostics };
+      }
+      roi2Context = parsedPromoteMeta.context;
+      endpointStatuses.push({ endpoint: "liveReportPromoteMeta", status: "SUCCESS", acceptedBytes: promoteMetaResponse.acceptedBytes });
+    } else {
+      endpointStatuses.push({ endpoint: "liveReportPromoteMeta", status: "SKIPPED", acceptedBytes: 0, reason: "ROI2_METRICS_UNAVAILABLE" });
+    }
+    let statQueryAcceptedBytes = 0;
+    let statQueryFailure = null;
+    let statQueryRecoverableFailure = null;
+    let statQueryPartialReason = null;
+    let statQueryUsedV3Fallback = false;
+    let statQueryFallbackSucceeded = false;
+    let statQueryFallbackFailureReason = null;
+    for (const [groupKey, bindings] of statQueryBindings) {
+      const request = createStatQueryRequest(groupKey, bindings, identity, roi2Context);
+      const parsedRequest = localPromotionInternalApiRequestSchema.safeParse(request);
+      if (!parsedRequest.success) {
+        statQueryFailure = { ok: false, status: "FAILED", acceptedBytes: statQueryAcceptedBytes, reason: "REQUEST_INVALID" };
+        break;
+      }
+      let response = await requestEndpoint({
+        endpoint: "statQuery",
+        url: buildStatQueryUrl(input.url, queryAdvid),
+        method: "POST",
+        body: JSON.stringify(parsedRequest.data),
+        signal: input.signal,
+        limit: responseLimit("statQuery", acceptedTotal, statQueryAcceptedBytes)
+      });
+      statQueryAcceptedBytes += response.acceptedBytes;
+      acceptedTotal += response.acceptedBytes;
+      let statsResult = response.ok ? readStatQueryStats(response.value) : null;
+      if (response.ok && statsResult && !statsResult.ok && statsResult.reason === "BUSINESS_ERROR") {
+        const fallbackResponse = await requestEndpoint({
+          endpoint: "statQuery",
+          url: buildStatQueryFallbackUrl(input.url, queryAdvid),
+          method: "POST",
+          body: JSON.stringify(parsedRequest.data),
+          signal: input.signal,
+          limit: responseLimit("statQuery", acceptedTotal, statQueryAcceptedBytes)
+        });
+        statQueryAcceptedBytes += fallbackResponse.acceptedBytes;
+        acceptedTotal += fallbackResponse.acceptedBytes;
+        response = fallbackResponse;
+        statsResult = response.ok ? readStatQueryStats(response.value) : null;
+        if (response.ok && statsResult?.ok) {
+          statQueryUsedV3Fallback = true;
+          statQueryFallbackSucceeded = true;
+        } else {
+          statQueryFallbackFailureReason = !response.ok ? response.reason : statsResult && !statsResult.ok ? statsResult.reason : "BUSINESS_ERROR";
+        }
+      }
+      if (!response.ok) {
+        if (isFatalStatQueryReason(response.reason)) {
+          statQueryFailure = { ...response, acceptedBytes: statQueryAcceptedBytes };
+          break;
+        }
+        statQueryRecoverableFailure ||= { ...response, acceptedBytes: statQueryAcceptedBytes };
+        statQueryPartialReason = response.reason;
+        continue;
+      }
+      if (!statsResult || !statsResult.ok) {
+        const reason = statsResult?.reason || "BUSINESS_ERROR";
+        if (reason === "SCHEMA_MISMATCH") {
+          statQueryFailure = { ok: false, status: "ABORTED", acceptedBytes: statQueryAcceptedBytes, reason };
+          break;
+        }
+        statQueryRecoverableFailure ||= { ok: false, status: "FAILED", acceptedBytes: statQueryAcceptedBytes, reason };
+        statQueryPartialReason = reason;
+        continue;
+      }
+      const projected = projectMetrics(groupKey, bindings, statsResult.statsData);
+      if (!projected.ok) {
+        if (projected.reason === "SCHEMA_MISMATCH") {
+          statQueryFailure = { ok: false, status: "ABORTED", acceptedBytes: statQueryAcceptedBytes, reason: projected.reason };
+          break;
+        }
+        statQueryPartialReason = projected.reason;
+        continue;
+      }
+      const previousMetricCount = metrics.length;
+      metrics.push(...projected.metrics);
+      if (metrics.length === previousMetricCount) statQueryPartialReason = "NO_USABLE_METRICS";
+    }
+    if (statQueryFailure) {
+      endpointStatuses.push({ endpoint: "statQuery", status: statQueryFailure.status, acceptedBytes: statQueryFailure.acceptedBytes, reason: statQueryFailure.reason });
+      metrics.length = 0;
+    } else if (metrics.length === 0 && statQueryRecoverableFailure) {
+      endpointStatuses.push({
+        endpoint: "statQuery",
+        status: statQueryRecoverableFailure.status,
+        acceptedBytes: statQueryAcceptedBytes,
+        reason: statQueryRecoverableFailure.reason
+      });
+    } else {
+      endpointStatuses.push({
+        endpoint: "statQuery",
+        status: "SUCCESS",
+        acceptedBytes: statQueryAcceptedBytes,
+        ...metrics.length === 0 ? { reason: statQueryPartialReason || "NO_USABLE_METRICS" } : statQueryPartialReason ? { reason: "PARTIAL_METRICS" } : statQueryUsedV3Fallback && !statQueryFallbackFailureReason ? { reason: "V3_FALLBACK" } : {}
+      });
+    }
+    const diagnostics = bindingsResult.diagnostics;
+    diagnostics.matchedMetricKeys = metrics.map((metric) => metric.key);
+    diagnostics.missingMetricKeys = localPromotionApiMetricKeys.filter((key) => !diagnostics.matchedMetricKeys.includes(key));
+    if (statQueryUsedV3Fallback || statQueryFallbackFailureReason) {
+      diagnostics.statQueryFallback = {
+        attempted: true,
+        succeeded: statQueryFallbackSucceeded,
+        ...statQueryFallbackFailureReason ? { failureReason: statQueryFallbackFailureReason } : {}
+      };
+    }
+    return { metrics, captureMeta: baseMeta, diagnostics };
+  }
+  function isFatalStatQueryReason(reason) {
+    return ["HTTP_401", "HTTP_429", "SENSITIVE_RESPONSE", "BYTE_LIMIT", "TOTAL_BYTE_LIMIT", "SCHEMA_MISMATCH", "ABORTED"].includes(reason);
+  }
+  function skippedStatuses(reason) {
+    return Object.keys(localPromotionInternalApiEndpointContracts).map((endpoint2) => ({
+      endpoint: endpoint2,
+      status: "SKIPPED",
+      acceptedBytes: 0,
+      reason
+    }));
+  }
+  function responseLimit(endpoint2, acceptedTotal, acceptedEndpoint = 0) {
+    return Math.min(
+      Math.max(0, localPromotionInternalApiEndpointContracts[endpoint2].maxResponseBytes - acceptedEndpoint),
+      Math.max(0, totalResponseLimit - acceptedTotal)
+    );
+  }
+  function buildPageMetricsUrl(sourceUrl, advid) {
+    const url = new URL(localPromotionInternalApiEndpointContracts.pageMetrics.path, new URL(sourceUrl).origin);
+    url.searchParams.set("frameId", localPromotionInternalApiFrameId);
+    url.searchParams.set("advid", advid);
+    return url.href;
+  }
+  function buildPromoteMetaUrl(sourceUrl) {
+    return new URL(localPromotionInternalApiEndpointContracts.liveReportPromoteMeta.path, new URL(sourceUrl).origin).href;
+  }
+  function buildStatQueryUrl(sourceUrl, advid) {
+    const url = new URL(localPromotionInternalApiEndpointContracts.statQuery.path, new URL(sourceUrl).origin);
+    url.searchParams.set("advid", advid);
+    return url.href;
+  }
+  function buildStatQueryFallbackUrl(sourceUrl, advid) {
+    const url = new URL(localPromotionInternalApiEndpointContracts.statQuery.fallbackPaths[0], new URL(sourceUrl).origin);
+    url.searchParams.set("advid", advid);
+    return url.href;
+  }
+  async function requestEndpoint(input) {
+    const request = createRequest(input.signal);
+    try {
+      const response = await fetch(input.query ? appendQuery(input.url, input.query) : input.url, {
+        method: input.method,
+        ...input.method === "POST" ? { headers: { "content-type": "application/json" }, body: input.body } : {},
+        credentials: "include",
+        cache: "no-store",
+        redirect: "error",
+        signal: request.signal
+      });
+      if (response.status === 401 || response.status === 429) {
+        return { ok: false, status: "ABORTED", acceptedBytes: 0, reason: `HTTP_${response.status}` };
+      }
+      if (!response.ok) return { ok: false, status: "FAILED", acceptedBytes: 0, reason: `HTTP_${response.status}` };
+      const payload = await readSafeJson(response, input.limit, request.signal);
+      if (!payload.ok) {
+        const reason = payload.reason === "ABORTED" && request.didTimeout() ? "REQUEST_TIMEOUT" : payload.reason;
+        return {
+          ok: false,
+          status: ["SENSITIVE_RESPONSE", "BYTE_LIMIT", "ABORTED"].includes(reason) ? "ABORTED" : "FAILED",
+          acceptedBytes: payload.acceptedBytes,
+          reason
+        };
+      }
+      return payload;
+    } catch (error) {
+      const reason = request.didTimeout() ? "REQUEST_TIMEOUT" : request.signal.aborted ? "ABORTED" : error instanceof Error ? "REQUEST_FAILED" : "REQUEST_FAILED";
+      return { ok: false, status: reason === "ABORTED" ? "ABORTED" : "FAILED", acceptedBytes: 0, reason };
+    } finally {
+      request.dispose();
+    }
+  }
+  function appendQuery(url, query) {
+    const target = new URL(url);
+    for (const [key, value] of Object.entries(query)) target.searchParams.set(key, value);
+    return target.href;
+  }
+  function resolveMetricBindings(value) {
+    const dataResult = readPlatformData(value);
+    if (!dataResult.ok) return dataResult;
+    const moduleInfos = asArray(dataResult.data.ModuleInfos);
+    if (!moduleInfos) return { ok: false, reason: "SCHEMA_MISMATCH" };
+    const moduleInfo = moduleInfos.find((candidate) => asString(candidate, "ModuleId") === localPromotionInternalApiModuleId);
+    const dataSetInfo = moduleInfo && asRecord(moduleInfo.DataSetInfo);
+    if (!dataSetInfo || asString(dataSetInfo, "Identifier") !== localPromotionInternalApiDataSetKey) {
+      return { ok: false, reason: "SCHEMA_MISMATCH" };
+    }
+    const groups = asArray(dataSetInfo.DataSetGroupInfos);
+    if (!groups) return { ok: false, reason: "SCHEMA_MISMATCH" };
+    const expandedGroups = expandMetricGroups(groups);
+    if (!expandedGroups) return { ok: false, reason: "SCHEMA_MISMATCH" };
+    const usedMetricNames = /* @__PURE__ */ new Set();
+    const bindings = [];
+    for (const field of localPromotionInternalApiFields) {
+      const metricCandidates = findMetricCandidates(expandedGroups, field);
+      if (metricCandidates === "SCHEMA_MISMATCH") return { ok: false, reason: "SCHEMA_MISMATCH", diagnostics: createMetadataDiagnostics(expandedGroups, bindings) };
+      if (metricCandidates.length === 0) continue;
+      if (metricCandidates.length > 1) return { ok: false, reason: "SCHEMA_MISMATCH", diagnostics: createMetadataDiagnostics(expandedGroups, bindings) };
+      const [candidate] = metricCandidates;
+      if (!candidate) return { ok: false, reason: "NO_USABLE_METRICS", diagnostics: createMetadataDiagnostics(expandedGroups, bindings) };
+      if (usedMetricNames.has(candidate.platformMetricName)) return { ok: false, reason: "SCHEMA_MISMATCH", diagnostics: createMetadataDiagnostics(expandedGroups, bindings) };
+      usedMetricNames.add(candidate.platformMetricName);
+      bindings.push({ field, ...candidate });
+    }
+    const diagnostics = createMetadataDiagnostics(expandedGroups, bindings);
+    return bindings.length > 0 ? { ok: true, bindings, diagnostics } : { ok: false, reason: "NO_USABLE_METRICS", diagnostics };
+  }
+  function expandMetricGroups(groups, depth = 0) {
+    if (depth > 2) return null;
+    const expanded = [];
+    for (const group of groups) {
+      expanded.push(group);
+      if (group.Groups === void 0) continue;
+      const nestedGroups = asArray(group.Groups);
+      if (!nestedGroups) return null;
+      const nested = expandMetricGroups(nestedGroups, depth + 1);
+      if (!nested) return null;
+      expanded.push(...nested);
+    }
+    return expanded;
+  }
+  function createMetadataDiagnostics(groups, bindings) {
+    const metadataGroups = groups.slice(0, 6).map((group) => {
+      const metricOrDimensions = asArray(group.MetricOrDimension) || [];
+      const labels = metricOrDimensions.map((item) => isRecord2(item) && typeof item.NameZh === "string" ? sanitizeDiagnosticLabel(item.NameZh) : "").filter((label) => Boolean(label)).slice(0, 12);
+      return {
+        groupKey: sanitizeDiagnosticLabel(typeof group.GroupKey === "string" ? group.GroupKey : "UNKNOWN_GROUP"),
+        metricCount: metricOrDimensions.length,
+        labels
+      };
+    });
+    const matchedMetricKeys = bindings.map((binding) => binding.field.metricKey);
+    return {
+      metadataGroups,
+      matchedMetricKeys,
+      missingMetricKeys: localPromotionApiMetricKeys.filter((key) => !matchedMetricKeys.includes(key))
+    };
+  }
+  function sanitizeDiagnosticLabel(value) {
+    const normalized = value.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+    return normalized.length > 80 ? `${normalized.slice(0, 79)}\u2026` : normalized;
+  }
+  function findMetricCandidates(groups, field) {
+    const candidates = [];
+    for (const groupKey of field.groupKeys) {
+      const matchingGroups = groups.filter((candidate) => asString(candidate, "GroupKey") === groupKey);
+      if (matchingGroups.length > 1) return "SCHEMA_MISMATCH";
+      const [group] = matchingGroups;
+      if (!group) continue;
+      const metricOrDimensions = asArray(group.MetricOrDimension);
+      if (!metricOrDimensions) return "SCHEMA_MISMATCH";
+      for (const item of metricOrDimensions) {
+        if (!isRecord2(item) || item.Type !== localPromotionMetricType) continue;
+        const platformMetricName = typeof item.Name === "string" ? item.Name.trim() : "";
+        const metadataLabel = typeof item.NameZh === "string" ? item.NameZh.trim() : "";
+        const normalizedMetadataLabel = normalizeMetadataLabel(metadataLabel);
+        const matchesApprovedLabel = field.metadataLabels.some((label) => normalizeMetadataLabel(label) === normalizedMetadataLabel);
+        if (platformMetricName && matchesApprovedLabel && platformMetricNamePattern.test(platformMetricName)) {
+          candidates.push({ groupKey, platformMetricName });
+        }
+      }
+    }
+    return candidates;
+  }
+  function normalizeMetadataLabel(value) {
+    return value.trim().replace(/[（(]\s*元\s*[）)]/g, "").replace(/\s+/g, "").toLowerCase();
+  }
+  function groupBindings(bindings) {
+    const grouped = /* @__PURE__ */ new Map();
+    for (const binding of bindings) {
+      const existing = grouped.get(binding.groupKey) || [];
+      existing.push(binding);
+      grouped.set(binding.groupKey, existing);
+    }
+    return grouped;
+  }
+  function createStatQueryRequest(groupKey, bindings, identity, roi2Context) {
+    const conditions = [];
+    if (groupKey === "group_total_data") {
+      if (identity.roomId) conditions.push({ Field: "room_id", Values: [identity.roomId], Operator: 7 });
+    } else if (groupKey === "promotion") {
+      if (identity.advid || identity.selectedAdvid) {
+        conditions.push({ Field: "advertiser_id", Values: [identity.advid || identity.selectedAdvid], Operator: 7 });
+      }
+      if (identity.roomId) conditions.push({ Field: "room_id", Values: [identity.roomId], Operator: 7 });
+      conditions.push({ Field: "is_order", Values: ["1"], Operator: 6 });
+      conditions.push({ Field: "adlab_mode", Values: ["1"], Operator: 6 });
+    } else {
+      if (identity.advid || identity.selectedAdvid) {
+        conditions.push({ Field: "advertiser_id", Values: [identity.advid || identity.selectedAdvid], Operator: 7 });
+      }
+      if (identity.roomId) conditions.push({ Field: "room_id", Values: [identity.roomId], Operator: 7 });
+      if (roi2Context) {
+        conditions.push({ Field: "stat_time", Values: [roi2Context.startTimeMs, roi2Context.endTimeMs], Operator: 9 });
+        conditions.push({ Field: "ad_id", Values: roi2Context.adIds.length ? roi2Context.adIds : ["0"], Operator: 7 });
+      }
+    }
+    return {
+      FrameId: localPromotionInternalApiFrameId,
+      ModuleId: localPromotionInternalApiModuleId,
+      DataSetKey: localPromotionInternalApiDataSetKey,
+      Metrics: bindings.map((binding) => binding.platformMetricName),
+      ...conditions.length ? { Filters: { ConditionRelationshipType: 1, Conditions: conditions } } : {},
+      PageParams: { Limit: -1, Offset: 0 }
+    };
+  }
+  function readPromoteMeta(value) {
+    const dataResult = readPlatformData(value);
+    if (!dataResult.ok) return dataResult;
+    const nested = asRecord(dataResult.data.data);
+    const meta = nested || dataResult.data;
+    const interval = asRecord(meta.liveTimeInterval);
+    const startTimeSeconds = interval ? readPositiveInteger(interval.startTime) : null;
+    const endTimeSeconds = interval ? readPositiveInteger(interval.endTime) : null;
+    const rawAdIds = meta.roi2AdIdsUnderThisAdvID;
+    if (startTimeSeconds == null || endTimeSeconds == null || endTimeSeconds < startTimeSeconds || !Array.isArray(rawAdIds) || rawAdIds.length > 200) {
+      return { ok: false, reason: "SCHEMA_MISMATCH" };
+    }
+    const adIds = rawAdIds.map(readIdentifier);
+    if (adIds.some((value2) => value2 == null)) return { ok: false, reason: "SCHEMA_MISMATCH" };
+    const startTimeMs = Math.floor(startTimeSeconds / 3600) * 3600 * 1e3;
+    const endTimeMs = endTimeSeconds * 1e3 + 864e5;
+    return {
+      ok: true,
+      context: {
+        startTimeMs: String(startTimeMs),
+        endTimeMs: String(endTimeMs),
+        adIds
+      }
+    };
+  }
+  function readPositiveInteger(value) {
+    const candidate = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value) ? Number(value) : Number.NaN;
+    return Number.isSafeInteger(candidate) && candidate > 0 ? candidate : null;
+  }
+  function readIdentifier(value) {
+    const candidate = typeof value === "number" && Number.isSafeInteger(value) ? String(value) : typeof value === "string" ? value.trim() : "";
+    return /^\d{1,64}$/.test(candidate) ? candidate : null;
+  }
+  function readPlatformData(value) {
+    const record = asRecord(value);
+    if (!record || typeof record.status_code !== "number") return { ok: false, reason: "SCHEMA_MISMATCH" };
+    if (record.status_code !== 0) return { ok: false, reason: "BUSINESS_ERROR" };
+    const data = asRecord(record.data);
+    return data ? { ok: true, data } : { ok: false, reason: "SCHEMA_MISMATCH" };
+  }
+  function readStatQueryStats(value) {
+    const dataResult = readPlatformData(value);
+    if (!dataResult.ok) return dataResult;
+    const statsData = asRecord(dataResult.data.StatsData);
+    return statsData ? { ok: true, statsData } : { ok: false, reason: "SCHEMA_MISMATCH" };
+  }
+  function projectMetrics(groupKey, bindings, statsData) {
+    const totals = readTotals(statsData, groupKey);
+    if (!totals) return { ok: false, reason: "SCHEMA_MISMATCH" };
+    const metrics = [];
+    for (const binding of bindings) {
+      const metricRecord = asRecord(totals[binding.platformMetricName]);
+      const matched = metricRecord ? readScalar(metricRecord.Value) : null;
+      if (matched == null || sensitiveResponsePattern.test(String(matched))) continue;
+      const field = binding.field;
+      const displayValue = String(matched).trim();
+      const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(field.metricKey), field.unit);
+      if (!parsed.normalizedText || !localPromotionApiMetricKeys.includes(field.metricKey)) continue;
+      const rawEvidence = createRawEvidence(field, displayValue, parsed.normalizedText, binding.field.endpoint);
+      metrics.push({
+        key: field.metricKey,
+        name: field.metricName,
+        value: displayValue,
+        unit: field.unit,
+        source: "network",
+        metricSource: "XHR_JSON",
+        confidence: 0.8,
+        rawEvidence
+      });
+    }
+    return { ok: true, metrics };
+  }
+  function readTotals(statsData, groupKey) {
+    const directTotals = asRecord(statsData.Totals);
+    if (directTotals) return directTotals;
+    const groupedStats = asRecord(statsData[groupKey]);
+    return groupedStats ? asRecord(groupedStats.Totals) : null;
+  }
+  function createRawEvidence(field, displayValue, normalizedValue, endpoint2) {
+    return {
+      sourceType: "INTERNAL_API",
+      bindingKind: "CARD",
+      fieldLabel: field.fieldLabel,
+      displayValue,
+      normalizedValue,
+      displayPrecision: field.displayPrecision,
+      unitSource: field.unit ? "DEFAULT" : "NONE",
+      timeRange: "\u5B9E\u65F6",
+      timeRangeSource: "COMPONENT",
+      timeRangeLocation: "local-promotion-internal-api-contract",
+      componentPath: field.fieldPath,
+      calibrationSignature: `${field.metricKey}|\u5B9E\u65F6|${field.semanticScope}|${field.fieldPath}`,
+      validationStatus: "REQUIRES_REVIEW",
+      validationReasons: [],
+      sourceStatus: "INTERNAL_API",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      semanticScope: field.semanticScope,
+      apiContractVersion: localPromotionInternalApiContractVersion,
+      apiAdapterVersion: localPromotionInternalApiAdapterVersion,
+      endpointKey: endpoint2,
+      evidencePurpose: "PULSE_ONLY",
+      apiCandidate: {
+        value: normalizedValue,
+        displayValue,
+        unit: field.unit,
+        timeRange: "\u5B9E\u65F6",
+        displayPrecision: field.displayPrecision,
+        fieldPath: field.fieldPath,
+        fieldLabel: field.fieldLabel
+      },
+      selectionReason: "\u4EC5 API \u5B57\u6BB5\u6709\u6548"
+    };
+  }
+  function readScalar(value) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) return value;
+    return null;
+  }
+  function asRecord(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  }
+  function asArray(value) {
+    return Array.isArray(value) && value.every((item) => isRecord2(item)) ? value : null;
+  }
+  function isRecord2(value) {
+    return Boolean(value && typeof value === "object" && !Array.isArray(value));
+  }
+  function asString(record, key) {
+    return typeof record[key] === "string" ? record[key] : null;
+  }
+  async function readSafeJson(response, limit, signal) {
+    const reader = response.body?.getReader();
+    if (!reader) return { ok: false, reason: "EMPTY_RESPONSE", acceptedBytes: 0 };
+    const cancelReader = () => {
+      void reader.cancel().catch(() => void 0);
+    };
+    signal.addEventListener("abort", cancelReader, { once: true });
+    const decoder = new TextDecoder();
+    let text = "";
+    let acceptedBytes = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        acceptedBytes += chunk.value.byteLength;
+        if (acceptedBytes > limit) return { ok: false, reason: "BYTE_LIMIT", acceptedBytes };
+        text += decoder.decode(chunk.value, { stream: true });
+        if (sensitiveResponsePattern.test(text)) return { ok: false, reason: "SENSITIVE_RESPONSE", acceptedBytes };
+      }
+      text += decoder.decode();
+      if (sensitiveResponsePattern.test(text)) return { ok: false, reason: "SENSITIVE_RESPONSE", acceptedBytes };
+      return { ok: true, value: JSON.parse(text), acceptedBytes };
+    } catch {
+      return { ok: false, reason: signal.aborted ? "ABORTED" : "JSON_PARSE_FAILED", acceptedBytes };
+    } finally {
+      signal.removeEventListener("abort", cancelReader);
+      reader.releaseLock();
+    }
+  }
+  function createRequest(parentSignal) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = globalThis.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, localPromotionInternalApiRequestTimeoutMs);
+    const abort = () => controller.abort();
+    if (parentSignal?.aborted) controller.abort();
+    else parentSignal?.addEventListener("abort", abort, { once: true });
+    return {
+      signal: controller.signal,
+      didTimeout: () => timedOut,
+      dispose: () => {
+        clearTimeout(timer);
+        parentSignal?.removeEventListener("abort", abort);
+      }
+    };
+  }
+
+  // src/local-promotion-pulse-snapshot.ts
+  function createLocalPromotionPulseSnapshot(input) {
+    const extractedFields = [...new Set(input.collection.metrics.map((metric) => metric.key))].filter((key) => localPromotionApiMetricKeys.includes(key));
+    const successfulBytes = input.collection.captureMeta.endpointStatuses.reduce((total, status) => total + status.acceptedBytes, 0);
+    const coverageRatio = extractedFields.length / localPromotionApiMetricKeys.length;
+    return sanitizeSnapshotPayload({
+      pageType: "LOCAL_PROMOTION_DASHBOARD",
+      sourceUrl: input.sourceUrl,
+      pageTitle: "\u5DE8\u91CF\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8",
+      rawDomText: "",
+      rawNetworkJson: [],
+      rawTableData: [],
+      visibleMetricsJson: input.collection.metrics,
+      screenshotUrl: null,
+      localCollectedAt: input.collectedAt || (/* @__PURE__ */ new Date()).toISOString(),
+      collectionRunId: input.collectionRunId,
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      captureMeta: {
+        adapterId: "local-promotion-internal-api-pulse",
+        adapterVersion: localPromotionInternalApiAdapterVersion,
+        pageFingerprint: `local-promotion-internal-api-pulse:${localPromotionInternalApiAdapterVersion}`,
+        completeness: coverageRatio === 1 ? "COMPLETE" : extractedFields.length ? "PARTIAL" : "UNKNOWN",
+        coverageRatio,
+        expectedFields: [...localPromotionApiMetricKeys],
+        extractedFields,
+        visibleRegions: ["internal-api"],
+        renderModes: [],
+        tabState: input.tabState,
+        originalBytes: successfulBytes,
+        acceptedBytes: successfulBytes,
+        truncatedFields: [],
+        truncationReasons: [],
+        routeDetection: {
+          routeKey: "LOCAL_PROMOTION_DASHBOARD",
+          source: "PAGE_TYPE",
+          confidence: 1,
+          manuallyConfirmed: false,
+          evidence: ["\u7CBE\u786E\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8 URL \u4E0E\u56FA\u5B9A\u5185\u90E8 API \u5951\u7EA6"]
+        },
+        localPromotionInternalApi: input.collection.captureMeta
+      }
+    });
+  }
+
   // src/service-worker.ts
   var uploadQueue = Promise.resolve();
   var captureSingleFlight = createKeyedSingleFlight();
-  var livePulseState = null;
+  var livePulseStates = /* @__PURE__ */ new Map();
+  var livePulseActivities = /* @__PURE__ */ new Map();
+  var latestLivePulseOutcomes = /* @__PURE__ */ new Map();
+  var livePulseStorageHydrated = false;
+  var livePulseStorageHydration = null;
+  var livePulseStorageWriteQueue = Promise.resolve();
   var latestLivePulseOutcome = null;
   chrome.runtime.onInstalled.addListener(() => {
     void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).then(() => appendLog("extension.installed"));
@@ -5886,20 +6972,40 @@
       void startLivePulse(message.payload || {}).then(sendResponse);
       return true;
     }
+    if (message?.type === MESSAGE.START_LOCAL_PROMOTION_PULSE) {
+      if (!isPopupSender(sender)) {
+        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5F00\u542F\u3002" });
+        return false;
+      }
+      void startLocalPromotionPulse(message.payload || {}).then(sendResponse);
+      return true;
+    }
     if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
       if (!isPopupSender(sender)) {
         sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
         return false;
       }
-      void stopLivePulse("USER_STOPPED").then(() => sendResponse({ ok: true }));
+      void stopLivePulse("USER_STOPPED", void 0, void 0, void 0, message.payload?.tabId).then(() => sendResponse({ ok: true }));
+      return true;
+    }
+    if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
+      if (!isPopupSender(sender)) {
+        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
+        return false;
+      }
+      void stopLivePulse("USER_STOPPED", void 0, void 0, void 0, message.payload?.tabId).then(() => sendResponse({ ok: true }));
       return true;
     }
     if (message?.type === MESSAGE.SUBMIT_LIVE_PULSE) {
       void submitLivePulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
       return true;
     }
+    if (message?.type === MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE) {
+      void submitLocalPromotionPulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
+      return true;
+    }
     if (message?.type === MESSAGE.GET_STATE) {
-      void getState().then(sendResponse);
+      void getState(Number.isInteger(message.payload?.tabId) ? Number(message.payload.tabId) : void 0).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.VERIFY_BOUND_CONTEXT) {
@@ -5911,7 +7017,15 @@
       return true;
     }
     if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
-      void getBridgeStatus(sender).then(sendResponse);
+      void getBridgeStatus().then(sendResponse);
+      return true;
+    }
+    if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
+      void syncCurrentTaskFromBridge(sender).then(sendResponse);
+      return true;
+    }
+    if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
+      void pairTaskFromWeb(message.payload || {}, sender).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
@@ -5923,7 +7037,7 @@
         sendResponse({ ok: false, error: "\u914D\u5BF9\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
         return false;
       }
-      void confirmPairing().then(sendResponse);
+      void confirmPairing(sender).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.CANCEL_PAIRING) {
@@ -5987,7 +7101,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code })
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => null);
       if (!response.ok) return { ok: false, error: body?.error?.message || "\u914D\u5BF9\u7801\u65E0\u6548\uFF0C\u8BF7\u5728\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u3002" };
       const preview = body?.data;
       if (!preview?.account || !preview.expiresAt) return { ok: false, error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u53EF\u6838\u5BF9\u7684\u914D\u5BF9\u4FE1\u606F\u3002" };
@@ -6022,7 +7136,50 @@
       return { ok: false, error: "\u65E0\u6CD5\u8BFB\u53D6\u914D\u5BF9\u4FE1\u606F\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u670D\u52A1\u5668\u5730\u5740\u3002" };
     }
   }
-  async function confirmPairing() {
+  async function pairTaskFromWeb(payload, sender) {
+    const taskPageUrl = sender.tab?.url;
+    const taskId = taskIdFromBridgePageUrl(taskPageUrl);
+    if (!taskPageUrl || !taskId) {
+      return { ok: false, errorCode: "TASK_PAGE_REQUIRED", error: "\u53EA\u80FD\u5728\u5F53\u524D\u91C7\u96C6\u4EFB\u52A1\u9875\u9762\u81EA\u52A8\u8FDE\u63A5\u63D2\u4EF6\u3002" };
+    }
+    const apiBaseUrl = normalizeApiBaseUrl(payload.apiBaseUrl || defaultApiBaseUrl);
+    const code = String(payload.code || "").trim();
+    if (!apiBaseUrl) return { ok: false, errorCode: "INVALID_PAIRING_REQUEST", error: apiBaseUrlGuidance };
+    if (!/^\d{6}$/.test(code)) return { ok: false, errorCode: "INVALID_PAIRING_REQUEST", error: "\u7F51\u9875\u914D\u5BF9\u7801\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002" };
+    const protocol = await checkPairingServiceProtocol(apiBaseUrl);
+    if (!protocol.ok) return protocol;
+    try {
+      const previewResponse = await fetchWithTimeout(`${apiBaseUrl}/extension/pairing-codes/preview`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code })
+      });
+      const previewBody = await previewResponse.json().catch(() => null);
+      if (!previewResponse.ok) {
+        return {
+          ok: false,
+          errorCode: previewResponse.status === 429 ? "PAIRING_RATE_LIMITED" : "PAIRING_CODE_INVALID",
+          error: previewResponse.status === 429 ? "\u914D\u5BF9\u8BF7\u6C42\u8FC7\u4E8E\u9891\u7E41\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002" : "\u914D\u5BF9\u7801\u9519\u8BEF\u3001\u5DF2\u4F7F\u7528\u6216\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5728\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u3002"
+        };
+      }
+      const preview = previewBody?.data;
+      if (!preview?.task?.id || preview.task.id !== taskId) {
+        return { ok: false, errorCode: "TASK_PAGE_MISMATCH", error: "\u914D\u5BF9\u7801\u4E0D\u5C5E\u4E8E\u5F53\u524D\u4EFB\u52A1\u9875\u9762\uFF0C\u5DF2\u963B\u6B62\u81EA\u52A8\u8FDE\u63A5\u3002" };
+      }
+      const pulseConflict = await pairingPulseConflict(taskId);
+      if (pulseConflict) return pulseConflict;
+      const exchangeInput = {
+        apiBaseUrl,
+        code,
+        label: "\u7F51\u9875\u4EFB\u52A1\u4E00\u952E\u914D\u5BF9"
+      };
+      const result = await exchangePairingConfirmation(exchangeInput, taskId, taskPageUrl);
+      return result.ok ? { ...result, autoConnected: true, taskPageUrl } : result;
+    } catch (error) {
+      return isRequestTimeout(error) ? { ok: false, errorCode: "PAIRING_API_TIMEOUT", error: "\u8BCA\u65AD\u670D\u52A1\u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002" } : { ok: false, errorCode: "PAIRING_REQUEST_FAILED", error: "\u65E0\u6CD5\u8FDE\u63A5\u8BCA\u65AD\u670D\u52A1\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u670D\u52A1\u5668\u5730\u5740\u3002" };
+    }
+  }
+  async function confirmPairing(sender) {
     const stored = await chrome.storage.local.get([STORAGE.PENDING_PAIRING_CONFIRMATION]);
     const confirmation = stored[STORAGE.PENDING_PAIRING_CONFIRMATION];
     if (!confirmation || new Date(confirmation.expiresAt).getTime() <= Date.now()) {
@@ -6031,28 +7188,72 @@
     }
     const protocol = await checkPairingServiceProtocol(confirmation.apiBaseUrl);
     if (!protocol.ok) return protocol;
+    const taskId = confirmation.task?.id;
+    const taskPageUrl = taskId ? await currentTaskPageUrl(taskId, sender.tab?.url) : null;
+    const pulseConflict = await pairingPulseConflict(taskId);
+    if (pulseConflict) return pulseConflict;
+    return exchangePairingConfirmation(confirmation, taskId, taskPageUrl || void 0);
+  }
+  async function pairingPulseConflict(targetTaskId) {
+    await hydrateLivePulseStorage();
+    if (livePulseStates.size === 0) return null;
+    const local = await chrome.storage.local.get([STORAGE.CONFIG]);
+    const config = local[STORAGE.CONFIG] || {};
+    const hasDifferentTask = [...livePulseStates.values()].some((activePulse) => !targetTaskId || activePulse.taskId !== targetTaskId || config.collectionTaskId !== targetTaskId);
+    if (!hasDifferentTask) return null;
+    return {
+      ok: false,
+      errorCode: "ACTIVE_PULSE_STOP_REQUIRED",
+      error: "\u5DF2\u6709\u5176\u4ED6\u4EFB\u52A1\u6B63\u5728\u6301\u7EED\u91C7\u96C6\uFF0C\u8BF7\u5148\u5728\u63D2\u4EF6 Popup \u624B\u52A8\u505C\u6B62\u540E\u518D\u914D\u5BF9\u3002"
+    };
+  }
+  async function currentTaskPageUrl(expectedTaskId, senderUrl) {
+    const candidates = [senderUrl];
+    try {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      candidates.push(tabs[0]?.url);
+    } catch {
+    }
+    return candidates.find((url) => taskIdFromBridgePageUrl(url) === expectedTaskId) || null;
+  }
+  async function exchangePairingConfirmation(confirmation, expectedTaskId, taskPageUrl) {
     try {
       const response = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/pairing-codes/exchange`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code: confirmation.code, label: confirmation.label })
       });
-      const body = await response.json();
-      if (!response.ok) return { ok: false, error: body?.error?.message || "\u914D\u5BF9\u5931\u8D25\uFF0C\u8BF7\u5728\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u914D\u5BF9\u7801\u3002" };
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        return {
+          ok: false,
+          errorCode: response.status === 429 ? "PAIRING_RATE_LIMITED" : "PAIRING_CODE_INVALID",
+          error: response.status === 429 ? "\u914D\u5BF9\u8BF7\u6C42\u8FC7\u4E8E\u9891\u7E41\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002" : "\u914D\u5BF9\u7801\u9519\u8BEF\u3001\u5DF2\u4F7F\u7528\u6216\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5728\u4EFB\u52A1\u9875\u91CD\u65B0\u751F\u6210\u3002"
+        };
+      }
       const token = body?.data?.token;
-      if (!token) return { ok: false, error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u63D2\u4EF6\u51ED\u8BC1\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
+      if (!token) return { ok: false, errorCode: "PAIRING_RESPONSE_INVALID", error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u6709\u6548\u63D2\u4EF6\u51ED\u8BC1\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
       const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
         headers: extensionContextRequestHeaders(token)
       });
-      const contextBody = await contextResponse.json();
-      if (!contextResponse.ok) return { ok: false, error: contextBody?.error?.message || "\u65E0\u6CD5\u8BFB\u53D6\u7ED1\u5B9A\u8D26\u53F7\u3002" };
+      const contextBody = await contextResponse.json().catch(() => null);
+      if (!contextResponse.ok) {
+        return {
+          ok: false,
+          errorCode: contextResponse.status === 401 || contextResponse.status === 403 ? "PAIRING_CREDENTIAL_REJECTED" : "PAIRING_SERVICE_ERROR",
+          error: contextResponse.status === 401 || contextResponse.status === 403 ? "\u63D2\u4EF6\u51ED\u8BC1\u672A\u88AB\u670D\u52A1\u7AEF\u63A5\u53D7\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" : "\u65E0\u6CD5\u8BFB\u53D6\u5DF2\u914D\u5BF9\u8D26\u53F7\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API\u3002"
+        };
+      }
       const protocolCheck = checkExtensionContextProtocol(contextBody.data, extensionCollectionProtocolVersion);
-      if (!protocolCheck.ok) return { ok: false, error: protocolErrorMessage(protocolCheck.code) };
+      if (!protocolCheck.ok) return { ok: false, errorCode: protocolCheck.code, error: protocolErrorMessage(protocolCheck.code) };
       const context = parseExtensionContext(contextBody.data);
-      if (!context) return { ok: false, error: "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u4EFB\u52A1\u4E0A\u4E0B\u6587\u65E0\u6548\uFF0C\u5DF2\u505C\u6B62\u914D\u5BF9\u3002" };
-      const suggestedTaskId = body?.data?.suggestedTask?.id;
+      if (!context) return { ok: false, errorCode: "INVALID_CONTEXT", error: "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u8D26\u53F7\u4E0A\u4E0B\u6587\u65E0\u6548\uFF0C\u5DF2\u505C\u6B62\u914D\u5BF9\u3002" };
+      const suggestedTaskId = expectedTaskId || body?.data?.suggestedTask?.id;
       const suggestedProject = suggestedTaskId ? context.account.projects.find((project) => project.tasks.some((task) => task.id === suggestedTaskId)) : void 0;
       const suggestedTask = suggestedProject?.tasks.find((task) => task.id === suggestedTaskId);
+      if (expectedTaskId && (!suggestedProject || !suggestedTask)) {
+        return { ok: false, errorCode: "TASK_ACCOUNT_MISMATCH", error: "\u5F53\u524D\u4EFB\u52A1\u4E0D\u5C5E\u4E8E\u5DF2\u914D\u5BF9\u8D26\u53F7\uFF0C\u672A\u5B8C\u6210\u81EA\u52A8\u8FDE\u63A5\u3002" };
+      }
       const config = {
         apiBaseUrl: confirmation.apiBaseUrl,
         accountProfileId: context.account.id,
@@ -6063,13 +7264,27 @@
           projectName: suggestedProject.name
         } : {}
       };
+      const pulseConflict = await pairingPulseConflict(config.collectionTaskId);
+      if (pulseConflict) return pulseConflict;
+      const heartbeat = taskPageUrl ? await reportExtensionHeartbeatForCredentials({
+        apiBaseUrl: confirmation.apiBaseUrl,
+        collectionTaskId: config.collectionTaskId,
+        token
+      }, createTaskPageConnectionActivity(taskPageUrl)) : { ok: true, skipped: true };
+      if (!heartbeat.ok) {
+        const heartbeatError = "error" in heartbeat && typeof heartbeat.error === "string" ? heartbeat.error : "\u4EFB\u52A1\u9875\u5FC3\u8DF3\u672A\u88AB\u670D\u52A1\u7AEF\u786E\u8BA4\u3002";
+        return {
+          ok: false,
+          errorCode: /超时/.test(heartbeatError) ? "HEARTBEAT_TIMEOUT" : "HEARTBEAT_FAILED",
+          error: /超时/.test(heartbeatError) ? "\u4EFB\u52A1\u9875\u5FC3\u8DF3\u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002" : "\u4EFB\u52A1\u9875\u5FC3\u8DF3\u672A\u88AB\u670D\u52A1\u7AEF\u786E\u8BA4\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002"
+        };
+      }
       await chrome.storage.local.set({ [STORAGE.TOKEN]: token, [STORAGE.CONFIG]: config, [STORAGE.CONTEXT]: context });
       await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
       await appendLog("extension.paired", { accountProfileId: context.account.id, expiresAt: body?.data?.expiresAt });
-      await reportExtensionHeartbeatFromStoredActivity();
       return { ok: true, config, context };
-    } catch {
-      return { ok: false, error: "\u65E0\u6CD5\u8FDE\u63A5\u8BCA\u65AD\u670D\u52A1\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u670D\u52A1\u5668\u5730\u5740\u3002" };
+    } catch (error) {
+      return isRequestTimeout(error) ? { ok: false, errorCode: "PAIRING_API_TIMEOUT", error: "\u8BCA\u65AD\u670D\u52A1\u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002" } : { ok: false, errorCode: "PAIRING_SERVICE_ERROR", error: "\u65E0\u6CD5\u8FDE\u63A5\u8BCA\u65AD\u670D\u52A1\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u670D\u52A1\u5668\u5730\u5740\u3002" };
     }
   }
   async function cancelPairingConfirmation() {
@@ -6080,18 +7295,29 @@
     try {
       const response = await fetchWithTimeout(`${apiBaseUrl}/version`);
       const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        return { ok: false, errorCode: "PAIRING_SERVICE_UNAVAILABLE", error: "\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u670D\u52A1\u7248\u672C\uFF0C\u8BF7\u786E\u8BA4 API \u6B63\u5E38\u8FD0\u884C\u3002" };
+      }
       const payload = body && typeof body === "object" && "data" in body ? body.data : null;
+      const serviceExtensionVersion = payload && typeof payload === "object" && "extensionVersion" in payload ? payload.extensionVersion : void 0;
+      if (typeof serviceExtensionVersion !== "string") {
+        return { ok: false, errorCode: "SERVICE_UPDATE_REQUIRED", error: "\u672C\u5730\u670D\u52A1\u7248\u672C\u4FE1\u606F\u4E0D\u5B8C\u6574\uFF0C\u8BF7\u5148\u66F4\u65B0\u5E76\u91CD\u542F\u672C\u5730\u670D\u52A1\u3002" };
+      }
+      if (serviceExtensionVersion !== chrome.runtime.getManifest().version) {
+        return { ok: false, errorCode: "EXTENSION_UPDATE_REQUIRED", error: "\u91C7\u96C6\u63D2\u4EF6\u7248\u672C\u4E0E\u672C\u5730\u670D\u52A1\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u5F53\u524D\u7248\u672C\u63D2\u4EF6\u3002" };
+      }
       const collectionProtocolVersion = payload && typeof payload === "object" && "collectionProtocolVersion" in payload ? payload.collectionProtocolVersion : void 0;
       const protocolCheck = checkExtensionContextProtocol({ collectionProtocolVersion }, extensionCollectionProtocolVersion);
-      if (!response.ok || !protocolCheck.ok) {
+      if (!protocolCheck.ok) {
         return {
           ok: false,
+          errorCode: protocolCheck.ok ? "PAIRING_SERVICE_UNAVAILABLE" : protocolCheck.code,
           error: protocolCheck.ok ? "\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u670D\u52A1\u7248\u672C\uFF0C\u8BF7\u786E\u8BA4 API \u6B63\u5E38\u8FD0\u884C\u3002" : protocolErrorMessage(protocolCheck.code)
         };
       }
       return { ok: true };
     } catch {
-      return { ok: false, error: "\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u670D\u52A1\u7248\u672C\uFF0C\u8BF7\u786E\u8BA4 API \u6B63\u5E38\u8FD0\u884C\u3002" };
+      return { ok: false, errorCode: "PAIRING_SERVICE_UNAVAILABLE", error: "\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u670D\u52A1\u7248\u672C\uFF0C\u8BF7\u786E\u8BA4 API \u6B63\u5E38\u8FD0\u884C\u3002" };
     }
   }
   async function selectTask(payload) {
@@ -6104,11 +7330,18 @@
     const project = context.account.projects.find((item) => item.tasks.some((task2) => task2.id === taskId));
     const task = project?.tasks.find((item) => item.id === taskId);
     if (!project || !task) return { ok: false, error: "\u6240\u9009\u4EFB\u52A1\u4E0D\u5C5E\u4E8E\u5F53\u524D\u7ED1\u5B9A\u8D26\u53F7\uFF0C\u5DF2\u963B\u6B62\u5207\u6362\u3002" };
-    await stopLivePulse("TASK_CHANGED");
+    await hydrateLivePulseStorage();
+    if (shouldBlockTaskSwitchForActivePulse({
+      boundTaskId: config.collectionTaskId,
+      targetTaskId: task.id,
+      hasActivePulse: livePulseStates.size > 0
+    })) {
+      return { ok: false, error: "\u53E6\u4E00\u4EFB\u52A1\u6B63\u5728\u6301\u7EED\u91C7\u96C6\uFF0C\u8BF7\u5148\u5728\u63D2\u4EF6 Popup \u624B\u52A8\u505C\u6B62\u540E\u518D\u5207\u6362\u4EFB\u52A1\u3002" };
+    }
     const nextConfig = { ...config, collectionTaskId: task.id, projectId: project.id, projectName: project.name };
     await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig });
     await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
-    latestLivePulseOutcome = null;
+    resetLivePulseStorage();
     await appendLog("task.selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
     await reportExtensionHeartbeatFromStoredActivity();
     return { ok: true, config: nextConfig };
@@ -6116,11 +7349,11 @@
   async function clearPairing() {
     await stopLivePulse("UNPAIRED");
     await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
-    latestLivePulseOutcome = null;
+    resetLivePulseStorage();
     await appendLog("extension.unpaired");
     return { ok: true };
   }
-  async function getState() {
+  async function getState(tabId) {
     const local = await chrome.storage.local.get([
       STORAGE.CONFIG,
       STORAGE.LATEST_SNAPSHOT,
@@ -6135,18 +7368,27 @@
       STORAGE.LIVE_PULSE_ACTIVITY,
       STORAGE.LIVE_PULSE_STATE
     ]);
-    const activeLivePulseState = await hydrateLivePulseState();
-    const rawLivePulseOutcome = local[STORAGE.LIVE_PULSE_LAST_OUTCOME];
-    const parsedLivePulseOutcome = parseLivePulseOutcome(rawLivePulseOutcome, {
-      buildFingerprint: "1a4bc20a9d72",
-      collectionProtocolVersion: extensionCollectionProtocolVersion,
-      endpointKeys: liveScreenInternalApiEndpointKeys
-    });
-    if (rawLivePulseOutcome && !parsedLivePulseOutcome) {
-      await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME).catch(() => void 0);
+    await hydrateLivePulseStorage();
+    const config = local[STORAGE.CONFIG] || {};
+    const selectedTabId = Number.isInteger(tabId) && Number(tabId) > 0 ? Number(tabId) : await activeBrowserTabId();
+    const currentTaskId = typeof config.collectionTaskId === "string" ? config.collectionTaskId : null;
+    const selectedState = selectedTabId ? livePulseStates.get(selectedTabId) || null : null;
+    const activeLivePulseState = selectedState && (!currentTaskId || selectedState.taskId === currentTaskId) ? selectedState : null;
+    const pulseDisplays = /* @__PURE__ */ new Map();
+    for (const state of livePulseStates.values()) {
+      if (currentTaskId && state.taskId !== currentTaskId) continue;
+      pulseDisplays.set(state.tabId, livePulseDisplayForState(state));
     }
-    const storedLivePulseOutcome = latestLivePulseOutcome || parsedLivePulseOutcome;
-    const lastLivePulseOutcome = storedLivePulseOutcome?.taskId === local[STORAGE.CONFIG]?.collectionTaskId ? storedLivePulseOutcome : null;
+    for (const outcome of latestLivePulseOutcomes.values()) {
+      if (currentTaskId && outcome.taskId !== currentTaskId) continue;
+      if (!pulseDisplays.has(outcome.tabId || -1) && Number.isInteger(outcome.tabId)) {
+        pulseDisplays.set(Number(outcome.tabId), livePulseDisplayForOutcome(outcome));
+      }
+    }
+    const livePulses = [...pulseDisplays.values()];
+    const selectedOutcome = selectedTabId ? latestLivePulseOutcomes.get(selectedTabId) || null : latestLivePulseOutcome;
+    const lastLivePulseOutcome = selectedOutcome && (!currentTaskId || selectedOutcome.taskId === currentTaskId) ? selectedOutcome : null;
+    const selectedLivePulse = activeLivePulseState ? livePulseDisplayForState(activeLivePulseState) : livePulseDisplayForOutcome(lastLivePulseOutcome);
     const pending = local[STORAGE.PENDING_PAIRING_CONFIRMATION];
     if (pending && new Date(pending.expiresAt).getTime() <= Date.now()) {
       await chrome.storage.local.remove(STORAGE.PENDING_PAIRING_CONFIRMATION);
@@ -6158,25 +7400,23 @@
       logs: local[STORAGE.LOGS] || [],
       routeUploadState: local[STORAGE.ROUTE_UPLOAD_STATE] || {},
       pageActivity: local[STORAGE.PAGE_ACTIVITY] || null,
-      livePulseActivity: local[STORAGE.LIVE_PULSE_ACTIVITY] || null,
+      livePulseActivity: selectedTabId ? livePulseActivities.get(selectedTabId) || null : null,
       activeCollectionSession: local[STORAGE.ACTIVE_COLLECTION_SESSION] || null,
-      livePulse: activeLivePulseState ? {
-        active: true,
-        tabId: activeLivePulseState.tabId,
-        startedAt: activeLivePulseState.startedAt,
-        successCount: activeLivePulseState.successCount,
-        lastSuccessAt: activeLivePulseState.lastSuccessAt,
-        lastMetricCount: activeLivePulseState.lastMetricCount,
-        lastMetricKeys: activeLivePulseState.lastMetricKeys,
-        lastFailureReason: activeLivePulseState.lastFailureReason,
-        lastFailureEndpoint: activeLivePulseState.lastFailureEndpoint,
-        rateLimitedUntil: activeLivePulseState.rateLimitedUntil,
-        lastOutcome: null
-      } : { active: false, lastOutcome: lastLivePulseOutcome },
+      livePulse: selectedLivePulse,
+      livePulses,
       context: local[STORAGE.CONTEXT] || null,
       hasToken: Boolean(local[STORAGE.TOKEN]),
       pendingPairingConfirmation: pending && new Date(pending.expiresAt).getTime() > Date.now() ? { apiBaseUrl: pending.apiBaseUrl, account: pending.account, task: pending.task, expiresAt: pending.expiresAt } : null
     };
+  }
+  async function activeBrowserTabId() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const id = tab?.id;
+      return Number.isInteger(id) && Number(id) > 0 ? Number(id) : null;
+    } catch {
+      return null;
+    }
   }
   async function verifyBoundContext() {
     const verified = await refreshBoundContext();
@@ -6191,31 +7431,10 @@
     });
     return { ok: true, state, verifiedAt: (/* @__PURE__ */ new Date()).toISOString() };
   }
-  async function getBridgeStatus(sender) {
+  async function getBridgeStatus() {
     const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN, STORAGE.PENDING_PAIRING_CONFIRMATION]);
     const config = local[STORAGE.CONFIG] || {};
     const paired = Boolean(local[STORAGE.TOKEN]);
-    const recovery = await restoreBoundTaskPageConnection({
-      paired,
-      boundTaskId: config.collectionTaskId,
-      sender,
-      restore: (taskPageUrl) => restoreTaskPageConnection({
-        taskPageUrl,
-        timeoutMs: bridgeRecoveryRequestTimeoutMs,
-        refreshContext: refreshBoundContext,
-        reportHeartbeat: reportExtensionHeartbeat,
-        appendLog
-      })
-    });
-    if (recovery.attempted && !recovery.result.ok) {
-      await appendLog("extension.connection_restore_failed", { error: recovery.result.error });
-      return {
-        ok: false,
-        paired,
-        boundTaskId: config.collectionTaskId,
-        error: recovery.result.error
-      };
-    }
     return {
       ok: true,
       paired,
@@ -6223,9 +7442,101 @@
       boundTaskId: config.collectionTaskId || null,
       protocolVersion: extensionBridgeProtocolVersion,
       extensionVersion: chrome.runtime.getManifest().version,
-      buildFingerprint: "1a4bc20a9d72",
+      buildFingerprint: "e078d8fdfcdf",
       message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u914D\u5BF9\u5E76\u7ED1\u5B9A\u5F53\u524D\u4EFB\u52A1" : "\u63D2\u4EF6\u5DF2\u914D\u5BF9\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
     };
+  }
+  async function syncCurrentTaskFromBridge(sender) {
+    const taskPageUrl = sender.tab?.url || sender.url;
+    const taskId = taskIdFromBridgePageUrl(taskPageUrl);
+    if (!taskPageUrl || !taskId) {
+      return { ok: false, errorCode: "TASK_PAGE_REQUIRED", error: "\u53EA\u80FD\u5728\u5F53\u524D\u91C7\u96C6\u4EFB\u52A1\u9875\u9762\u81EA\u52A8\u8FDE\u63A5\u63D2\u4EF6\u3002" };
+    }
+    const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN]);
+    const config = local[STORAGE.CONFIG] || {};
+    const token = local[STORAGE.TOKEN];
+    const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl || "");
+    if (!token || !apiBaseUrl) {
+      return { ok: false, errorCode: "PAIRING_REQUIRED", error: "\u5F53\u524D\u6D4F\u89C8\u5668\u5C1A\u672A\u8FDE\u63A5\u91C7\u96C6\u63D2\u4EF6\uFF0C\u8BF7\u5B8C\u6210\u4E00\u6B21\u8D26\u53F7\u914D\u5BF9\u3002" };
+    }
+    try {
+      const response = await fetchWithTimeout(`${apiBaseUrl}/extension/context`, {
+        headers: extensionContextRequestHeaders(token)
+      }, bridgeRecoveryRequestTimeoutMs);
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const errorCode = contextRefreshErrorCode(response.status);
+        return {
+          ok: false,
+          errorCode,
+          error: errorCode === "PAIRING_REQUIRED" ? "\u63D2\u4EF6\u51ED\u8BC1\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u8FDE\u63A5\u91C7\u96C6\u8D26\u53F7\u3002" : "\u65E0\u6CD5\u9A8C\u8BC1\u5DF2\u914D\u5BF9\u8D26\u53F7\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API\u3002"
+        };
+      }
+      const payload = body && typeof body === "object" && "data" in body ? body.data : null;
+      const protocolCheck = checkExtensionContextProtocol(payload, extensionCollectionProtocolVersion);
+      if (!protocolCheck.ok) {
+        return { ok: false, errorCode: protocolCheck.code, error: protocolErrorMessage(protocolCheck.code) };
+      }
+      const context = parseExtensionContext(payload);
+      if (!context) return { ok: false, errorCode: "INVALID_CONTEXT", error: "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u8D26\u53F7\u4E0A\u4E0B\u6587\u65E0\u6548\uFF0C\u672A\u5207\u6362\u4EFB\u52A1\u3002" };
+      const binding = resolveTaskPageBinding(context, taskId);
+      if (!binding) {
+        return { ok: false, errorCode: "TASK_ACCOUNT_MISMATCH", error: "\u5F53\u524D\u4EFB\u52A1\u4E0D\u5C5E\u4E8E\u5DF2\u914D\u5BF9\u8D26\u53F7\uFF0C\u672A\u5207\u6362\u63D2\u4EF6\u3002" };
+      }
+      const { project, task } = binding;
+      const changed = config.collectionTaskId !== task.id;
+      await hydrateLivePulseStorage();
+      if (shouldBlockTaskSwitchForActivePulse({
+        boundTaskId: config.collectionTaskId,
+        targetTaskId: task.id,
+        hasActivePulse: livePulseStates.size > 0
+      })) {
+        return { ok: false, errorCode: "ACTIVE_PULSE_STOP_REQUIRED", error: "\u53E6\u4E00\u4EFB\u52A1\u6B63\u5728\u6301\u7EED\u91C7\u96C6\uFF0C\u8BF7\u5148\u5728\u63D2\u4EF6 Popup \u624B\u52A8\u505C\u6B62\u540E\u518D\u5207\u6362\u4EFB\u52A1\u3002" };
+      }
+      const nextConfig = {
+        ...config,
+        apiBaseUrl,
+        accountProfileId: context.account.id,
+        accountName: context.account.accountName,
+        collectionTaskId: task.id,
+        projectId: project.id,
+        projectName: project.name
+      };
+      const heartbeat = await reportExtensionHeartbeatForCredentials({
+        apiBaseUrl,
+        collectionTaskId: task.id,
+        token
+      }, createTaskPageConnectionActivity(taskPageUrl), bridgeRecoveryRequestTimeoutMs);
+      if (!heartbeat.ok) {
+        return { ok: false, errorCode: "HEARTBEAT_FAILED", error: heartbeat.error || "\u5F53\u524D\u4EFB\u52A1\u5FC3\u8DF3\u672A\u88AB\u670D\u52A1\u7AEF\u786E\u8BA4\uFF0C\u672A\u5207\u6362\u63D2\u4EF6\u4EFB\u52A1\u3002" };
+      }
+      await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig, [STORAGE.CONTEXT]: context });
+      if (changed) {
+        await chrome.storage.local.remove([
+          STORAGE.ACTIVE_COLLECTION_SESSION,
+          STORAGE.ROUTE_UPLOAD_STATE,
+          STORAGE.LATEST_SNAPSHOT,
+          STORAGE.LIVE_PULSE_LAST_OUTCOME,
+          STORAGE.LIVE_PULSE_ACTIVITY,
+          STORAGE.LIVE_PULSE_STATE
+        ]);
+        resetLivePulseStorage();
+        await appendLog("task.auto_selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
+      }
+      return {
+        ok: true,
+        paired: true,
+        boundTaskId: task.id,
+        config: nextConfig,
+        message: changed ? "\u5DF2\u81EA\u52A8\u8FDE\u63A5\u5F53\u524D\u4EFB\u52A1\u3002" : "\u63D2\u4EF6\u5DF2\u8FDE\u63A5\u5F53\u524D\u4EFB\u52A1\u3002"
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        errorCode: isRequestTimeout(error) ? "CONTEXT_TIMEOUT" : "CONTEXT_REFRESH_FAILED",
+        error: isRequestTimeout(error) ? "\u672C\u673A API \u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u5730\u670D\u52A1\u662F\u5426\u4ECD\u5728\u8FD0\u884C\u3002" : "\u65E0\u6CD5\u9A8C\u8BC1\u5DF2\u914D\u5BF9\u8D26\u53F7\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API\u3002"
+      };
+    }
   }
   function isPopupSender(sender) {
     return sender.id === chrome.runtime.id && typeof sender.url === "string" && sender.url.startsWith(`chrome-extension://${chrome.runtime.id}/popup.html`);
@@ -6243,20 +7554,23 @@
     return { ok: true, heartbeatReported: heartbeat.ok };
   }
   async function handlePageActivity(activity, tabId) {
-    const activeLivePulseState = livePulseState || await hydrateLivePulseState();
+    const activeLivePulseState = await hydrateLivePulseState(tabId);
     if (!isLivePulseActivityReporter(activeLivePulseState?.tabId, tabId)) return savePageActivity(activity, tabId);
-    if (shouldStopLivePulseForActivity(activity)) {
-      await stopLivePulse("PAGE_INACTIVE");
+    if (shouldStopLivePulseForActivity(activity, activeLivePulseState?.routeKey)) {
+      await stopLivePulse("PAGE_INACTIVE", void 0, void 0, activeLivePulseState || void 0);
       return savePageActivity(activity, tabId);
     }
     const liveActivity = livePulseActivityForTab(activity, tabId);
-    if (liveActivity) await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: liveActivity });
+    if (liveActivity) await setLivePulseActivity(liveActivity);
     return savePageActivity(activity, tabId);
   }
   async function captureAndUpload(payload, routeHint = "UNKNOWN") {
     const tabId = Number(payload.tabId);
     if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u6807\u7B7E\u9875\uFF0C\u8BF7\u5173\u95ED\u63D2\u4EF6\u5F39\u7A97\u540E\u91CD\u8BD5\u3002" };
     if (!isSupportedExtensionCollectionUrl(payload.currentUrl || "")) return { ok: false, error: "\u5F53\u524D\u9875\u9762\u4E0D\u5728\u5DF2\u6388\u6743\u7684\u7CBE\u786E\u91C7\u96C6\u8DEF\u7EBF\u4E2D\u3002" };
+    if (isExactLocalPromotionInternalApiPage(payload.currentUrl || "")) {
+      return { ok: false, error: "\u5DE8\u91CF\u672C\u5730\u63A8\u4EC5\u652F\u6301 API \u6301\u7EED\u91C7\u96C6\uFF0C\u4E0D\u518D\u521B\u5EFA DOM \u5FEB\u7167\u3002" };
+    }
     const refreshedContext = await refreshBoundContext();
     if (!refreshedContext.ok) return refreshedContext;
     const routeOverride = normalizeCollectionRouteKey(payload.routeOverride);
@@ -6366,6 +7680,12 @@
     ].join(":");
     return captureSingleFlight.run(key, () => captureAndUpload(payload, routeKey));
   }
+  async function livePulseStartConflict(tabId, routeKey) {
+    await hydrateLivePulseStorage();
+    const active = livePulseStates.get(tabId) || null;
+    if (!active) return null;
+    return active.routeKey === routeKey ? "\u5F53\u524D\u9875\u9762\u5DF2\u6709 API \u6301\u7EED\u91C7\u96C6\uFF0C\u8BF7\u5148\u505C\u6B62\u540E\u518D\u542F\u52A8\u3002" : "\u5F53\u524D\u6807\u7B7E\u9875\u5DF2\u6709\u53E6\u4E00\u6761 API \u6301\u7EED\u91C7\u96C6\uFF0C\u8BF7\u5148\u505C\u6B62\u540E\u518D\u542F\u52A8\u3002";
+  }
   async function startLivePulse(payload) {
     const tabId = Number(payload.tabId);
     if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u6807\u7B7E\u9875\uFF0C\u8BF7\u5173\u95ED\u63D2\u4EF6\u5F39\u7A97\u540E\u91CD\u8BD5\u3002" };
@@ -6375,9 +7695,10 @@
     if (!refreshedContext.context.liveScreenInternalApi.enabled) {
       return { ok: false, error: "\u670D\u52A1\u7AEF API \u5F00\u5173\u672A\u5F00\u542F\uFF1B\u672A\u542F\u52A8\u5B9E\u65F6\u8109\u51B2\uFF0C\u4E5F\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM\u3002" };
     }
-    const session = await ensureCollectionSession();
-    if (!session.ok) return session;
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
+    if (pageContext?.buildFingerprint !== "e078d8fdfcdf") {
+      return { ok: false, error: "\u76EE\u6807\u76F4\u64AD\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u76F4\u64AD\u9875\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
+    }
     const initialLiveActivity = livePulseActivityForTab({
       currentUrl: pageContext?.currentUrl || "",
       pageType: pageContext?.pageType || "UNKNOWN",
@@ -6392,20 +7713,24 @@
     if (pageContext?.livePulseEligible !== true) {
       return { ok: false, error: "\u5F53\u524D\u76F4\u64AD\u9875\u672A\u63D0\u4F9B\u53EF\u4FE1 room_id\uFF1B\u672A\u542F\u52A8 API \u91C7\u96C6\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM\u3002" };
     }
-    await stopLivePulse("REPLACED");
-    await clearLivePulseOutcome();
+    const session = await ensureCollectionSession();
+    if (!session.ok) return session;
+    const livePulseConflict = await livePulseStartConflict(tabId, "LIVE_DATA_SCREEN");
+    if (livePulseConflict) return { ok: false, error: livePulseConflict };
+    await clearLivePulseOutcome(tabId);
     const api = await apiContext();
     if (!api.ok) return api;
     const roomId = typeof pageContext?.livePulseRoomId === "string" && pageContext.livePulseRoomId.trim() ? pageContext.livePulseRoomId.trim() : roomIdFromLiveScreenUrl(pageContext?.currentUrl || payload.currentUrl || "");
     if (!roomId) {
       return { ok: false, error: "\u5F53\u524D\u76F4\u64AD\u9875\u672A\u63D0\u4F9B\u53EF\u4FE1 room_id\uFF1B\u672A\u542F\u52A8 API \u91C7\u96C6\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM\u3002" };
     }
-    await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: initialLiveActivity });
-    livePulseState = {
+    await setLivePulseActivity(initialLiveActivity);
+    const state = {
       loopId: `${tabId}:${Date.now()}`,
       tabId,
       taskId: api.collectionTaskId,
-      roomId,
+      identityKey: roomId,
+      routeKey: "LIVE_DATA_SCREEN",
       currentUrl: pageContext.currentUrl,
       collectionRunId: session.session.collectionRunId,
       startedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -6419,49 +7744,51 @@
       rateLimitedUntil: null,
       uploadController: null
     };
+    livePulseStates.set(tabId, state);
     await persistLivePulseState();
     await appendLog("live_pulse.started", { tabId, taskId: api.collectionTaskId });
     try {
       await chrome.tabs.sendMessage(tabId, {
         type: MESSAGE.BEGIN_LIVE_PULSE_LOOP,
         payload: {
-          collectionRunId: livePulseState.collectionRunId,
+          loopId: state.loopId,
+          collectionRunId: state.collectionRunId,
           liveScreenInternalApiEnabled: refreshedContext.context.liveScreenInternalApi.enabled
         }
       });
     } catch {
-      await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE");
+      await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE", void 0, void 0, state);
       return { ok: false, error: "\u63D2\u4EF6\u5C1A\u672A\u6CE8\u5165\u5F53\u524D\u9875\u9762\uFF0C\u8BF7\u5237\u65B0\u76EE\u6807\u7F51\u9875\u540E\u91CD\u8BD5\u3002" };
     }
     return { ok: true, nextRefreshAt: (/* @__PURE__ */ new Date()).toISOString() };
   }
   async function submitLivePulse(payload, tabId, senderUrl) {
-    const state = await hydrateLivePulseState();
+    const state = await hydrateLivePulseState(tabId);
     if (!state || tabId !== state.tabId) return { ok: false, stop: true, error: "LIVE_PULSE_NOT_ACTIVE" };
+    if (payload.loopId !== state.loopId) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
     const pulseStartedAt = Number.isFinite(payload.pulseStartedAt) ? Number(payload.pulseStartedAt) : Date.now();
-    const activityStore = await chrome.storage.local.get([STORAGE.LIVE_PULSE_ACTIVITY]);
-    const activity = activityStore[STORAGE.LIVE_PULSE_ACTIVITY];
+    const activity = await hydrateLivePulseActivity(tabId);
     if (!activity || activity.tabId !== state.tabId || shouldStopLivePulseForActivity(activity) || !isExactLiveScreenPage(senderUrl || activity.currentUrl)) {
-      await stopLivePulse("PAGE_INACTIVE");
+      await stopLivePulse("PAGE_INACTIVE", void 0, void 0, state);
       return { ok: false, stop: true, error: "PAGE_INACTIVE" };
     }
     if (payload.error || !payload.snapshot) {
       const failure2 = await handleLivePulseFailure(state, payload.error || "PULSE_CAPTURE_FAILED", void 0, void 0, void 0, pulseStartedAt);
       return { ok: false, ...failure2 };
     }
-    if (livePulseState !== state) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
+    if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
     const snapshot2 = payload.snapshot;
-    if (!isExactLiveScreenPage(snapshot2.sourceUrl || "") || livePulseRoomIdFromSnapshot(snapshot2) !== state.roomId) {
-      await stopLivePulse("PAGE_NAVIGATED");
+    if (!isExactLiveScreenPage(snapshot2.sourceUrl || "") || livePulseRoomIdFromSnapshot(snapshot2) !== state.identityKey) {
+      await stopLivePulse("PAGE_NAVIGATED", void 0, void 0, state);
       return { ok: false, stop: true, error: "PAGE_NAVIGATED" };
     }
     const fatalEndpointStatus = snapshot2.captureMeta?.liveScreenInternalApi?.endpointStatuses.find((item) => ["HTTP_401", "HTTP_429", "SENSITIVE_RESPONSE", "BYTE_LIMIT", "TOTAL_BYTE_LIMIT", "SCHEMA_MISMATCH", "LIVE_ENDED"].includes(item.reason || ""));
     if (fatalEndpointStatus) {
-      await stopLivePulse(fatalEndpointStatus.reason || "API_ABORTED", fatalEndpointStatus.endpoint);
+      await stopLivePulse(fatalEndpointStatus.reason || "API_ABORTED", fatalEndpointStatus.endpoint, void 0, state);
       return { ok: false, stop: true, error: fatalEndpointStatus.reason || "API_ABORTED" };
     }
     if (!snapshot2.captureMeta?.liveScreenInternalApi || snapshot2.visibleMetricsJson.length === 0) {
-      const endpointFailure = snapshot2.captureMeta?.liveScreenInternalApi?.endpointStatuses.find((item) => item.reason);
+      const endpointFailure = [...snapshot2.captureMeta?.liveScreenInternalApi?.endpointStatuses || []].reverse().find((item) => item.reason);
       const failure2 = await handleLivePulseFailure(
         state,
         endpointFailure?.reason || "PULSE_METRICS_MISSING",
@@ -6474,9 +7801,9 @@
     state.uploadController = uploadController;
     const result = await uploadMetricPulse(snapshot2, uploadController.signal);
     if (state.uploadController === uploadController) state.uploadController = null;
-    if (livePulseState !== state) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
+    if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
     if (!result.ok) {
-      const failure2 = await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, void 0, result.retryAfterMs, pulseStartedAt);
+      const failure2 = await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, "metric-pulses", result.retryAfterMs, pulseStartedAt);
       return { ok: false, ...failure2 };
     }
     const firstSuccess = state.successCount === 0;
@@ -6497,6 +7824,174 @@
     }
     await persistLivePulseState();
     return { ok: true, nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now()) - Date.now()) };
+  }
+  async function startLocalPromotionPulse(payload) {
+    const tabId = Number(payload.tabId);
+    if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "\u65E0\u6CD5\u8BC6\u522B\u5F53\u524D\u6807\u7B7E\u9875\uFF0C\u8BF7\u5173\u95ED\u63D2\u4EF6\u5F39\u7A97\u540E\u91CD\u8BD5\u3002" };
+    if (!isExactLocalPromotionInternalApiPage(payload.currentUrl || "")) return { ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u4EC5\u652F\u6301\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8\u7CBE\u786E\u9875\u9762\u3002" };
+    const refreshedContext = await refreshBoundContext();
+    if (!refreshedContext.ok) return refreshedContext;
+    if (!refreshedContext.context.localPromotionInternalApi.enabled) {
+      return { ok: false, error: "\u670D\u52A1\u7AEF\u672C\u5730\u63A8 API \u5F00\u5173\u672A\u5F00\u542F\uFF1B\u672A\u542F\u52A8\u5B9E\u65F6\u8109\u51B2\uFF0C\u4E5F\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM\u3002" };
+    }
+    const localPromotionApi = refreshedContext.context.localPromotionInternalApi;
+    if (localPromotionApi.contractVersion !== localPromotionInternalApiContractVersion || localPromotionApi.adapterVersion !== localPromotionInternalApiAdapterVersion) {
+      return { ok: false, error: "\u672C\u5730\u63A8 API \u5951\u7EA6\u6216\u9002\u914D\u5668\u7248\u672C\u4E0D\u5339\u914D\uFF1B\u8BF7\u66F4\u65B0\u5E76\u91CD\u542F\u672C\u5730\u670D\u52A1\u3001\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u540E\u518D\u8BD5\u3002" };
+    }
+    const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
+    if (pageContext?.buildFingerprint !== "e078d8fdfcdf") {
+      return { ok: false, error: "\u76EE\u6807\u540E\u53F0\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u672C\u5730\u63A8\u9875\u9762\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
+    }
+    if (pageContext?.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(pageContext?.currentUrl || "") || pageContext?.localPromotionPulseEligible !== true) {
+      return { ok: false, error: "\u5F53\u524D\u6807\u7B7E\u9875\u4E0D\u662F\u53EF\u7528\u7684\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8\u3002" };
+    }
+    const session = await ensureCollectionSession();
+    if (!session.ok) return session;
+    const identityKey = typeof pageContext.localPromotionPulseIdentityKey === "string" ? pageContext.localPromotionPulseIdentityKey : null;
+    if (!identityKey) {
+      return { ok: false, error: "\u5F53\u524D\u672C\u5730\u63A8\u9875\u9762\u7F3A\u5C11\u53EF\u4FE1\u5E7F\u544A\u8EAB\u4EFD\uFF1B\u672A\u542F\u52A8 API \u91C7\u96C6\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM\u3002" };
+    }
+    const localPromotionPulseConflict = await livePulseStartConflict(tabId, "LOCAL_PROMOTION_DASHBOARD");
+    if (localPromotionPulseConflict) return { ok: false, error: localPromotionPulseConflict };
+    await hydrateLivePulseStorage();
+    const lastOutcome = latestLivePulseOutcomes.get(tabId);
+    const cooldownRemaining = lastOutcome?.routeKey === "LOCAL_PROMOTION_DASHBOARD" && lastOutcome.reason === "HTTP_429" ? localPromotionRateLimitCooldownRemaining(new Date(lastOutcome.occurredAt).getTime()) : 0;
+    if (cooldownRemaining > 0) {
+      return {
+        ok: false,
+        error: `\u5E73\u53F0 API \u521A\u8FD4\u56DE\u9650\u6D41\uFF0C\u8BF7\u7B49\u5F85 ${Math.ceil(cooldownRemaining / 1e3)} \u79D2\u540E\u518D\u624B\u52A8\u5F00\u59CB\uFF1B\u7CFB\u7EDF\u4E0D\u4F1A\u81EA\u52A8\u91CD\u8BD5\u3002`
+      };
+    }
+    await clearLivePulseOutcome(tabId);
+    const api = await apiContext();
+    if (!api.ok) return api;
+    const activity = livePulseActivityForTab({
+      currentUrl: pageContext.currentUrl,
+      pageType: "LOCAL_PROMOTION_DASHBOARD",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      collectable: true,
+      tabState: pageContext.tabState === "VISIBLE" ? "VISIBLE" : "HIDDEN",
+      observedAt: (/* @__PURE__ */ new Date()).toISOString()
+    }, tabId);
+    if (!activity) return { ok: false, error: "\u65E0\u6CD5\u8BB0\u5F55\u5F53\u524D\u672C\u5730\u63A8\u6807\u7B7E\u9875\u72B6\u6001\u3002" };
+    await setLivePulseActivity(activity);
+    const state = {
+      loopId: `${tabId}:${Date.now()}`,
+      tabId,
+      taskId: api.collectionTaskId,
+      identityKey,
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      currentUrl: pageContext.currentUrl,
+      collectionRunId: session.session.collectionRunId,
+      startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      consecutiveFailures: 0,
+      successCount: 0,
+      lastSuccessAt: null,
+      lastMetricCount: 0,
+      lastMetricKeys: [],
+      lastFailureReason: null,
+      lastFailureEndpoint: null,
+      rateLimitedUntil: null,
+      uploadController: null
+    };
+    livePulseStates.set(tabId, state);
+    await persistLivePulseState();
+    await appendLog("local_promotion_pulse.started", { tabId, taskId: api.collectionTaskId });
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: MESSAGE.BEGIN_LOCAL_PROMOTION_PULSE_LOOP,
+        payload: { loopId: state.loopId, collectionRunId: state.collectionRunId }
+      });
+    } catch {
+      await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE", void 0, void 0, state);
+      return { ok: false, error: "\u63D2\u4EF6\u5C1A\u672A\u6CE8\u5165\u5F53\u524D\u9875\u9762\uFF0C\u8BF7\u5237\u65B0\u76EE\u6807\u7F51\u9875\u540E\u91CD\u8BD5\u3002" };
+    }
+    return { ok: true, nextRefreshAt: (/* @__PURE__ */ new Date()).toISOString() };
+  }
+  async function submitLocalPromotionPulse(payload, tabId, senderUrl) {
+    const state = await hydrateLivePulseState(tabId);
+    if (!state || state.routeKey !== "LOCAL_PROMOTION_DASHBOARD" || tabId !== state.tabId) return { ok: false, stop: true, error: "LOCAL_PROMOTION_PULSE_NOT_ACTIVE" };
+    if (payload.loopId !== state.loopId) return { ok: false, stop: true, error: "PULSE_REPLACED" };
+    const pulseStartedAt = Number.isFinite(payload.pulseStartedAt) ? Number(payload.pulseStartedAt) : Date.now();
+    const activity = await hydrateLivePulseActivity(tabId);
+    if (!activity || activity.tabId !== state.tabId || activity.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(senderUrl || activity.currentUrl)) {
+      await stopLivePulse("PAGE_INACTIVE", void 0, void 0, state);
+      return { ok: false, stop: true, error: "PAGE_INACTIVE" };
+    }
+    if (payload.error) {
+      const failure2 = await handleLivePulseFailure(state, payload.error, void 0, void 0, void 0, pulseStartedAt);
+      return { ok: false, ...failure2 };
+    }
+    const sourceUrl = senderUrl || activity.currentUrl;
+    if (!isExactLocalPromotionInternalApiPage(sourceUrl)) {
+      await stopLivePulse("PAGE_NAVIGATED", void 0, void 0, state);
+      return { ok: false, stop: true, error: "PAGE_NAVIGATED" };
+    }
+    const collectionController = new AbortController();
+    state.uploadController = collectionController;
+    let collection;
+    try {
+      collection = await collectLocalPromotionInternalApi({
+        enabled: true,
+        url: sourceUrl,
+        signal: collectionController.signal
+      });
+    } catch {
+      state.uploadController = null;
+      return { ok: false, ...await handleLivePulseFailure(state, "REQUEST_FAILED", void 0, void 0, void 0, pulseStartedAt) };
+    }
+    if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "PULSE_REPLACED" };
+    const snapshot2 = createLocalPromotionPulseSnapshot({
+      collection,
+      collectionRunId: state.collectionRunId,
+      sourceUrl,
+      tabState: activity.tabState,
+      collectedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    const hasCollectionDiagnostics = collection.captureMeta.endpointStatuses.some((status) => Boolean(status.reason));
+    if (collection.diagnostics && (collection.diagnostics.missingMetricKeys.length > 0 || collection.metrics.length === 0 || Boolean(collection.diagnostics.statQueryFallback) || hasCollectionDiagnostics)) {
+      await appendLog("local_promotion_pulse.capture_diagnostics", {
+        metricCount: collection.metrics.length,
+        matchedMetricKeys: collection.diagnostics.matchedMetricKeys,
+        missingMetricKeys: collection.diagnostics.missingMetricKeys,
+        statQueryFallback: collection.diagnostics.statQueryFallback,
+        metadataGroups: collection.diagnostics.metadataGroups,
+        endpointStatuses: collection.captureMeta.endpointStatuses.map(({ endpoint: endpoint2, status, reason }) => ({ endpoint: endpoint2, status, ...reason ? { reason } : {} }))
+      });
+    }
+    if (localPromotionIdentityKey(collection.captureMeta.identity) !== state.identityKey) {
+      await stopLivePulse("IDENTITY_CHANGED", void 0, void 0, state);
+      return { ok: false, stop: true, error: "IDENTITY_CHANGED" };
+    }
+    const fatal = collection.captureMeta.endpointStatuses.find((item) => ["HTTP_401", "HTTP_429", "SENSITIVE_RESPONSE", "BYTE_LIMIT", "TOTAL_BYTE_LIMIT", "SCHEMA_MISMATCH"].includes(item.reason || ""));
+    if (fatal) {
+      await stopLivePulse(fatal.reason || "API_ABORTED", fatal.endpoint, void 0, state);
+      return { ok: false, stop: true, error: fatal.reason || "API_ABORTED" };
+    }
+    if (!snapshot2.visibleMetricsJson.length) {
+      state.uploadController = null;
+      const endpointFailure = [...collection.captureMeta.endpointStatuses].reverse().find((item) => item.reason);
+      const failure2 = await handleLivePulseFailure(state, endpointFailure?.reason || "PULSE_METRICS_MISSING", void 0, endpointFailure?.endpoint, void 0, pulseStartedAt);
+      return { ok: false, ...failure2 };
+    }
+    const result = await uploadMetricPulse(snapshot2, collectionController.signal);
+    if (state.uploadController === collectionController) state.uploadController = null;
+    if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "PULSE_REPLACED" };
+    if (!result.ok) return { ok: false, ...await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, "metric-pulses", result.retryAfterMs, pulseStartedAt) };
+    state.consecutiveFailures = 0;
+    state.lastFailureReason = null;
+    state.lastFailureEndpoint = null;
+    state.rateLimitedUntil = null;
+    state.successCount += 1;
+    state.lastSuccessAt = (/* @__PURE__ */ new Date()).toISOString();
+    state.lastMetricCount = snapshot2.visibleMetricsJson.length;
+    const uploadedKeys = new Set(snapshot2.visibleMetricsJson.map((metric) => String(metric.key)));
+    state.lastMetricKeys = localPromotionApiMetricKeys.filter((key) => uploadedKeys.has(key));
+    await persistLivePulseState();
+    return {
+      ok: true,
+      nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now(), localPromotionPulseCadenceMs) - Date.now())
+    };
   }
   async function uploadMetricPulse(snapshot2, signal) {
     const api = await apiContext();
@@ -6520,23 +8015,11 @@
     });
   }
   async function handleLivePulseFailure(state, error, status, endpoint2, retryAfterMs, pulseStartedAt = Date.now()) {
-    if (livePulseState !== state) return { stop: true, error: "LIVE_PULSE_REPLACED" };
-    if (status === 429 && error === "RATE_LIMITED" && retryAfterMs) {
-      const rateLimitedUntil = nextLivePulseAfterRateLimit(Date.now(), retryAfterMs);
-      state.consecutiveFailures = 0;
-      state.lastFailureReason = null;
-      state.lastFailureEndpoint = null;
-      state.rateLimitedUntil = new Date(rateLimitedUntil).toISOString();
-      await appendLog("live_pulse.rate_limited", {
-        tabId: state.tabId,
-        retryAfterMs
-      });
-      await persistLivePulseState();
-      return { nextDelayMs: Math.max(0, rateLimitedUntil - Date.now()), error: "RATE_LIMITED" };
-    }
-    if (status === 401 || status === 429 || /HTTP_401|HTTP_429|SCHEMA_MISMATCH|SENSITIVE_RESPONSE|BYTE_LIMIT|TOTAL_BYTE_LIMIT|LIVE_ENDED|PAGE_INACTIVE|LIVE_SCREEN_INTERNAL_API_(?:DISABLED|CONTRACT_MISMATCH|EVIDENCE_INVALID|PAGE_FORBIDDEN)|LIVE_SCREEN_(?:ROOM_ID_INVALID|PULSE_PURPOSE_INVALID)/.test(error)) {
-      await stopLivePulse(error);
-      return { stop: true, error };
+    if (!isLivePulseStateActive(state)) return { stop: true, error: "LIVE_PULSE_REPLACED" };
+    const fatalReason = fatalLivePulseFailureReason(error, status);
+    if (fatalReason) {
+      await stopLivePulse(fatalReason, endpoint2, void 0, state);
+      return { stop: true, error: fatalReason };
     }
     const failure2 = advanceLivePulseFailure(state.consecutiveFailures, error, endpoint2);
     state.consecutiveFailures = failure2.consecutiveFailures;
@@ -6552,51 +8035,113 @@
       await stopLivePulse(
         "THREE_CONSECUTIVE_FAILURES",
         state.lastFailureEndpoint || void 0,
-        state.lastFailureReason
+        state.lastFailureReason,
+        state
       );
       return { stop: true, error: "THREE_CONSECUTIVE_FAILURES" };
     }
     await persistLivePulseState();
-    return { nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt) - Date.now()), error: failure2.lastFailureReason };
+    const cadenceMs = state.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseCadenceMs : void 0;
+    return {
+      nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now(), cadenceMs) - Date.now()),
+      error: failure2.lastFailureReason
+    };
   }
-  async function stopLivePulse(reason, endpoint2, lastFailureReason) {
-    const state = livePulseState || await hydrateLivePulseState();
-    livePulseState = null;
-    await chrome.storage.local.remove([STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]).catch(() => void 0);
-    if (!state) return;
-    state.uploadController?.abort();
-    state.uploadController = null;
-    await chrome.tabs.sendMessage(state.tabId, { type: MESSAGE.STOP_LIVE_PULSE }).catch(() => void 0);
-    await saveLivePulseOutcome({
-      taskId: state.taskId,
-      reason,
-      ...endpoint2 ? { endpoint: endpoint2 } : {},
-      ...lastFailureReason ? { lastFailureReason } : {},
-      occurredAt: (/* @__PURE__ */ new Date()).toISOString(),
-      failure: isLivePulseFailure(reason)
-    });
-    await appendLog("live_pulse.stopped", {
-      tabId: state.tabId,
-      reason,
-      ...endpoint2 ? { endpoint: endpoint2 } : {},
-      ...lastFailureReason ? { lastFailureReason } : {}
-    });
+  async function stopLivePulse(reason, endpoint2, lastFailureReason, expectedState, tabId) {
+    await hydrateLivePulseStorage();
+    const normalizedTabId = Number.isInteger(tabId) && Number(tabId) > 0 ? Number(tabId) : null;
+    if (expectedState && !isLivePulseStateActive(expectedState)) return;
+    const states = expectedState ? [expectedState] : normalizedTabId ? [livePulseStates.get(normalizedTabId)].filter((state) => Boolean(state)) : [...livePulseStates.values()];
+    for (const state of states) {
+      if (!isLivePulseStateActive(state)) continue;
+      livePulseStates.delete(state.tabId);
+      livePulseActivities.delete(state.tabId);
+      state.uploadController?.abort();
+      state.uploadController = null;
+      await persistLivePulseState();
+      await persistLivePulseActivities();
+      await chrome.tabs.sendMessage(state.tabId, {
+        type: state.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? MESSAGE.STOP_LOCAL_PROMOTION_PULSE : MESSAGE.STOP_LIVE_PULSE
+      }).catch(() => void 0);
+      await saveLivePulseOutcome({
+        taskId: state.taskId,
+        routeKey: state.routeKey,
+        tabId: state.tabId,
+        reason,
+        ...endpoint2 ? { endpoint: endpoint2 } : {},
+        ...lastFailureReason ? { lastFailureReason } : {},
+        occurredAt: (/* @__PURE__ */ new Date()).toISOString(),
+        failure: isLivePulseFailure(reason)
+      });
+      await appendLog("live_pulse.stopped", {
+        tabId: state.tabId,
+        reason,
+        ...endpoint2 ? { endpoint: endpoint2 } : {},
+        ...lastFailureReason ? { lastFailureReason } : {}
+      });
+    }
   }
-  async function clearLivePulseOutcome() {
+  async function clearLivePulseOutcome(tabId) {
+    await hydrateLivePulseStorage();
+    if (Number.isInteger(tabId) && Number(tabId) > 0) latestLivePulseOutcomes.delete(Number(tabId));
+    else latestLivePulseOutcomes.clear();
+    latestLivePulseOutcome = findLatestLivePulseOutcome();
+    await persistLivePulseOutcomes();
+  }
+  function resetLivePulseStorage() {
+    livePulseStates.clear();
+    livePulseActivities.clear();
+    latestLivePulseOutcomes.clear();
     latestLivePulseOutcome = null;
-    await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME).catch(() => void 0);
+    livePulseStorageHydrated = true;
+    livePulseStorageHydration = null;
   }
   async function persistLivePulseState() {
-    const state = livePulseState;
-    if (!state) {
-      await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE).catch(() => void 0);
-      return;
-    }
-    const stored = {
+    await hydrateLivePulseStorage();
+    await enqueueLivePulseStorageWrite(async () => {
+      const stored = {};
+      for (const state of livePulseStates.values()) stored[String(state.tabId)] = storedPulseState(state);
+      if (Object.keys(stored).length === 0) await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE);
+      else await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_STATE]: stored });
+    });
+  }
+  async function persistLivePulseActivities() {
+    await hydrateLivePulseStorage();
+    await enqueueLivePulseStorageWrite(async () => {
+      const stored = Object.fromEntries(
+        [...livePulseActivities.entries()].map(([tabId, activity]) => [String(tabId), activity])
+      );
+      if (Object.keys(stored).length === 0) await chrome.storage.local.remove(STORAGE.LIVE_PULSE_ACTIVITY);
+      else await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: stored });
+    });
+  }
+  async function setLivePulseActivity(activity) {
+    await hydrateLivePulseStorage();
+    livePulseActivities.set(activity.tabId, activity);
+    await persistLivePulseActivities();
+  }
+  async function persistLivePulseOutcomes() {
+    await hydrateLivePulseStorage();
+    await enqueueLivePulseStorageWrite(async () => {
+      const stored = Object.fromEntries(
+        [...latestLivePulseOutcomes.entries()].map(([tabId, outcome]) => [String(tabId), outcome])
+      );
+      if (Object.keys(stored).length === 0) await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME);
+      else await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_LAST_OUTCOME]: stored });
+    });
+  }
+  function enqueueLivePulseStorageWrite(writer) {
+    const next = livePulseStorageWriteQueue.then(writer);
+    livePulseStorageWriteQueue = next.catch(() => void 0);
+    return next;
+  }
+  function storedPulseState(state) {
+    return {
       loopId: state.loopId,
       tabId: state.tabId,
       taskId: state.taskId,
-      roomId: state.roomId,
+      identityKey: state.identityKey,
+      routeKey: state.routeKey,
       currentUrl: state.currentUrl,
       collectionRunId: state.collectionRunId,
       startedAt: state.startedAt,
@@ -6608,36 +8153,113 @@
       lastFailureReason: state.lastFailureReason,
       lastFailureEndpoint: state.lastFailureEndpoint,
       rateLimitedUntil: state.rateLimitedUntil,
-      buildFingerprint: "1a4bc20a9d72",
+      buildFingerprint: "e078d8fdfcdf",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
-    await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_STATE]: stored }).catch(() => void 0);
   }
-  async function hydrateLivePulseState() {
-    if (livePulseState) return livePulseState;
-    const local = await chrome.storage.local.get([STORAGE.LIVE_PULSE_STATE]);
-    const parsed = parseStoredLivePulseState(local[STORAGE.LIVE_PULSE_STATE]);
-    if (!parsed) {
-      await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE).catch(() => void 0);
-      return null;
+  async function hydrateLivePulseStorage() {
+    if (livePulseStorageHydrated) return;
+    if (livePulseStorageHydration) return livePulseStorageHydration;
+    livePulseStorageHydration = (async () => {
+      const local = await chrome.storage.local.get([
+        STORAGE.LIVE_PULSE_STATE,
+        STORAGE.LIVE_PULSE_ACTIVITY,
+        STORAGE.LIVE_PULSE_LAST_OUTCOME
+      ]);
+      for (const parsed of parseStoredLivePulseStates(local[STORAGE.LIVE_PULSE_STATE])) {
+        livePulseStates.set(parsed.tabId, { ...parsed, uploadController: null });
+      }
+      for (const activity of parseStoredLivePulseActivities(local[STORAGE.LIVE_PULSE_ACTIVITY])) {
+        livePulseActivities.set(activity.tabId, activity);
+      }
+      for (const outcome of parseStoredLivePulseOutcomes(local[STORAGE.LIVE_PULSE_LAST_OUTCOME])) {
+        if (!Number.isInteger(outcome.tabId) || Number(outcome.tabId) <= 0) continue;
+        latestLivePulseOutcomes.set(Number(outcome.tabId), outcome);
+        if (!latestLivePulseOutcome || new Date(outcome.occurredAt).getTime() >= new Date(latestLivePulseOutcome.occurredAt).getTime()) {
+          latestLivePulseOutcome = outcome;
+        }
+      }
+      livePulseStorageHydrated = true;
+    })();
+    try {
+      await livePulseStorageHydration;
+    } finally {
+      livePulseStorageHydration = null;
     }
-    livePulseState = { ...parsed, uploadController: null };
-    return livePulseState;
+  }
+  async function hydrateLivePulseState(tabId) {
+    await hydrateLivePulseStorage();
+    if (Number.isInteger(tabId) && Number(tabId) > 0) return livePulseStates.get(Number(tabId)) || null;
+    return livePulseStates.values().next().value || null;
+  }
+  async function hydrateLivePulseActivity(tabId) {
+    await hydrateLivePulseStorage();
+    if (Number.isInteger(tabId) && Number(tabId) > 0) return livePulseActivities.get(Number(tabId)) || null;
+    return livePulseActivities.values().next().value || null;
+  }
+  function isLivePulseStateActive(state) {
+    return livePulseStates.get(state.tabId) === state;
+  }
+  function parseStoredLivePulseStates(value) {
+    return storageValueCandidates(value).map((candidate) => parseStoredLivePulseState(candidate)).filter((state) => Boolean(state));
+  }
+  function parseStoredLivePulseActivities(value) {
+    return storageValueCandidates(value).map((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+      const record = candidate;
+      const pageType = record.pageType === "LIVE_DATA_SCREEN" || record.pageType === "LOCAL_PROMOTION_DASHBOARD" ? record.pageType : null;
+      const routeKey = record.routeKey === "LIVE_DATA_SCREEN" || record.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? record.routeKey : void 0;
+      const tabState = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"].includes(String(record.tabState)) ? record.tabState : null;
+      if (!Number.isInteger(record.tabId) || Number(record.tabId) <= 0 || typeof record.currentUrl !== "string" || !record.currentUrl || !pageType || !tabState || typeof record.collectable !== "boolean") return null;
+      return {
+        ...record,
+        tabId: Number(record.tabId),
+        pageType,
+        ...routeKey ? { routeKey } : {},
+        tabState
+      };
+    }).filter((activity) => Boolean(activity));
+  }
+  function parseStoredLivePulseOutcomes(value) {
+    const context = {
+      buildFingerprint: "e078d8fdfcdf",
+      collectionProtocolVersion: extensionCollectionProtocolVersion,
+      endpointKeys: [
+        ...liveScreenInternalApiEndpointKeys,
+        ...localPromotionInternalApiEndpointKeys,
+        "metric-pulses"
+      ]
+    };
+    return storageValueCandidates(value).map((candidate) => parseLivePulseOutcome(candidate, context)).filter((outcome) => Boolean(outcome));
+  }
+  function storageValueCandidates(value) {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== "object") return [];
+    const record = value;
+    return "tabId" in record || "loopId" in record || "routeKey" in record ? [value] : Object.values(record);
+  }
+  function findLatestLivePulseOutcome() {
+    return [...latestLivePulseOutcomes.values()].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())[0] || null;
   }
   function parseStoredLivePulseState(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const candidate = value;
-    if (candidate.buildFingerprint !== "1a4bc20a9d72" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || typeof candidate.taskId !== "string" || typeof candidate.roomId !== "string" || typeof candidate.currentUrl !== "string" || !isExactLiveScreenPage(candidate.currentUrl) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
+    const routeKey = candidate.routeKey === "LOCAL_PROMOTION_DASHBOARD" || candidate.routeKey === "LIVE_DATA_SCREEN" ? candidate.routeKey : null;
+    if (candidate.buildFingerprint !== "e078d8fdfcdf" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
       return null;
     }
-    const lastMetricKeys = normalizeLivePulseMetricKeys(candidate.lastMetricKeys);
-    if (lastMetricKeys.length !== candidate.lastMetricKeys.length) return null;
-    const endpoint2 = typeof candidate.lastFailureEndpoint === "string" && liveScreenInternalApiEndpointKeys.includes(candidate.lastFailureEndpoint) ? candidate.lastFailureEndpoint : null;
+    const allowedMetricKeys = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseMetricKeys : liveScreenPulseCoreMetricKeys;
+    const storedMetricKeys = Array.isArray(candidate.lastMetricKeys) ? candidate.lastMetricKeys.filter((key) => typeof key === "string") : [];
+    const lastMetricKeys = Array.isArray(candidate.lastMetricKeys) && storedMetricKeys.length === candidate.lastMetricKeys.length ? allowedMetricKeys.filter((key) => storedMetricKeys.includes(key)) : [];
+    if (lastMetricKeys.length !== storedMetricKeys.length) return null;
+    const endpointKeys = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionInternalApiEndpointKeys : liveScreenInternalApiEndpointKeys;
+    const endpoint2 = typeof candidate.lastFailureEndpoint === "string" && endpointKeys.includes(candidate.lastFailureEndpoint) ? candidate.lastFailureEndpoint : null;
     return {
       loopId: candidate.loopId,
       tabId: Number(candidate.tabId),
       taskId: candidate.taskId,
-      roomId: candidate.roomId,
+      identityKey: candidate.identityKey,
+      routeKey,
       currentUrl: candidate.currentUrl,
       collectionRunId: typeof candidate.collectionRunId === "string" ? candidate.collectionRunId : null,
       startedAt: candidate.startedAt,
@@ -6652,28 +8274,79 @@
     };
   }
   async function saveLivePulseOutcome(outcome) {
+    await hydrateLivePulseStorage();
     const versionedOutcome = {
       ...outcome,
-      buildFingerprint: "1a4bc20a9d72",
+      buildFingerprint: "e078d8fdfcdf",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
     latestLivePulseOutcome = versionedOutcome;
-    await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_LAST_OUTCOME]: versionedOutcome }).catch(() => void 0);
+    if (Number.isInteger(versionedOutcome.tabId) && Number(versionedOutcome.tabId) > 0) {
+      latestLivePulseOutcomes.set(Number(versionedOutcome.tabId), versionedOutcome);
+    }
+    await persistLivePulseOutcomes();
+  }
+  function livePulseDisplayForState(state) {
+    return {
+      active: true,
+      routeKey: state.routeKey,
+      tabId: state.tabId,
+      startedAt: state.startedAt,
+      successCount: state.successCount,
+      lastSuccessAt: state.lastSuccessAt,
+      lastMetricCount: state.lastMetricCount,
+      lastMetricKeys: state.lastMetricKeys,
+      lastFailureReason: state.lastFailureReason,
+      lastFailureEndpoint: state.lastFailureEndpoint,
+      rateLimitedUntil: state.rateLimitedUntil,
+      lastOutcome: null
+    };
+  }
+  function livePulseDisplayForOutcome(outcome) {
+    return {
+      active: false,
+      ...outcome?.routeKey ? { routeKey: outcome.routeKey } : {},
+      ...outcome?.tabId ? { tabId: outcome.tabId } : {},
+      lastOutcome: outcome
+    };
   }
   function isLivePulseFailure(reason) {
     return !["USER_STOPPED", "REPLACED"].includes(reason);
   }
-  function shouldStopLivePulseForActivity(activity) {
+  function shouldStopLivePulseForActivity(activity, routeKey) {
+    if (routeKey === "LOCAL_PROMOTION_DASHBOARD") {
+      return !isExactLocalPromotionInternalApiPage(activity.currentUrl) || activity.pageType !== "LOCAL_PROMOTION_DASHBOARD";
+    }
     return !isExactLiveScreenPage(activity.currentUrl) || activity.pageType !== "LIVE_DATA_SCREEN";
   }
   async function stopLivePulseForTab(tabId, reason) {
-    const state = livePulseState || await hydrateLivePulseState();
-    if (state?.tabId === tabId) await stopLivePulse(reason);
+    const state = await hydrateLivePulseState(tabId);
+    if (state?.tabId === tabId) await stopLivePulse(reason, void 0, void 0, state);
   }
   async function stopLivePulseForTabUpdate(tabId, changeInfo) {
-    const state = livePulseState || await hydrateLivePulseState();
+    const state = await hydrateLivePulseState(tabId);
     if (state?.tabId !== tabId) return;
-    if (changeInfo.status === "loading" || changeInfo.url) await stopLivePulse("PAGE_NAVIGATED");
+    if (changeInfo.status === "loading") {
+      await stopLivePulse("PAGE_NAVIGATED", void 0, void 0, state);
+      return;
+    }
+    if (!changeInfo.url) return;
+    if (!canKeepLivePulseForUrlUpdate(state, changeInfo.url)) {
+      await stopLivePulse("PAGE_NAVIGATED", void 0, void 0, state);
+      return;
+    }
+    if (!isLivePulseStateActive(state)) return;
+    state.currentUrl = changeInfo.url;
+    const activity = await hydrateLivePulseActivity(tabId);
+    if (!isLivePulseStateActive(state)) return;
+    if (activity?.tabId === tabId) {
+      await setLivePulseActivity({
+        ...activity,
+        currentUrl: changeInfo.url,
+        observedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+    await persistLivePulseState();
   }
   function roomIdFromLiveScreenUrl(value) {
     try {
@@ -6733,15 +8406,19 @@
   async function reportExtensionHeartbeat(activity, timeoutMs = extensionRequestTimeoutMs) {
     const api = await apiContext();
     if (!api.ok) return { ok: false, skipped: true, error: api.error };
+    return reportExtensionHeartbeatForCredentials(api, activity, timeoutMs);
+  }
+  async function reportExtensionHeartbeatForCredentials(credentials, activity, timeoutMs = extensionRequestTimeoutMs) {
+    if (!credentials.collectionTaskId) return { ok: false, skipped: true, error: "\u8BF7\u5148\u7ED1\u5B9A\u91C7\u96C6\u4EFB\u52A1\u3002" };
     try {
-      const response = await fetchWithTimeout(`${api.apiBaseUrl}/extension/heartbeat`, {
+      const response = await fetchWithTimeout(`${credentials.apiBaseUrl}/extension/heartbeat`, {
         method: "POST",
-        headers: { "content-type": "application/json", Authorization: `Bearer ${api.token}` },
+        headers: { "content-type": "application/json", Authorization: `Bearer ${credentials.token}` },
         body: JSON.stringify({
-          collectionTaskId: api.collectionTaskId,
+          collectionTaskId: credentials.collectionTaskId,
           extensionVersion: chrome.runtime.getManifest().version,
           bridgeProtocolVersion: extensionBridgeProtocolVersion,
-          buildFingerprint: "1a4bc20a9d72",
+          buildFingerprint: "e078d8fdfcdf",
           currentUrl: activity.currentUrl,
           pageType: activity.pageType,
           routeKey: activity.routeKey,
@@ -6750,7 +8427,7 @@
           lastError: activity.lastError || null,
           observedAt: activity.observedAt
         })
-      });
+      }, timeoutMs);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         return { ok: false, error: body?.error?.message || `\u72B6\u6001\u4E0A\u62A5\u5931\u8D25\uFF08${response.status}\uFF09` };
@@ -6829,7 +8506,7 @@
     const local = await chrome.storage.local.get([STORAGE.CONTEXT]);
     const context = local[STORAGE.CONTEXT];
     const task = context?.account.projects.flatMap((project) => project.tasks).find((item) => item.id === api.collectionTaskId);
-    return [...new Set((task?.routeSources || []).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => route === "LOCAL_PROMOTION_DASHBOARD"))];
+    return [...new Set((task?.routeSources || []).map((route) => normalizeCollectionRouteKey(route.routeKey)).filter((route) => route === "LOCAL_PROMOTION_DASHBOARD" || route === "LIVE_DATA_SCREEN"))];
   }
   function sameRouteKeys(left, right) {
     return [...new Set(left)].sort().join("|") === [...new Set(right)].sort().join("|");
@@ -6843,7 +8520,7 @@
     try {
       const response = await fetchWithTimeout(`${api.apiBaseUrl}/extension/context`, {
         headers: extensionContextRequestHeaders(api.token)
-      });
+      }, timeoutMs);
       const body = await response.json().catch(() => null);
       if (!response.ok) {
         const message = body && typeof body === "object" && "error" in body ? body.error?.message : null;

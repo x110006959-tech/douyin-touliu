@@ -6,7 +6,7 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // ../../packages/shared/dist/collection-routes.js
+  // ../../packages/shared/src/collection-routes.ts
   var collectionRouteKeys = [
     "LOCAL_PROMOTION_DASHBOARD",
     "LIVE_DATA_SCREEN",
@@ -59,7 +59,9 @@
       urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
     }
   ];
-  var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
+  var collectionRouteLabels = Object.fromEntries(
+    collectionRouteTemplates.map((route) => [route.routeKey, route.label])
+  );
   var collectionFreshnessPolicy = {
     agingAfterMs: 5 * 60 * 1e3,
     staleAfterMs: 10 * 60 * 1e3,
@@ -150,27 +152,19 @@ ${input.visibleText || ""}`;
     return { routeKey: "UNKNOWN", source: "UNKNOWN", confidence: 0, manuallyConfirmed: false, evidence: ["\u5F53\u524D\u53EF\u89C1\u533A\u57DF\u4E0D\u8DB3\u4EE5\u786E\u5B9A\u5206\u680F"] };
   }
   function routeFromUrl(value) {
-    if (!value)
-      return null;
+    if (!value) return null;
     try {
       const url = new URL(value);
       const host = url.hostname.toLowerCase();
       const path = url.pathname.toLowerCase();
       const mode = ["mode", "tab", "view", "section"].map((key) => url.searchParams.get(key)?.toLowerCase() || "").join(" ");
-      if (host === "localads.chengzijianzhan.cn" && /\/lamp\/pc\/liveboard2(?:\/|$)/.test(path))
-        return "LOCAL_PROMOTION_DASHBOARD";
-      if (host === "localads.chengzijianzhan.cn" && /\/lamp\/pc\/promotion\/roi2(?:\/|$)/.test(path))
-        return "TASK_TABLE";
-      if (/\b(product|products|goods|commodity)\b/.test(mode) || /\/(product|goods)(?:\/|$)/.test(path))
-        return "LIVE_PRODUCT_TAB";
-      if (/\b(traffic|flow|channel)\b/.test(mode) || /\/(traffic|flow)(?:\/|$)/.test(path))
-        return "LIVE_TRAFFIC_TAB";
-      if (/\b(main|overview|summary)\b/.test(mode) && /live|room|screen|liveboard/.test(path))
-        return "LIVE_DATA_SCREEN";
-      if (/material|creative/.test(path))
-        return "MATERIAL_LIBRARY";
-      if (/task|campaign/.test(path))
-        return "TASK_TABLE";
+      if (host === "localads.chengzijianzhan.cn" && /\/lamp\/pc\/liveboard2(?:\/|$)/.test(path)) return "LOCAL_PROMOTION_DASHBOARD";
+      if (host === "localads.chengzijianzhan.cn" && /\/lamp\/pc\/promotion\/roi2(?:\/|$)/.test(path)) return "TASK_TABLE";
+      if (/\b(product|products|goods|commodity)\b/.test(mode) || /\/(product|goods)(?:\/|$)/.test(path)) return "LIVE_PRODUCT_TAB";
+      if (/\b(traffic|flow|channel)\b/.test(mode) || /\/(traffic|flow)(?:\/|$)/.test(path)) return "LIVE_TRAFFIC_TAB";
+      if (/\b(main|overview|summary)\b/.test(mode) && /live|room|screen|liveboard/.test(path)) return "LIVE_DATA_SCREEN";
+      if (/material|creative/.test(path)) return "MATERIAL_LIBRARY";
+      if (/task|campaign/.test(path)) return "TASK_TABLE";
     } catch {
       return null;
     }
@@ -178,22 +172,16 @@ ${input.visibleText || ""}`;
   }
   function routeFromSelectedLabel(value) {
     const label = value.replace(/[\s\u00a0]+/g, "").replace(/[（(].*?[）)]/g, "");
-    if (["\u6982\u89C8", "\u76F4\u64AD\u6982\u89C8", "\u6570\u636E\u6982\u89C8"].includes(label))
-      return "LIVE_DATA_SCREEN";
-    if (["\u5546\u54C1", "\u5546\u54C1\u5206\u6790", "\u5546\u54C1\u5217\u8868"].includes(label))
-      return "LIVE_PRODUCT_TAB";
-    if (["\u6D41\u91CF", "\u6D41\u91CF\u5206\u6790", "\u76F4\u64AD\u6D41\u91CF"].includes(label))
-      return "LIVE_TRAFFIC_TAB";
+    if (["\u6982\u89C8", "\u76F4\u64AD\u6982\u89C8", "\u6570\u636E\u6982\u89C8"].includes(label)) return "LIVE_DATA_SCREEN";
+    if (["\u5546\u54C1", "\u5546\u54C1\u5206\u6790", "\u5546\u54C1\u5217\u8868"].includes(label)) return "LIVE_PRODUCT_TAB";
+    if (["\u6D41\u91CF", "\u6D41\u91CF\u5206\u6790", "\u76F4\u64AD\u6D41\u91CF"].includes(label)) return "LIVE_TRAFFIC_TAB";
     return null;
   }
   function routeFromSpecificHeading(value) {
     const heading = value.replace(/[\s\u00a0]+/g, "");
-    if (/商品列表|关注商品|推荐返场|商品画像/.test(heading))
-      return "LIVE_PRODUCT_TAB";
-    if (/直播流量|流量分析|流量趋势/.test(heading))
-      return "LIVE_TRAFFIC_TAB";
-    if (/直播间成交金额|直播数据大屏概览/.test(heading))
-      return "LIVE_DATA_SCREEN";
+    if (/商品列表|关注商品|推荐返场|商品画像/.test(heading)) return "LIVE_PRODUCT_TAB";
+    if (/直播流量|流量分析|流量趋势/.test(heading)) return "LIVE_TRAFFIC_TAB";
+    if (/直播间成交金额|直播数据大屏概览/.test(heading)) return "LIVE_DATA_SCREEN";
     return null;
   }
   function scoreRoute(routeKey, content, markers) {
@@ -211,9 +199,15 @@ ${input.visibleText || ""}`;
     SUBMIT_LIVE_PULSE: "AI_DIAGNOSIS_SUBMIT_LIVE_PULSE",
     START_LIVE_PULSE: "AI_DIAGNOSIS_START_LIVE_PULSE",
     STOP_LIVE_PULSE: "AI_DIAGNOSIS_STOP_LIVE_PULSE",
+    BEGIN_LOCAL_PROMOTION_PULSE_LOOP: "AI_DIAGNOSIS_BEGIN_LOCAL_PROMOTION_PULSE_LOOP",
+    SUBMIT_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_SUBMIT_LOCAL_PROMOTION_PULSE",
+    START_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_START_LOCAL_PROMOTION_PULSE",
+    STOP_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_STOP_LOCAL_PROMOTION_PULSE",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     VERIFY_BOUND_CONTEXT: "AI_DIAGNOSIS_VERIFY_BOUND_CONTEXT",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
+    SYNC_CURRENT_TASK: "AI_DIAGNOSIS_SYNC_CURRENT_TASK",
+    PAIR_TASK_FROM_WEB: "AI_DIAGNOSIS_PAIR_TASK_FROM_WEB",
     REQUEST_PAIRING_CONFIRMATION: "AI_DIAGNOSIS_REQUEST_PAIRING_CONFIRMATION",
     CONFIRM_PAIRING: "AI_DIAGNOSIS_CONFIRM_PAIRING",
     CANCEL_PAIRING: "AI_DIAGNOSIS_CANCEL_PAIRING",
@@ -4264,7 +4258,7 @@ ${input.visibleText || ""}`;
   };
   var NEVER = INVALID;
 
-  // ../../packages/shared/dist/safety.js
+  // ../../packages/shared/src/safety.ts
   var snapshotSafetyLimits = {
     rawDomTextChars: 2e5,
     pageTitleChars: 500,
@@ -4302,27 +4296,26 @@ ${input.visibleText || ""}`;
   ]);
   function shouldRedactSensitiveKey(key) {
     const normalized = normalizeKey(key);
-    if (isCredentialReferenceKey(normalized))
-      return false;
+    if (isCredentialReferenceKey(normalized)) return false;
     return sensitiveExact.has(normalized) || sensitiveContains.some((part) => normalized.includes(part));
   }
   function sanitizeVisibleText(text, maxChars = snapshotSafetyLimits.stringChars) {
     let sanitized = truncateText(text, maxChars);
-    if (sanitized.includes("@"))
-      sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, redacted);
+    if (sanitized.includes("@")) sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, redacted);
     if (/\d/.test(sanitized)) {
       sanitized = sanitized.replace(/\b1[3-9]\d{9}\b/g, redacted).replace(/\b\d{17}[\dXx]\b/g, redacted);
     }
-    if (/bearer/i.test(sanitized))
-      sanitized = sanitized.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, `$1${redacted}`);
+    if (/bearer/i.test(sanitized)) sanitized = sanitized.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, `$1${redacted}`);
     if (/password|passwd|token|authorization|cookie|secret|session|credential/i.test(sanitized)) {
-      sanitized = sanitized.replace(/((?:password|passwd|token|authorization|cookie|secret|session|credential)\s*[:=]\s*)[^\s,;&]+/gi, `$1${redacted}`);
+      sanitized = sanitized.replace(
+        /((?:password|passwd|token|authorization|cookie|secret|session|credential)\s*[:=]\s*)[^\s,;&]+/gi,
+        `$1${redacted}`
+      );
     }
     return truncateText(sanitized, maxChars);
   }
   function sanitizeSensitiveData(value, depth = 0) {
-    if (depth > snapshotSafetyLimits.depth)
-      return truncated;
+    if (depth > snapshotSafetyLimits.depth) return truncated;
     const holder = {};
     const stack = [
       { input: value, parent: holder, key: "value", depth }
@@ -4361,19 +4354,15 @@ ${input.visibleText || ""}`;
       const entries = [];
       let count = 0;
       for (const key in current.input) {
-        if (!Object.prototype.hasOwnProperty.call(current.input, key))
-          continue;
+        if (!Object.prototype.hasOwnProperty.call(current.input, key)) continue;
         entries.push([key, current.input[key]]);
         count += 1;
-        if (count >= snapshotSafetyLimits.objectKeys)
-          break;
+        if (count >= snapshotSafetyLimits.objectKeys) break;
       }
       for (let index = entries.length - 1; index >= 0; index -= 1) {
         const [key, raw] = entries[index];
-        if (shouldRedactSensitiveKey(key))
-          output[key] = redacted;
-        else
-          stack.push({ input: raw, parent: output, key, depth: current.depth + 1 });
+        if (shouldRedactSensitiveKey(key)) output[key] = redacted;
+        else stack.push({ input: raw, parent: output, key, depth: current.depth + 1 });
       }
     }
     return holder.value;
@@ -4384,8 +4373,7 @@ ${input.visibleText || ""}`;
       url.username = url.username ? redacted : "";
       url.password = url.password ? redacted : "";
       for (const key of [...url.searchParams.keys()]) {
-        if (shouldRedactSensitiveKey(key))
-          url.searchParams.set(key, redacted);
+        if (shouldRedactSensitiveKey(key)) url.searchParams.set(key, redacted);
       }
       return truncateText(url.href, snapshotSafetyLimits.urlChars);
     } catch {
@@ -4393,7 +4381,12 @@ ${input.visibleText || ""}`;
     }
   }
   function sanitizeCollectionSnapshotPayload(snapshot2) {
-    const { detectedAccountId: _detectedAccountId, detectedAccountName: _detectedAccountName, accountMatchEvidence: _accountMatchEvidence, ...snapshotWithoutPageAccount } = snapshot2;
+    const {
+      detectedAccountId: _detectedAccountId,
+      detectedAccountName: _detectedAccountName,
+      accountMatchEvidence: _accountMatchEvidence,
+      ...snapshotWithoutPageAccount
+    } = snapshot2;
     const truncatedFields = [
       ...snapshot2.rawDomText.length ? ["rawDomText"] : [],
       ...snapshot2.rawNetworkJson.length ? ["rawNetworkJson"] : [],
@@ -4407,7 +4400,10 @@ ${input.visibleText || ""}`;
       // Page text may be used in memory to derive allowlisted fields, but is never part of a snapshot payload.
       rawDomText: "",
       rawNetworkJson: [],
-      rawTableData: limitArrayValue(sanitizeSensitiveData(snapshot2.rawTableData.slice(0, snapshotSafetyLimits.tableItems)), snapshotSafetyLimits.networkTotalChars),
+      rawTableData: limitArrayValue(
+        sanitizeSensitiveData(snapshot2.rawTableData.slice(0, snapshotSafetyLimits.tableItems)),
+        snapshotSafetyLimits.networkTotalChars
+      ),
       visibleMetricsJson: (snapshot2.visibleMetricsJson || []).slice(0, snapshotSafetyLimits.visibleMetrics).map(sanitizeVisibleMetric),
       screenshotUrl: snapshot2.screenshotUrl ? sanitizeCaptureUrl(snapshot2.screenshotUrl) : snapshot2.screenshotUrl
     };
@@ -4428,8 +4424,7 @@ ${input.visibleText || ""}`;
     return sanitized;
   }
   function sanitizeVisibleMetric(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return sanitizeSensitiveData(value);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return sanitizeSensitiveData(value);
     const metric = value;
     const sanitized = sanitizeSensitiveData(metric);
     return {
@@ -4440,8 +4435,7 @@ ${input.visibleText || ""}`;
   }
   function limitSerializedValue(value, maxChars) {
     const serialized = safeStringify(value);
-    if (serialized.length <= maxChars)
-      return value;
+    if (serialized.length <= maxChars) return value;
     return {
       truncated: true,
       originalChars: serialized.length,
@@ -4472,7 +4466,7 @@ ${input.visibleText || ""}`;
     return normalizedKey.endsWith("id");
   }
 
-  // ../../packages/shared/dist/decision-tables.js
+  // ../../packages/shared/src/decision-tables.ts
   var decisionTableCellSchema = external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean(), external_exports.null()]);
   var decisionTableInputSchema = external_exports.object({
     routeKey: external_exports.enum(collectionRouteKeys).nullable(),
@@ -4480,7 +4474,7 @@ ${input.visibleText || ""}`;
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
-  // ../../packages/shared/dist/metric-value.js
+  // ../../packages/shared/src/metric-value.ts
   var metricValidationStatuses = ["TRUSTED", "REQUIRES_REVIEW", "INVALID"];
   var currencyMetricKeys = /* @__PURE__ */ new Set([
     "spend",
@@ -4490,6 +4484,7 @@ ${input.visibleText || ""}`;
     "cpa",
     "target_cpa",
     "gmv",
+    "full_domain_gmv",
     "gpm",
     "shelf_gmv",
     "search_gmv",
@@ -4503,12 +4498,9 @@ ${input.visibleText || ""}`;
   var percentageMetricKeys = /* @__PURE__ */ new Set(["ctr", "product_click_rate", "product_conversion_rate", "live_room_click_rate", "complaint_rate", "refund_rate", "fulfillment_exception_rate"]);
   var roiMetricKeys = /* @__PURE__ */ new Set(["pay_roi", "full_domain_pay_roi", "verify_roi", "gross_profit_roi", "target_roi"]);
   function metricValueSemantic(metricKey) {
-    if (currencyMetricKeys.has(metricKey))
-      return "CURRENCY";
-    if (percentageMetricKeys.has(metricKey))
-      return "PERCENTAGE";
-    if (roiMetricKeys.has(metricKey))
-      return "ROI";
+    if (currencyMetricKeys.has(metricKey)) return "CURRENCY";
+    if (percentageMetricKeys.has(metricKey)) return "PERCENTAGE";
+    if (roiMetricKeys.has(metricKey)) return "ROI";
     return "COUNT";
   }
   function parseDisplayedMetricValue(value, semantic = "UNKNOWN", declaredUnit) {
@@ -4536,22 +4528,14 @@ ${input.visibleText || ""}`;
     const precision = numeric.split(".")[1]?.length || 0;
     const normalizedText = scaleDecimal(numeric, multiplier, isPercent ? -2 : 0);
     const reasons = [];
-    if (semantic === "ROI" && isPercent)
-      reasons.push("ROI_CANNOT_USE_PERCENT_UNIT");
-    if (semantic === "ROI" && suffix)
-      reasons.push("ROI_CANNOT_USE_QUANTITY_UNIT");
-    if (semantic === "ROI" && explicitUnit && explicitUnit !== "\u500D" && explicitUnit !== "%")
-      reasons.push("ROI_UNIT_MISMATCH");
-    if (semantic === "PERCENTAGE" && !isPercent)
-      reasons.push("PERCENT_UNIT_NOT_EXPLICIT");
-    if (semantic === "PERCENTAGE" && suffix)
-      reasons.push("PERCENT_CANNOT_USE_QUANTITY_UNIT");
-    if (semantic === "PERCENTAGE" && explicitUnit && explicitUnit !== "%")
-      reasons.push("PERCENT_UNIT_MISMATCH");
-    if (semantic === "CURRENCY" && (explicitUnit === "%" || explicitUnit === "\u500D"))
-      reasons.push("CURRENCY_UNIT_MISMATCH");
-    if (semantic === "COUNT" && explicitUnit)
-      reasons.push("COUNT_UNIT_MISMATCH");
+    if (semantic === "ROI" && isPercent) reasons.push("ROI_CANNOT_USE_PERCENT_UNIT");
+    if (semantic === "ROI" && suffix) reasons.push("ROI_CANNOT_USE_QUANTITY_UNIT");
+    if (semantic === "ROI" && explicitUnit && explicitUnit !== "\u500D" && explicitUnit !== "%") reasons.push("ROI_UNIT_MISMATCH");
+    if (semantic === "PERCENTAGE" && !isPercent) reasons.push("PERCENT_UNIT_NOT_EXPLICIT");
+    if (semantic === "PERCENTAGE" && suffix) reasons.push("PERCENT_CANNOT_USE_QUANTITY_UNIT");
+    if (semantic === "PERCENTAGE" && explicitUnit && explicitUnit !== "%") reasons.push("PERCENT_UNIT_MISMATCH");
+    if (semantic === "CURRENCY" && (explicitUnit === "%" || explicitUnit === "\u500D")) reasons.push("CURRENCY_UNIT_MISMATCH");
+    if (semantic === "COUNT" && explicitUnit) reasons.push("COUNT_UNIT_MISMATCH");
     return {
       displayValue,
       normalizedText,
@@ -4575,10 +4559,8 @@ ${input.visibleText || ""}`;
   }
   function metricValueText(metric, semantic = "UNKNOWN") {
     const evidencedValue = metric.rawEvidence?.normalizedValue;
-    if (typeof evidencedValue === "string" && isCanonicalDecimal(evidencedValue))
-      return evidencedValue;
-    if (metric.value == null)
-      return null;
+    if (typeof evidencedValue === "string" && isCanonicalDecimal(evidencedValue)) return evidencedValue;
+    if (metric.value == null) return null;
     if (typeof metric.value === "number") {
       return Number.isFinite(metric.value) ? String(metric.value) : null;
     }
@@ -4591,8 +4573,7 @@ ${input.visibleText || ""}`;
     const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/, "") || "0";
     const shift = (multiplier === 1e4 ? 4 : multiplier === 1e3 ? 3 : 0) - fraction.length + decimalShift;
     let result;
-    if (shift >= 0)
-      result = `${digits}${"0".repeat(shift)}`;
+    if (shift >= 0) result = `${digits}${"0".repeat(shift)}`;
     else {
       const point = digits.length + shift;
       result = point > 0 ? `${digits.slice(0, point)}.${digits.slice(point)}` : `0.${"0".repeat(-point)}${digits}`;
@@ -4604,7 +4585,7 @@ ${input.visibleText || ""}`;
     return /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value);
   }
 
-  // ../../packages/shared/dist/collection-diagnostics.js
+  // ../../packages/shared/src/collection-diagnostics.ts
   var collectionRouteDiagnosticStatuses = [
     "UPLOADED",
     "AGING",
@@ -4664,7 +4645,7 @@ ${input.visibleText || ""}`;
     blocksStrongActions: external_exports.boolean()
   });
 
-  // ../../packages/shared/dist/collection-records.js
+  // ../../packages/shared/src/collection-records.ts
   var structuredCollectionDataVersion = "collection-records-v1";
   var nullableNumber = external_exports.number().finite().nullable();
   var provenanceSchema = external_exports.object({
@@ -4731,62 +4712,7 @@ ${input.visibleText || ""}`;
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
-  // ../../packages/shared/dist/metric-keys.js
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "average_watch_duration_seconds",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "current_online_viewers",
-    "exposure_users",
-    "click_users",
-    "transaction_users",
-    "product_click_rate",
-    "product_conversion_rate",
-    "live_room_click_rate",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
-  var [, ...recordableMetricKeys] = metricKeys;
-
-  // ../../packages/shared/dist/live-screen-internal-api.js
+  // ../../packages/shared/src/live-screen-internal-api.ts
   var liveScreenInternalApiContractVersion = "2026-08-14.1";
   var liveScreenInternalApiAdapterVersion = "1.6.0";
   var liveScreenRoomIdSources = ["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"];
@@ -4804,6 +4730,15 @@ ${input.visibleText || ""}`;
     "punish_info"
   ];
   var liveScreenApiEvidencePurposes = ["PULSE_ONLY", "SNAPSHOT_EVIDENCE", "SNAPSHOT_DISPLAY_ONLY"];
+  var liveScreenPulseCoreMetricKeys = [
+    "gmv",
+    "current_online_viewers",
+    "average_watch_duration_seconds",
+    "gpm",
+    "orders",
+    "transaction_users",
+    "product_conversion_rate"
+  ];
   var requestSchema = external_exports.object({ room_id: external_exports.string().regex(/^\d{1,32}$/) }).strict();
   var metricValueSchema = external_exports.union([external_exports.number().finite(), external_exports.string().trim().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?%?$/)]).nullable();
   var responseSchema = external_exports.object({
@@ -4914,8 +4849,7 @@ ${input.visibleText || ""}`;
   };
   var liveScreenSnapshotEndpointKeys = liveScreenInternalApiEndpointKeys.filter((key) => liveScreenInternalApiContracts[key].fields.some((field) => field.purpose !== "PULSE_ONLY"));
   function liveScreenEndpointKeysForMode(mode) {
-    if (mode === "SNAPSHOT")
-      return [...liveScreenSnapshotEndpointKeys];
+    if (mode === "SNAPSHOT") return [...liveScreenSnapshotEndpointKeys];
     return ["key_index"];
   }
   function resolveLiveScreenRoomId(input) {
@@ -4931,19 +4865,187 @@ ${input.visibleText || ""}`;
     if (urlRoomId && domRoomId && urlRoomId !== domRoomId) {
       return { value: null, source: "MISMATCH", evidence };
     }
-    if (urlRoomId && domRoomId)
-      return { value: urlRoomId, source: "URL_AND_DOM", evidence };
-    if (urlRoomId)
-      return { value: urlRoomId, source: "URL", evidence };
-    if (domRoomId)
-      return { value: domRoomId, source: "DOM", evidence };
+    if (urlRoomId && domRoomId) return { value: urlRoomId, source: "URL_AND_DOM", evidence };
+    if (urlRoomId) return { value: urlRoomId, source: "URL", evidence };
+    if (domRoomId) return { value: domRoomId, source: "DOM", evidence };
     return { value: null, source: "MISSING", evidence };
   }
   function normalizeRoomIds(values) {
     return [...new Set(values.map((value) => value?.trim() || "").filter((value) => liveScreenRoomIdPattern.test(value)))].slice(0, 2);
   }
 
-  // ../../packages/shared/dist/collection-capture.js
+  // ../../packages/shared/src/local-promotion-internal-api.ts
+  var localPromotionInternalApiFrameId = "7405161088825688102";
+  var localPromotionInternalApiModuleId = "7405161354203529243";
+  var localPromotionInternalApiDataSetKey = "pc_data_liveboard_center_data_card";
+  var localPromotionInternalApiEndpointKeys = ["pageMetrics", "liveReportPromoteMeta", "statQuery"];
+  var localPromotionInternalApiEvidencePurposes = ["PULSE_ONLY"];
+  var localPromotionApiMetricKeys = [
+    "total_watch_count",
+    "gmv",
+    "orders",
+    "gpm",
+    "live_viewers",
+    "clicks",
+    "average_watch_duration_seconds",
+    "current_online_viewers",
+    "spend",
+    "full_domain_gmv",
+    "full_domain_orders",
+    "full_domain_pay_roi",
+    "full_domain_product_clicks"
+  ];
+  var localPromotionInternalApiFields = [
+    { metricKey: "total_watch_count", metricName: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u7D2F\u8BA1\u89C2\u770B\u603B\u4EBA\u6570"] },
+    { metricKey: "gmv", metricName: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", "\u6574\u4F53\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "orders", metricName: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "gpm", metricName: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "live_viewers", metricName: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570"] },
+    { metricKey: "clicks", metricName: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] },
+    { metricKey: "average_watch_duration_seconds", metricName: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", unit: "s", semanticScope: "\u672C\u573A\u4EBA\u5747\u89C2\u770B\u65F6\u957F", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u4EBA\u5747\u89C2\u770B\u65F6\u957F"] },
+    { metricKey: "current_online_viewers", metricName: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570"] },
+    { metricKey: "spend", metricName: "\u5168\u57DF\u6D88\u8017(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6D88\u8017(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6D88\u8017", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6D88\u8017(\u5143)", "\u5168\u57DF\u6D88\u8017"] },
+    { metricKey: "full_domain_gmv", metricName: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "full_domain_orders", metricName: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "full_domain_pay_roi", metricName: "\u5168\u57DF\u652F\u4ED8ROI", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u652F\u4ED8ROI", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u652F\u4ED8 ROI", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u652F\u4ED8ROI", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF\u6295\u653EROI", "\u5168\u57DF\u6295\u653E ROI"] },
+    { metricKey: "full_domain_product_clicks", metricName: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] }
+  ];
+  var localPromotionInternalApiEndpointContracts = {
+    pageMetrics: {
+      key: "pageMetrics",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/pageMetrics",
+      maxResponseBytes: 96 * 1024,
+      fields: []
+    },
+    liveReportPromoteMeta: {
+      key: "liveReportPromoteMeta",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/getLiveReportPromoteMeta",
+      maxResponseBytes: 64 * 1024,
+      // 仅瞬时读取直播时间区间与当前广告 ID 白名单，用于构造 roi2_promotion 的固定过滤条件。
+      fields: []
+    },
+    statQuery: {
+      key: "statQuery",
+      method: "POST",
+      path: "/api/lamp/pc/v2/statistics/data/statQuery",
+      // 平台前端在账号命中 BFF 白名单时会把同一请求切到 v3；v2 仍是主路径，v3 仅作业务失败后的固定兜底。
+      fallbackPaths: ["/api/lamp/pc/v3/data/statQuery"],
+      maxResponseBytes: 96 * 1024,
+      fields: localPromotionInternalApiFields.filter((field) => field.endpoint === "statQuery")
+    }
+  };
+  function isExactLocalPromotionInternalApiPage(value) {
+    try {
+      const url = new URL(value);
+      return url.origin === "https://localads.chengzijianzhan.cn" && !url.username && !url.password && url.pathname === "/lamp/pc/liveboard2";
+    } catch {
+      return false;
+    }
+  }
+  function resolveLocalPromotionIdentity(input) {
+    const parsed = new URL(input.url);
+    const rawUrlEvidence = {
+      advid: parsed.searchParams.getAll("advid"),
+      roomId: parsed.searchParams.getAll("room_id"),
+      selectedAdvid: parsed.searchParams.getAll("selected_advid"),
+      selectedAwemeId: parsed.searchParams.getAll("selected_aweme_id")
+    };
+    const rawDomEvidence = {
+      advid: input.dom?.advid || [],
+      roomId: input.dom?.roomId || [],
+      selectedAdvid: input.dom?.selectedAdvid || [],
+      selectedAwemeId: input.dom?.selectedAwemeId || []
+    };
+    const urlEvidence = {
+      advid: normalizeIdentity(rawUrlEvidence.advid),
+      roomId: normalizeIdentity(rawUrlEvidence.roomId),
+      selectedAdvid: normalizeIdentity(rawUrlEvidence.selectedAdvid),
+      selectedAwemeId: normalizeIdentity(rawUrlEvidence.selectedAwemeId)
+    };
+    const domEvidence = {
+      advid: normalizeIdentity(rawDomEvidence.advid),
+      roomId: normalizeIdentity(rawDomEvidence.roomId),
+      selectedAdvid: normalizeIdentity(rawDomEvidence.selectedAdvid),
+      selectedAwemeId: normalizeIdentity(rawDomEvidence.selectedAwemeId)
+    };
+    const combinedEvidence = {
+      advid: normalizeIdentity([...urlEvidence.advid, ...domEvidence.advid]),
+      roomId: normalizeIdentity([...urlEvidence.roomId, ...domEvidence.roomId]),
+      selectedAdvid: normalizeIdentity([...urlEvidence.selectedAdvid, ...domEvidence.selectedAdvid]),
+      selectedAwemeId: normalizeIdentity([...urlEvidence.selectedAwemeId, ...domEvidence.selectedAwemeId])
+    };
+    const evidence = { url: urlEvidence, dom: domEvidence };
+    const hasInvalidEvidence = [...Object.values(rawUrlEvidence), ...Object.values(rawDomEvidence)].some((values2) => values2.some((value) => Boolean(value?.trim()) && !/^\d{1,64}$/.test(value.trim())));
+    const sourceConflict = hasInvalidEvidence || Object.keys(urlEvidence).some((key) => {
+      const urlValues = urlEvidence[key];
+      const domValues = domEvidence[key];
+      return urlValues.length > 1 || domValues.length > 1 || urlValues.length > 0 && domValues.length > 0 && urlValues[0] !== domValues[0];
+    });
+    const advertisingIds = normalizeIdentity([...combinedEvidence.advid, ...combinedEvidence.selectedAdvid]);
+    if (sourceConflict || Object.values(combinedEvidence).some((values2) => values2.length > 1) || advertisingIds.length > 1) {
+      return { advid: null, roomId: null, selectedAdvid: null, selectedAwemeId: null, source: "MISMATCH", evidence };
+    }
+    const values = {
+      advid: combinedEvidence.advid[0] || null,
+      roomId: combinedEvidence.roomId[0] || null,
+      selectedAdvid: combinedEvidence.selectedAdvid[0] || null,
+      selectedAwemeId: combinedEvidence.selectedAwemeId[0] || null
+    };
+    const hasUrl = Object.values(urlEvidence).some((values2) => values2.length > 0);
+    const hasDom = Object.values(domEvidence).some((values2) => values2.length > 0);
+    return { ...values, source: hasUrl && hasDom ? "URL_AND_DOM" : hasUrl ? "URL" : hasDom ? "DOM" : "MISSING", evidence };
+  }
+  function localPromotionIdentityKey(identity) {
+    return JSON.stringify({
+      advid: identity.advid,
+      roomId: identity.roomId,
+      selectedAdvid: identity.selectedAdvid,
+      selectedAwemeId: identity.selectedAwemeId
+    });
+  }
+  var localPromotionInternalApiRequestSchema = external_exports.object({
+    FrameId: external_exports.literal(localPromotionInternalApiFrameId),
+    ModuleId: external_exports.literal(localPromotionInternalApiModuleId),
+    DataSetKey: external_exports.literal(localPromotionInternalApiDataSetKey),
+    Metrics: external_exports.array(external_exports.string().regex(/^[A-Za-z0-9_]{1,128}$/)).min(1).max(localPromotionApiMetricKeys.length),
+    Filters: external_exports.object({
+      ConditionRelationshipType: external_exports.literal(1),
+      Conditions: external_exports.array(external_exports.union([
+        external_exports.object({
+          Field: external_exports.enum(["room_id", "advertiser_id", "is_order", "adlab_mode"]),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(2),
+          Operator: external_exports.union([external_exports.literal(6), external_exports.literal(7)])
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("stat_time"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{10,16}$/)).length(2),
+          Operator: external_exports.literal(9)
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("ad_id"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(200),
+          Operator: external_exports.literal(7)
+        }).strict()
+      ])).min(1).max(6)
+    }).strict().optional(),
+    PageParams: external_exports.object({ Limit: external_exports.literal(-1), Offset: external_exports.literal(0) }).strict()
+  }).strict();
+  var localPromotionInternalApiPageMetricsRequestSchema = external_exports.object({
+    frameId: external_exports.literal(localPromotionInternalApiFrameId),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+  var localPromotionInternalApiPromoteMetaRequestSchema = external_exports.object({
+    iesCoreUserId: external_exports.string().regex(/^\d{1,64}$/),
+    roomId: external_exports.string().regex(/^\d{1,64}$/),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+  function normalizeIdentity(values) {
+    return [...new Set(values.map((value) => value?.trim() || "").filter((value) => /^\d{1,64}$/.test(value)))].slice(0, 2);
+  }
+
+  // ../../packages/shared/src/collection-capture.ts
   var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
   var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricSourceStatuses = ["INTERNAL_API", "DOM_TEXT", "API_AND_DOM", "SOURCE_CONFLICT"];
@@ -5000,7 +5102,8 @@ ${input.visibleText || ""}`;
     apiContractVersion: external_exports.string().max(50).optional(),
     apiAdapterVersion: external_exports.string().max(50).optional(),
     endpointKey: external_exports.string().max(100).optional(),
-    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional()
+    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional(),
+    routeKey: external_exports.enum(collectionRouteKeys).optional()
   });
   var visibleMetricSchema = external_exports.object({
     key: external_exports.string().min(1),
@@ -5018,6 +5121,12 @@ ${input.visibleText || ""}`;
     status: external_exports.number().int().min(0).max(599),
     responseJson: external_exports.unknown(),
     capturedAt: external_exports.string().datetime()
+  });
+  var localPromotionIdentityEvidenceSchema = external_exports.object({
+    advid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    roomId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAdvid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAwemeId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2)
   });
   var captureMetaSchema = external_exports.object({
     adapterId: external_exports.string().min(1).max(100),
@@ -5073,6 +5182,29 @@ ${input.visibleText || ""}`;
         intervalLabel: external_exports.string().min(1).max(100),
         liveViews: external_exports.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
       })).max(120).optional()
+    }).optional(),
+    localPromotionInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      identity: external_exports.object({
+        advid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        roomId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAdvid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAwemeId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        source: external_exports.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+        evidence: external_exports.object({
+          url: localPromotionIdentityEvidenceSchema,
+          dom: localPromotionIdentityEvidenceSchema
+        })
+      }),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.enum(localPromotionInternalApiEndpointKeys),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().min(0).max(384 * 1024),
+        reason: external_exports.string().max(100).optional()
+      })).max(localPromotionInternalApiEndpointKeys.length),
+      evidencePurpose: external_exports.enum(localPromotionInternalApiEvidencePurposes)
     }).optional()
   });
   var collectionSnapshotSchema = external_exports.object({
@@ -5102,7 +5234,76 @@ ${input.visibleText || ""}`;
     captureProtocolVersion: external_exports.number().int().min(1).max(100).optional()
   });
 
-  // ../../packages/shared/dist/collection-field-profiles.js
+  // ../../packages/shared/src/realtime-evidence.ts
+  var realtimeEvidenceSummarySchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    pageType: external_exports.enum(pageTypes),
+    observedAt: external_exports.string().datetime(),
+    receivedAt: external_exports.string().datetime(),
+    metricCount: external_exports.number().int().nonnegative(),
+    successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
+    source: external_exports.enum(["LIVE_SCREEN_INTERNAL_API", "LOCAL_PROMOTION_INTERNAL_API"])
+  });
+  function realtimeEvidenceRouteMatchesSource(evidence) {
+    return evidence.source === "LIVE_SCREEN_INTERNAL_API" ? evidence.routeKey === "LIVE_DATA_SCREEN" && evidence.pageType === "LIVE_DATA_SCREEN" : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD" && evidence.pageType === "LOCAL_PROMOTION_DASHBOARD";
+  }
+
+  // ../../packages/shared/src/metric-keys.ts
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/src/collection-field-profiles.ts
   var collectionMetricFieldDefinitions = [
     { key: "spend", name: "ad spend", unit: "yuan", labels: ["\u6D88\u8017", "\u5E7F\u544A\u6D88\u8017", "\u4ECA\u65E5\u6D88\u8017", "\u5168\u57DF\u6D88\u8017(\u5143)"] },
     { key: "daily_budget", name: "daily budget", unit: "yuan", labels: ["\u65E5\u9884\u7B97", "\u9884\u7B97"] },
@@ -5211,7 +5412,7 @@ ${input.visibleText || ""}`;
   };
   function metricFieldsForRoute(routeKey) {
     const keys = new Set(collectionFieldProfiles[routeKey]?.metricKeys || []);
-    return collectionMetricFieldDefinitions.filter((definition) => keys.has(definition.key));
+    return collectionMetricFieldDefinitions.filter((definition2) => keys.has(definition2.key));
   }
   function tableFieldForHeader(routeKey, header) {
     const normalized = normalizeCollectionFieldName(header);
@@ -5221,7 +5422,7 @@ ${input.visibleText || ""}`;
     return value.toLowerCase().replace(/[\s_\-—/（）()：:·]/g, "").replace(/(?:人民币|元|%|倍)$/, "");
   }
 
-  // ../../packages/shared/dist/collection-dashboard.js
+  // ../../packages/shared/src/collection-dashboard.ts
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -5243,7 +5444,69 @@ ${input.visibleText || ""}`;
     tableIndex: external_exports.number().int().min(0).max(3)
   });
 
-  // ../../packages/shared/dist/index.js
+  // ../../packages/shared/src/dashboard-overview.ts
+  var liveRealtimeMetricKeySet = new Set(liveScreenPulseCoreMetricKeys);
+  var localRealtimeMetricKeySet = new Set(localPromotionApiMetricKeys);
+  var overviewDefinitions = [
+    definition("live_gmv", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gmv"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gmv")
+    ]),
+    definition("live_current_online_viewers", "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "current_online_viewers"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "current_online_viewers")
+    ]),
+    definition("live_gpm", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gpm"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gpm")
+    ]),
+    definition("live_watch_duration", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "average_watch_duration_seconds"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "average_watch_duration_seconds")
+    ]),
+    definition("live_orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "orders"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "orders")
+    ]),
+    definition("live_transaction_users", "\u6210\u4EA4\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "transaction_users")
+    ]),
+    definition("live_conversion", "\u5546\u54C1\u8F6C\u5316\u7387", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "product_conversion_rate")
+    ]),
+    definition("local_total_watch_count", "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "total_watch_count")
+    ]),
+    definition("local_live_viewers", "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "live_viewers")
+    ]),
+    definition("local_clicks", "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "clicks")
+    ]),
+    definition("local_spend", "\u5168\u57DF\u6D88\u8017", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "spend")
+    ]),
+    definition("local_full_domain_gmv", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_gmv")
+    ]),
+    definition("local_full_domain_orders", "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_orders")
+    ]),
+    definition("local_full_domain_pay_roi", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_pay_roi")
+    ]),
+    definition("local_full_domain_product_clicks", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_product_clicks")
+    ])
+  ];
+  function definition(displayKey, label, scopeLabel, section, candidateReferences) {
+    return { displayKey, label, scopeLabel, section, candidateReferences };
+  }
+  function reference(routeKey, metricKey) {
+    return { routeKey, metricKey };
+  }
+
+  // ../../packages/shared/src/index.ts
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
     "SUBJECT_PENDING",
@@ -5437,7 +5700,9 @@ ${input.visibleText || ""}`;
     \u503E\u659C\u9AD8\u6838\u9500\u95E8\u5E97: "ALLOCATE_HIGH_VERIFY_STORES",
     \u4E3B\u4F53\u8BC6\u522B\u6821\u51C6: "CALIBRATE_SUBJECT"
   };
-  var actionTypeToDiagnosisAction = Object.fromEntries(Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label]));
+  var actionTypeToDiagnosisAction = Object.fromEntries(
+    Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label])
+  );
   var diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"];
   var recommendationPriorities = ["P0", "P1", "P2"];
   var decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"];
@@ -5618,22 +5883,24 @@ ${input.visibleText || ""}`;
     }
   });
   var bulkReviewMetricInputSchema = external_exports.object({
-    items: external_exports.array(external_exports.object({
-      metricId: external_exports.string().min(1),
-      expectedSnapshotUpdatedAt: external_exports.string().datetime(),
-      reviewedValue: external_exports.string().optional(),
-      timeRange: external_exports.string().trim().min(1).max(100).optional(),
-      sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
-      reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
-    }).superRefine((value, ctx) => {
-      if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          path: ["reviewedValue"],
-          message: "MODIFIED requires reviewedValue"
-        });
-      }
-    })).min(1)
+    items: external_exports.array(
+      external_exports.object({
+        metricId: external_exports.string().min(1),
+        expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+        reviewedValue: external_exports.string().optional(),
+        timeRange: external_exports.string().trim().min(1).max(100).optional(),
+        sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
+        reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+      }).superRefine((value, ctx) => {
+        if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+          ctx.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["reviewedValue"],
+            message: "MODIFIED requires reviewedValue"
+          });
+        }
+      })
+    ).min(1)
   });
   var confirmAllReviewMetricsInputSchema = external_exports.object({
     snapshotVersions: external_exports.array(external_exports.object({
@@ -5713,15 +5980,28 @@ ${input.visibleText || ""}`;
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
     }).optional(),
-    realtimeEvidence: external_exports.object({
-      routeKey: external_exports.enum(collectionRouteKeys),
-      pageType: external_exports.enum(pageTypes),
-      observedAt: external_exports.string().datetime(),
-      receivedAt: external_exports.string().datetime(),
-      metricCount: external_exports.number().int().nonnegative(),
-      successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
-      source: external_exports.literal("LIVE_SCREEN_INTERNAL_API")
-    }).optional()
+    realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
+    realtimeEvidenceItems: external_exports.array(realtimeEvidenceSummarySchema).max(4).optional()
+  }).superRefine((input, context) => {
+    const items = input.realtimeEvidenceItems?.length ? input.realtimeEvidenceItems : input.realtimeEvidence ? [input.realtimeEvidence] : [];
+    const seenRoutes = /* @__PURE__ */ new Set();
+    items.forEach((evidence, index) => {
+      if (!realtimeEvidenceRouteMatchesSource(evidence)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index],
+          message: "\u5B9E\u65F6\u8BC1\u636E\u6765\u6E90\u4E0E\u8DEF\u7EBF\u4E0D\u5339\u914D"
+        });
+      }
+      if (seenRoutes.has(evidence.routeKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index, "routeKey"],
+          message: "\u540C\u4E00\u8DEF\u7EBF\u53EA\u80FD\u4FDD\u7559\u4E00\u4EFD\u6700\u65B0\u5B9E\u65F6\u8BC1\u636E"
+        });
+      }
+      seenRoutes.add(evidence.routeKey);
+    });
   });
   var decisionEngineOutputSchema = external_exports.object({
     engineVersion: external_exports.string().optional(),
@@ -5737,36 +6017,44 @@ ${input.visibleText || ""}`;
       mode: external_exports.enum(decisionAnalysisModes).optional(),
       headline: external_exports.string().min(1),
       performanceSnapshot: external_exports.array(external_exports.string()),
-      findings: external_exports.array(external_exports.object({
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        conclusion: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string()),
-        riskLevel: external_exports.enum(riskLevels)
-      })),
-      recommendations: external_exports.array(external_exports.object({
-        priority: external_exports.enum(recommendationPriorities),
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        reason: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string().min(1)).optional(),
-        steps: external_exports.array(external_exports.string().min(1)),
-        verifyMetrics: external_exports.array(external_exports.string().min(1)),
-        ruleBoundary: external_exports.string().min(1)
-      })),
-      metricExplanations: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        value: external_exports.number().nullable(),
-        meaning: external_exports.string().min(1),
-        use: external_exports.string().min(1),
-        caveat: external_exports.string().min(1)
-      })),
-      ruleReferences: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        url: external_exports.string().url(),
-        scope: external_exports.string().min(1),
-        checkedAt: external_exports.string().min(1)
-      }))
+      findings: external_exports.array(
+        external_exports.object({
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          conclusion: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string()),
+          riskLevel: external_exports.enum(riskLevels)
+        })
+      ),
+      recommendations: external_exports.array(
+        external_exports.object({
+          priority: external_exports.enum(recommendationPriorities),
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          reason: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string().min(1)).optional(),
+          steps: external_exports.array(external_exports.string().min(1)),
+          verifyMetrics: external_exports.array(external_exports.string().min(1)),
+          ruleBoundary: external_exports.string().min(1)
+        })
+      ),
+      metricExplanations: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          value: external_exports.number().nullable(),
+          meaning: external_exports.string().min(1),
+          use: external_exports.string().min(1),
+          caveat: external_exports.string().min(1)
+        })
+      ),
+      ruleReferences: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          url: external_exports.string().url(),
+          scope: external_exports.string().min(1),
+          checkedAt: external_exports.string().min(1)
+        })
+      )
     }).optional(),
     calculatedMetrics: external_exports.object({
       serviceProviderAfterCost: external_exports.number().nullable().optional(),
@@ -5817,7 +6105,10 @@ ${input.visibleText || ""}`;
     storeName: external_exports.string().trim().max(100).optional().nullable(),
     memo: external_exports.string().trim().max(1e3).optional().nullable()
   });
-  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine((value) => Object.keys(value).length > 0, { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" });
+  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine(
+    (value) => Object.keys(value).length > 0,
+    { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" }
+  );
   var deleteAccountProfileSchema = external_exports.object({
     accountName: external_exports.string().trim().min(1, "\u8BF7\u786E\u8BA4\u8981\u5220\u9664\u7684\u8D26\u53F7\u540D\u79F0")
   });
@@ -5864,11 +6155,13 @@ ${input.visibleText || ""}`;
   function normalizeMetricLookupValue(value) {
     return value.toLowerCase().replace(/[（）()]/g, "").replace(/[\s_\-:/：，,。]+/g, "");
   }
-  var metricAliasLookup = new Map(metricKeys.flatMap((key) => [
-    [normalizeMetricLookupValue(key), key],
-    [normalizeMetricLookupValue(metricKeyLabels[key]), key],
-    ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
-  ]));
+  var metricAliasLookup = new Map(
+    metricKeys.flatMap((key) => [
+      [normalizeMetricLookupValue(key), key],
+      [normalizeMetricLookupValue(metricKeyLabels[key]), key],
+      ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
+    ])
+  );
 
   // src/capture-budget.ts
   var captureBudget = {
@@ -6084,12 +6377,12 @@ ${input.visibleText.slice(0, 5e4)}`;
   function extractBoundMetrics(document2, routeKey, profile) {
     if (typeof document2.querySelectorAll !== "function") return [];
     const definitions = metricFieldsForRoute(routeKey).map(toMetricDefinition);
-    return definitions.flatMap((definition) => {
-      const bindings = findMetricBindings(document2, definition, profile);
+    return definitions.flatMap((definition2) => {
+      const bindings = findMetricBindings(document2, definition2, profile);
       if (bindings.length !== 1) {
-        const labelCount = countMetricLabels(document2, definition.labels);
+        const labelCount = countMetricLabels(document2, definition2.labels);
         if (!labelCount) return [];
-        return [invalidBindingMetric(definition, labelCount > 1 ? "FIELD_BINDING_AMBIGUOUS" : "FIELD_VALUE_NOT_UNIQUE")];
+        return [invalidBindingMetric(definition2, labelCount > 1 ? "FIELD_BINDING_AMBIGUOUS" : "FIELD_VALUE_NOT_UNIQUE")];
       }
       const binding = bindings[0];
       return [{
@@ -6104,56 +6397,56 @@ ${input.visibleText.slice(0, 5e4)}`;
       }];
     });
   }
-  function toMetricDefinition(definition) {
-    return { ...definition, labels: [...definition.labels] };
+  function toMetricDefinition(definition2) {
+    return { ...definition2, labels: [...definition2.labels] };
   }
-  function invalidBindingMetric(definition, reason) {
+  function invalidBindingMetric(definition2, reason) {
     return {
-      key: definition.key,
-      name: definition.name,
+      key: definition2.key,
+      name: definition2.name,
       value: null,
-      unit: definition.unit || null,
+      unit: definition2.unit || null,
       source: "dom",
       metricSource: "DOM_TEXT",
       confidence: 0.1,
       rawEvidence: {
         sourceType: "DOM_TEXT",
         bindingKind: "CARD",
-        fieldLabel: definition.labels[0],
+        fieldLabel: definition2.labels[0],
         displayValue: "",
-        unitSource: definition.unit ? "DEFAULT" : "NONE",
+        unitSource: definition2.unit ? "DEFAULT" : "NONE",
         validationStatus: "INVALID",
         validationReasons: [reason],
-        textSnippet: definition.labels[0]
+        textSnippet: definition2.labels[0]
       }
     };
   }
   function countMetricLabels(document2, labels) {
     return [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && !isInsideDataTable(element) && !isMetricDisplayNoise(element) && isExactMetricLabel(element, labels)).length;
   }
-  function findMetricBindings(document2, definition, profile) {
-    const labelElements = [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && !isInsideDataTable(element) && !isMetricDisplayNoise(element) && isExactMetricLabel(element, definition.labels));
+  function findMetricBindings(document2, definition2, profile) {
+    const labelElements = [...document2.querySelectorAll("*")].filter((element) => isVisible(element) && !isInsideDataTable(element) && !isMetricDisplayNoise(element) && isExactMetricLabel(element, definition2.labels));
     const bindings = [];
     for (const labelElement of labelElements) {
-      const container = findMetricContainer(labelElement, definition);
+      const container = findMetricContainer(labelElement, definition2);
       if (!container) continue;
-      const labelsInContainer = [...container.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
+      const labelsInContainer = [...container.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition2.labels));
       if (labelsInContainer.length !== 1) continue;
-      const values = findMetricValueElements(container, labelElement, definition);
+      const values = findMetricValueElements(container, labelElement, definition2);
       if (values.length !== 1) continue;
       const displayValue = textOf(values[0]);
-      const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(definition.key), definition.unit);
+      const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(definition2.key), definition2.unit);
       const periodElement = findTimeRangeElement(container);
       const timeRange = periodElement ? extractTimeRange(textOf(periodElement)) : null;
       const periodLocation = periodElement ? componentPath(container, periodElement) : null;
       const periodReasons = profile.periodRequired && !timeRange ? ["TIME_RANGE_MISSING"] : [];
       const label = textOf(labelElement);
       bindings.push({
-        definition,
+        definition: definition2,
         label,
         displayValue,
         value: parsed.normalizedText,
-        unit: definition.unit || parsed.unit,
+        unit: definition2.unit || parsed.unit,
         confidence: parsed.status === "INVALID" || parsed.normalizedText == null || periodReasons.length ? 0.1 : 0.82,
         evidence: {
           sourceType: "DOM_TEXT",
@@ -6163,12 +6456,12 @@ ${input.visibleText.slice(0, 5e4)}`;
           normalizedValue: parsed.normalizedText,
           displayPrecision: parsed.displayPrecision,
           multiplier: parsed.multiplier,
-          unitSource: parsed.unit && parsed.unit !== definition.unit ? "VALUE" : definition.unit ? "DEFAULT" : "NONE",
+          unitSource: parsed.unit && parsed.unit !== definition2.unit ? "VALUE" : definition2.unit ? "DEFAULT" : "NONE",
           timeRange,
           timeRangeSource: timeRange ? "COMPONENT" : void 0,
           timeRangeLocation: periodLocation,
           componentPath: componentPath(container, labelElement),
-          calibrationSignature: bindingSignature(definition.key, label, parsed.unit || definition.unit || null, componentPath(container, labelElement), periodLocation),
+          calibrationSignature: bindingSignature(definition2.key, label, parsed.unit || definition2.unit || null, componentPath(container, labelElement), periodLocation),
           validationStatus: parsed.status === "INVALID" || parsed.normalizedText == null || periodReasons.length ? "INVALID" : parsed.status,
           validationReasons: [...parsed.reasons, ...periodReasons],
           textSnippet: `${label} ${displayValue}`
@@ -6177,41 +6470,41 @@ ${input.visibleText.slice(0, 5e4)}`;
     }
     return bindings;
   }
-  function findMetricContainer(label, definition) {
+  function findMetricContainer(label, definition2) {
     let nearestUniqueValueContainer = null;
     let current = label.parentElement;
     for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
       if (current.tagName === "BODY" || current.tagName === "HTML") break;
-      const labelsInContainer = [...current.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition.labels));
+      const labelsInContainer = [...current.querySelectorAll("*")].filter((element) => isVisible(element) && isExactMetricLabel(element, definition2.labels));
       if (labelsInContainer.length !== 1) continue;
-      const values = findMetricValueElements(current, label, definition);
+      const values = findMetricValueElements(current, label, definition2);
       if (values.length !== 1) continue;
       nearestUniqueValueContainer ||= current;
       if (findTimeRangeElement(current)) return current;
     }
     return nearestUniqueValueContainer;
   }
-  function findMetricValueElements(container, label, definition) {
+  function findMetricValueElements(container, label, definition2) {
     const descendants = [...container.querySelectorAll("*")];
     const labelIndex = descendants.indexOf(label);
     const candidates = descendants.filter((element, index) => {
       if (index <= labelIndex) return false;
       if (element === label || !isVisible(element)) return false;
       const text = textOf(element);
-      if (!text || isExactMetricLabel(element, definition.labels)) return false;
-      if (element.children.length > 0 && !isSplitMetricValueElement(element, definition)) return false;
-      const parsed = parseDisplayedMetricValue(text, metricValueSemantic(definition.key), definition.unit);
+      if (!text || isExactMetricLabel(element, definition2.labels)) return false;
+      if (element.children.length > 0 && !isSplitMetricValueElement(element, definition2)) return false;
+      const parsed = parseDisplayedMetricValue(text, metricValueSemantic(definition2.key), definition2.unit);
       return parsed.normalizedText != null || parsed.reasons.includes("VALUE_MISSING");
     });
     const outerCandidates = candidates.filter((candidate) => !candidates.some((other) => other !== candidate && isDescendantOf(candidate, other)));
     const primaryCandidates = outerCandidates.filter((candidate) => !isComparisonMetricValue(candidate, container));
     return primaryCandidates.length ? primaryCandidates : outerCandidates;
   }
-  function isSplitMetricValueElement(element, definition) {
+  function isSplitMetricValueElement(element, definition2) {
     const children = [...element.children].filter(isVisible);
-    if (!children.length || children.some((child) => child.children.length > 0 || isExactMetricLabel(child, definition.labels))) return false;
+    if (!children.length || children.some((child) => child.children.length > 0 || isExactMetricLabel(child, definition2.labels))) return false;
     const displayValue = textOf(element);
-    const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(definition.key), definition.unit);
+    const parsed = parseDisplayedMetricValue(displayValue, metricValueSemantic(definition2.key), definition2.unit);
     if (parsed.normalizedText == null && !parsed.reasons.includes("VALUE_MISSING")) return false;
     if (children.length > 1) return true;
     return normalizeMetricLookupValue(displayValue) !== normalizeMetricLookupValue(textOf(children[0]));
@@ -6572,6 +6865,7 @@ ${input.visibleText.slice(0, 5e4)}`;
         validationReasons: [],
         endpointKey: endpoint2,
         semanticScope: field.semanticScope,
+        routeKey: "LIVE_DATA_SCREEN",
         apiContractVersion: liveScreenInternalApiContractVersion,
         apiAdapterVersion: liveScreenInternalApiAdapterVersion,
         evidencePurpose: field.purpose
@@ -6882,7 +7176,7 @@ ${input.visibleText.slice(0, 5e4)}`;
   }
 
   // src/live-pulse-schedule.ts
-  var livePulseCadenceMs = 5e3;
+  var livePulseCadenceMs = 3e4;
   var livePulseUploadSafetyIntervalMs = 4100;
   function nextLivePulseAfter(pulseStartedAt, uploadCompletedAt = pulseStartedAt, cadenceMs = livePulseCadenceMs, uploadSafetyIntervalMs = livePulseUploadSafetyIntervalMs) {
     if (!Number.isFinite(pulseStartedAt) || !Number.isFinite(uploadCompletedAt) || !Number.isInteger(cadenceMs) || cadenceMs <= 0 || !Number.isInteger(uploadSafetyIntervalMs) || uploadSafetyIntervalMs <= 0) {
@@ -6910,8 +7204,22 @@ ${input.visibleText.slice(0, 5e4)}`;
     }
     if (message?.type === MESSAGE.BEGIN_LIVE_PULSE_LOOP) {
       startLivePulseLoop({
+        loopId: typeof message.payload?.loopId === "string" ? message.payload.loopId : "",
         collectionRunId: typeof message.payload?.collectionRunId === "string" ? message.payload.collectionRunId : null,
-        liveScreenInternalApiEnabled: message.payload?.liveScreenInternalApiEnabled === true
+        liveScreenInternalApiEnabled: message.payload?.liveScreenInternalApiEnabled === true,
+        submitMessage: MESSAGE.SUBMIT_LIVE_PULSE,
+        collectInWorker: false
+      });
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (message?.type === MESSAGE.BEGIN_LOCAL_PROMOTION_PULSE_LOOP) {
+      startLivePulseLoop({
+        loopId: typeof message.payload?.loopId === "string" ? message.payload.loopId : "",
+        collectionRunId: typeof message.payload?.collectionRunId === "string" ? message.payload.collectionRunId : null,
+        liveScreenInternalApiEnabled: false,
+        submitMessage: MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE,
+        collectInWorker: true
       });
       sendResponse({ ok: true });
       return false;
@@ -6921,8 +7229,18 @@ ${input.visibleText.slice(0, 5e4)}`;
       sendResponse({ ok: true });
       return false;
     }
+    if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
+      stopActiveLivePulseLoop();
+      sendResponse({ ok: true });
+      return false;
+    }
     if (message?.type === MESSAGE.GET_PAGE_CONTEXT) {
-      sendResponse({ ok: true, ...collectPageContext(), tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN" });
+      sendResponse({
+        ok: true,
+        ...collectPageContext(),
+        tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
+        buildFingerprint: "e078d8fdfcdf"
+      });
       return true;
     }
     return false;
@@ -6940,8 +7258,12 @@ ${input.visibleText.slice(0, 5e4)}`;
     stopActiveLivePulseLoop();
     const loop = {
       generation: ++livePulseLoopGeneration,
+      loopId: input.loopId,
       collectionRunId: input.collectionRunId,
       liveScreenInternalApiEnabled: input.liveScreenInternalApiEnabled,
+      submitMessage: input.submitMessage,
+      collectInWorker: input.collectInWorker,
+      transportFailures: 0,
       timer: null,
       running: false
     };
@@ -6961,7 +7283,8 @@ ${input.visibleText.slice(0, 5e4)}`;
     const pulseStartedAt = Date.now();
     let payload;
     try {
-      payload = {
+      payload = loop.collectInWorker ? { loopId: loop.loopId, pulseStartedAt } : {
+        loopId: loop.loopId,
         pulseStartedAt,
         snapshot: await collectSnapshot(
           loop.collectionRunId,
@@ -6972,6 +7295,7 @@ ${input.visibleText.slice(0, 5e4)}`;
       };
     } catch (error) {
       payload = {
+        loopId: loop.loopId,
         pulseStartedAt,
         error: error instanceof Error ? error.message : "PULSE_CAPTURE_FAILED"
       };
@@ -6981,17 +7305,29 @@ ${input.visibleText.slice(0, 5e4)}`;
     if (activeLivePulseLoop !== loop) return;
     try {
       const response = await chrome.runtime.sendMessage({
-        type: MESSAGE.SUBMIT_LIVE_PULSE,
+        type: loop.submitMessage,
         payload
       });
-      if (activeLivePulseLoop !== loop || response?.stop) {
+      loop.transportFailures = 0;
+      if (activeLivePulseLoop !== loop) return;
+      if (response?.stop) {
         stopActiveLivePulseLoop();
         return;
       }
       const nextDelayMs = Number.isFinite(response?.nextDelayMs) ? Math.max(0, Number(response?.nextDelayMs)) : Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now()) - Date.now());
       loop.timer = window.setTimeout(() => void runLivePulseLoop(loop), nextDelayMs);
     } catch {
-      stopActiveLivePulseLoop();
+      if (activeLivePulseLoop !== loop) return;
+      loop.transportFailures += 1;
+      if (loop.transportFailures >= 3) {
+        await chrome.runtime.sendMessage({
+          type: loop.submitMessage,
+          payload: { loopId: loop.loopId, pulseStartedAt, error: "PULSE_TRANSPORT_UNAVAILABLE" }
+        }).catch(() => void 0);
+        stopActiveLivePulseLoop();
+        return;
+      }
+      loop.timer = window.setTimeout(() => void runLivePulseLoop(loop), 1e3 * loop.transportFailures);
     }
   }
   async function collectSnapshot(collectionRunId, routeOverride, liveScreenInternalApiEnabled = false, collectionMode = "SNAPSHOT") {
@@ -7051,6 +7387,14 @@ ${input.visibleText.slice(0, 5e4)}`;
       captureMeta: { ...captureMeta, routeDetection, ...api ? { liveScreenInternalApi: api.captureMeta } : {} }
     });
   }
+  function readLocalPromotionDomIdentity() {
+    return {
+      advid: [...document.querySelectorAll("[data-advid]")].map((element) => element.dataset.advid || ""),
+      roomId: [...document.querySelectorAll("[data-room-id]")].map((element) => element.dataset.roomId || ""),
+      selectedAdvid: [...document.querySelectorAll("[data-selected-advid]")].map((element) => element.dataset.selectedAdvid || ""),
+      selectedAwemeId: [...document.querySelectorAll("[data-selected-aweme-id]")].map((element) => element.dataset.selectedAwemeId || "")
+    };
+  }
   function readRoomId() {
     const urlRoomIds = new URL(window.location.href).searchParams.getAll("room_id");
     const domRoomIds = [...document.querySelectorAll("[data-room-id]")].map((element) => element.dataset.roomId?.trim() || "");
@@ -7093,6 +7437,22 @@ ${input.visibleText.slice(0, 5e4)}`;
         })
       };
     }
+    if (isExactLocalPromotionInternalApiPage(window.location.href)) {
+      const identity = resolveLocalPromotionIdentity({
+        url: window.location.href,
+        dom: readLocalPromotionDomIdentity()
+      });
+      const identityReady = identity.source !== "MISMATCH" && Boolean(identity.advid || identity.selectedAdvid);
+      return {
+        currentUrl: window.location.href,
+        pageType: "LOCAL_PROMOTION_DASHBOARD",
+        routeKey: "LOCAL_PROMOTION_DASHBOARD",
+        routeDetection: { routeKey: "LOCAL_PROMOTION_DASHBOARD", source: "PAGE_TYPE", confidence: 0.98, manuallyConfirmed: false, evidence: ["\u5B9E\u65F6 API \u8109\u51B2\uFF1A\u7CBE\u786E\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8 URL"] },
+        localPromotionPulseEligible: identityReady,
+        localPromotionPulseIdentityKey: identityReady ? localPromotionIdentityKey(identity) : null,
+        localPromotionPulseFailureCode: identityReady ? null : "IDENTITY_UNAVAILABLE"
+      };
+    }
     const baseAdapter = selectPageAdapter(baseInput);
     const adapter = selectPageAdapter({ ...baseInput, routeKey: routeDetection.routeKey });
     return {
@@ -7102,7 +7462,10 @@ ${input.visibleText.slice(0, 5e4)}`;
       routeDetection,
       livePulseEligible: false,
       livePulseRoomId: null,
-      livePulseFailureCode: null
+      livePulseFailureCode: null,
+      localPromotionPulseEligible: false,
+      localPromotionPulseIdentityKey: null,
+      localPromotionPulseFailureCode: null
     };
   }
   function detectCurrentRoute(rawDomText, pageType, manualOverride) {

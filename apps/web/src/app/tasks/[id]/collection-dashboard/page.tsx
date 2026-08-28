@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
+  buildDashboardOverviewCards,
   collectionRouteLabels,
   identifyMetricKey,
   metricCategories,
@@ -14,7 +15,6 @@ import {
   type RealtimeMetricFrame,
   type ReviewedMetricDTO,
   type TableCellReviewDTO,
-  type VisibleMetric,
 } from "@douyin-local-life/shared";
 import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-state";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { useAuth } from "@/lib/AuthContext";
 import {
   subscribeRealtimeMetricStream,
   type RealtimeMetricStreamStatus,
+  usableRealtimeMetrics,
 } from "@/lib/realtime-metric-stream";
 import type { DecisionPreview } from "../task-types";
 import {
@@ -32,6 +33,7 @@ import {
   routeNeedsAttention,
   sortPrimaryRoutes,
 } from "./collection-route-flow";
+import { OverviewPanel } from "./overview-panel";
 import { collectionDashboardCalibrationState, collectionDashboardRefreshMode } from "./refresh-policy";
 
 type CellDraft = {
@@ -56,7 +58,7 @@ export default function CollectionDashboardPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [refreshAvailable, setRefreshAvailable] = useState(false);
-  const [realtimeFrame, setRealtimeFrame] = useState<RealtimeMetricFrame | null>(null);
+  const [realtimeFrames, setRealtimeFrames] = useState<Record<string, RealtimeMetricFrame>>({});
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeMetricStreamStatus>("CONNECTING");
   const latestCaptureRef = useRef<string | null>(null);
   const decisionIdempotencyKey = useRef("");
@@ -90,11 +92,12 @@ export default function CollectionDashboardPage() {
   }, [params.id, token]);
 
   useEffect(() => {
+    setRealtimeFrames({});
     if (!token) return;
     return subscribeRealtimeMetricStream({
       url: `${apiBaseUrl}/collection-tasks/${params.id}/signals/stream`,
       authorizationToken: token === cookieSessionMarker ? null : token,
-      onFrame: setRealtimeFrame,
+      onFrame: (frame) => setRealtimeFrames((current) => ({ ...current, [frame.routeKey]: frame })),
       onStatus: setRealtimeStatus,
     });
   }, [params.id, token]);
@@ -152,6 +155,19 @@ export default function CollectionDashboardPage() {
       }) || [],
     [dashboard, routeFilter, statusFilter],
   );
+  const currentRealtimeFrames = useMemo<Record<string, RealtimeMetricFrame>>(
+    () => Object.fromEntries(
+      Object.entries(realtimeFrames).filter(([, frame]) => frame.collectionTaskId === params.id),
+    ),
+    [params.id, realtimeFrames],
+  );
+  const overviewCards = useMemo(() => {
+    if (!dashboard) return [];
+    const frames = Object.values(currentRealtimeFrames);
+    return frames.length
+      ? buildDashboardOverviewCards(dashboard.summary.metrics, frames)
+      : dashboard.overviewCards || buildDashboardOverviewCards(dashboard.summary.metrics);
+  }, [currentRealtimeFrames, dashboard]);
 
   async function updateMetric(metric: ReviewedMetricDTO, reviewStatus: Exclude<MetricReviewStatus, "PENDING">) {
     if (!token) return;
@@ -255,7 +271,7 @@ export default function CollectionDashboardPage() {
       let currentMetrics = metrics;
 
       if (currentDashboard.reviewCoverage.pendingCount > 0) {
-        const snapshotVersions = snapshotVersionsForMetrics(currentMetrics, currentDashboard, liveOverviewSnapshotIds);
+        const snapshotVersions = snapshotVersionsForMetrics(currentMetrics, currentDashboard, realtimeCoveredSnapshotIds);
         if (!snapshotVersions) throw new Error("指标快照已变化，请刷新后重试。");
         if (snapshotVersions.length) {
           await apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics/confirm-all`, token, {
@@ -270,7 +286,7 @@ export default function CollectionDashboardPage() {
       }
 
       if (currentDashboard.tableReviewCoverage.pendingCount > 0) {
-        const snapshotVersions = snapshotVersionsForTables(currentDashboard, liveOverviewSnapshotIds);
+        const snapshotVersions = snapshotVersionsForTables(currentDashboard, realtimeCoveredSnapshotIds);
         if (snapshotVersions.length) {
           await apiFetch<{ confirmedCount: number }>(`/collection-tasks/${params.id}/table-cell-reviews/confirm-all`, token, {
             method: "POST",
@@ -280,8 +296,8 @@ export default function CollectionDashboardPage() {
         }
       }
 
-      const remainingMetricCoverage = subtractCoveredSnapshotsFromMetricCoverage(currentDashboard.reviewCoverage, currentMetrics, liveOverviewSnapshotIds);
-      const remainingTableCoverage = subtractCoveredSnapshotsFromTableCoverage(currentDashboard.tableReviewCoverage, currentDashboard, liveOverviewSnapshotIds);
+      const remainingMetricCoverage = subtractCoveredSnapshotsFromMetricCoverage(currentDashboard.reviewCoverage, currentMetrics, realtimeCoveredSnapshotIds);
+      const remainingTableCoverage = subtractCoveredSnapshotsFromTableCoverage(currentDashboard.tableReviewCoverage, currentDashboard, realtimeCoveredSnapshotIds);
       const remainingReviewCount = remainingMetricCoverage.pendingCount + remainingTableCoverage.pendingCount;
       if (remainingReviewCount > 0) {
         throw new Error(`仍有 ${remainingReviewCount} 项数据待复核，请刷新后检查。`);
@@ -413,36 +429,34 @@ export default function CollectionDashboardPage() {
     ? new Date(dashboard.summary.latestCapturedAt).toLocaleString("zh-CN")
     : "暂无";
   const hourlyRows = dashboard.summary.structuredData.flatMap((record) => (record.kind === "HOURLY_ROWS" ? record.rows : []));
-  const recognizedCoreMetrics = dashboard.summary.metrics.filter(
-    (metric) => identifyMetricKey(metric.metricKey) !== "unknown" && metric.reviewStatus !== "IGNORED",
-  );
-  const coreMetrics = prioritizeCoreMetrics(recognizedCoreMetrics.filter(hasSummaryMetricValue));
-  const missingCoreMetricCount = recognizedCoreMetrics.length - coreMetrics.length;
-  const leadCoreMetric = coreMetrics[0] || null;
-  const supportingCoreMetrics = coreMetrics.slice(1, 8);
-  const hiddenCoreMetricCount = Math.max(0, coreMetrics.length - 8);
-  const realtimeMetrics = realtimeFrame?.metrics.filter(hasRealtimeMetricValue) || [];
-  const hasUsableRealtimeOverview = Boolean(
-    realtimeFrame?.routeKey === "LIVE_DATA_SCREEN"
-      && realtimeFrame.pageType === "LIVE_DATA_SCREEN"
-      && realtimeMetrics.length,
-  );
-  const liveOverviewSnapshotIds = hasUsableRealtimeOverview
-    ? new Set(dashboard.summary.routes.flatMap((route) => route.routeKey === "LIVE_DATA_SCREEN" && route.snapshotId ? [route.snapshotId] : []))
-    : new Set<string>();
-  const effectiveRoutes = dashboard.summary.routes.map((route) => (
-    route.routeKey === "LIVE_DATA_SCREEN" && hasUsableRealtimeOverview
+  const liveRealtimeFrame = currentRealtimeFrames.LIVE_DATA_SCREEN;
+  const localPromotionRealtimeFrame = currentRealtimeFrames.LOCAL_PROMOTION_DASHBOARD;
+  const liveRealtimeMetrics = realtimeStatus === "CONNECTED" ? usableRealtimeMetrics(liveRealtimeFrame, "LIVE_DATA_SCREEN") : [];
+  const localPromotionRealtimeMetrics = realtimeStatus === "CONNECTED" ? usableRealtimeMetrics(localPromotionRealtimeFrame, "LOCAL_PROMOTION_DASHBOARD") : [];
+  const hasUsableRealtimeOverview = Boolean(liveRealtimeFrame?.pageType === "LIVE_DATA_SCREEN" && liveRealtimeMetrics.length);
+  const hasUsableLocalPromotionRealtime = Boolean(localPromotionRealtimeFrame?.pageType === "LOCAL_PROMOTION_DASHBOARD" && localPromotionRealtimeMetrics.length);
+  const realtimeCoveredSnapshotIds = new Set(dashboard.summary.routes.flatMap((route) => {
+    const covered = (route.routeKey === "LIVE_DATA_SCREEN" && hasUsableRealtimeOverview)
+      || (route.routeKey === "LOCAL_PROMOTION_DASHBOARD" && hasUsableLocalPromotionRealtime);
+    return covered && route.snapshotId ? [route.snapshotId] : [];
+  }));
+  const effectiveRoutes = dashboard.summary.routes.map((route) => {
+    const frame = route.routeKey === "LIVE_DATA_SCREEN" ? liveRealtimeFrame : route.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionRealtimeFrame : undefined;
+    const routeMetrics = route.routeKey === "LIVE_DATA_SCREEN" ? liveRealtimeMetrics : localPromotionRealtimeMetrics;
+    const covered = (route.routeKey === "LIVE_DATA_SCREEN" && hasUsableRealtimeOverview)
+      || (route.routeKey === "LOCAL_PROMOTION_DASHBOARD" && hasUsableLocalPromotionRealtime);
+    return covered
       ? {
           ...route,
           state: "UPLOADED" as const,
           routeVerificationStatus: "VERIFIED" as const,
-          lastCapturedAt: realtimeFrame?.receivedAt || realtimeFrame?.observedAt || route.lastCapturedAt,
-          metricCount: realtimeMetrics.length,
+          lastCapturedAt: frame?.receivedAt || frame?.observedAt || route.lastCapturedAt,
+          metricCount: routeMetrics.length,
           coverageRatio: 1,
           lastError: null,
         }
-      : route
-  ));
+      : route;
+  });
   const activeRoutes = sortPrimaryRoutes(effectiveRoutes.filter((route) => (
     route.routeKey === "LOCAL_PROMOTION_DASHBOARD" || route.routeKey === "LIVE_DATA_SCREEN"
   )));
@@ -452,7 +466,9 @@ export default function CollectionDashboardPage() {
   const missingRouteCount = activeRoutes.filter((route) => !routeHasUsableData(route)).length;
   const attentionRouteCount = activeRoutes.filter(routeNeedsAttention).length;
   const pendingRouteConfirmationCount = activeRoutes.filter((route) => (
-    route.routeVerificationStatus === "MANUAL_PENDING" && !(route.routeKey === "LIVE_DATA_SCREEN" && hasUsableRealtimeOverview)
+    route.routeVerificationStatus === "MANUAL_PENDING"
+      && !(route.routeKey === "LIVE_DATA_SCREEN" && hasUsableRealtimeOverview)
+      && !(route.routeKey === "LOCAL_PROMOTION_DASHBOARD" && hasUsableLocalPromotionRealtime)
   )).length;
   const requiredRouteCount = activeRoutes.filter((route) => route.required).length;
   const routeCoverageLabel = activeRoutes.length === 0
@@ -463,35 +479,41 @@ export default function CollectionDashboardPage() {
         ? `${attentionRouteCount} 条需关注`
         : "全部就绪";
   const routesFullyReady = activeRoutes.length > 0 && missingRouteCount === 0 && attentionRouteCount === 0;
-  const latestOverviewAt = realtimeFrame?.receivedAt || realtimeFrame?.observedAt || dashboard.summary.latestCapturedAt;
-  const effectiveReviewCoverage = subtractCoveredSnapshotsFromMetricCoverage(dashboard.reviewCoverage, metrics, liveOverviewSnapshotIds);
-  const effectiveTableReviewCoverage = subtractCoveredSnapshotsFromTableCoverage(dashboard.tableReviewCoverage, dashboard, liveOverviewSnapshotIds);
+  const latestRealtimeFrame = [
+    hasUsableRealtimeOverview ? liveRealtimeFrame : null,
+    hasUsableLocalPromotionRealtime ? localPromotionRealtimeFrame : null
+  ]
+    .filter((frame): frame is RealtimeMetricFrame => Boolean(frame))
+    .sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))[0];
+  const latestOverviewAt = latestRealtimeFrame?.receivedAt || latestRealtimeFrame?.observedAt || dashboard.summary.latestCapturedAt;
+  const effectiveReviewCoverage = subtractCoveredSnapshotsFromMetricCoverage(dashboard.reviewCoverage, metrics, realtimeCoveredSnapshotIds);
+  const effectiveTableReviewCoverage = subtractCoveredSnapshotsFromTableCoverage(dashboard.tableReviewCoverage, dashboard, realtimeCoveredSnapshotIds);
   const pendingReviewCount = effectiveReviewCoverage.pendingCount + effectiveTableReviewCoverage.pendingCount;
-  const effectiveSnapshotCount = Math.max(dashboard.summary.snapshotCount, hasUsableRealtimeOverview ? 1 : 0);
+  const effectiveSnapshotCount = Math.max(dashboard.summary.snapshotCount, hasUsableRealtimeOverview || hasUsableLocalPromotionRealtime ? 1 : 0);
   const calibrationState = collectionDashboardCalibrationState(effectiveSnapshotCount, pendingReviewCount);
   const calibrationLabel =
     calibrationState === "EMPTY" ? "尚无采集数据" : calibrationState === "PENDING" ? `${pendingReviewCount} 项待校准` : "校准已完成";
   const calibrationTone =
     calibrationState === "COMPLETE"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : "border-amber-200 bg-amber-50 text-amber-700";
+      ? "border-emerald-200/20 bg-emerald-300/10 text-emerald-100"
+      : "border-amber-200/20 bg-amber-300/10 text-amber-100";
   return (
-    <main className="min-h-screen bg-[#f4f7fb] px-3 py-3 text-slate-900 sm:px-5 sm:py-5">
-      <header className="mx-auto flex max-w-[1680px] flex-col gap-4 border-b border-slate-200 pb-4 lg:flex-row lg:items-center lg:justify-between">
+    <main className="min-h-screen bg-[#050b1b] px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
+      <header className="mx-auto flex max-w-[1680px] flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <Link className="text-sm font-medium text-blue-600 transition hover:text-blue-800" href={`/tasks/${params.id}`}>
+          <Link className="text-sm font-medium text-indigo-200 transition hover:text-white" href={`/tasks/${params.id}`}>
             返回任务
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className="text-2xl font-semibold text-slate-950 sm:text-3xl">经营数据大屏</h1>
+            <h1 className="text-2xl font-semibold text-white sm:text-3xl">经营数据大屏</h1>
             <span className={`border px-2 py-1 text-xs font-medium ${calibrationTone}`}>{calibrationLabel}</span>
           </div>
-          <p className="mt-1 truncate text-sm text-slate-500">
-            {dashboard.task.accountName} <span className="px-1 text-slate-300">/</span> {dashboard.task.projectName}{" "}
-            <span className="px-1 text-slate-300">/</span> {dashboard.task.title || "采集任务"}
+          <p className="mt-1 truncate text-sm text-slate-300">
+            {dashboard.task.accountName} <span className="px-1 text-slate-500">/</span> {dashboard.task.projectName}{" "}
+            <span className="px-1 text-slate-500">/</span> {dashboard.task.title || "采集任务"}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-px overflow-hidden border border-slate-200 bg-slate-200 text-sm shadow-sm sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 text-sm shadow-[0_10px_28px_rgba(2,6,23,0.2)] sm:grid-cols-4">
           <DashboardStat
             label="最近更新"
             value={latestOverviewAt ? new Date(latestOverviewAt).toLocaleString("zh-CN") : latestCapturedAt}
@@ -521,31 +543,17 @@ export default function CollectionDashboardPage() {
         <p className="mx-auto mt-4 max-w-[1680px] border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>
       ) : null}
 
-      <section className="mx-auto mt-4 max-w-[1680px] overflow-hidden border border-slate-200 bg-white shadow-[0_14px_34px_rgba(30,64,175,0.08)]">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-6">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-slate-950">经营数据总览</h2>
-              <span className={`border px-2 py-0.5 text-xs ${realtimeStatusTone(realtimeStatus, Boolean(realtimeFrame))}`}>
-                {realtimeStatusLabel(realtimeStatus, Boolean(realtimeFrame))}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              本地推经营指标与直播现场数据统一展示，来源口径独立保留，不跨线路相加。
-            </p>
-          </div>
+      <OverviewPanel
+        action={
           <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
-            <p className="text-xs text-slate-500">
-              {latestOverviewAt ? `更新于 ${new Date(latestOverviewAt).toLocaleString("zh-CN")}` : "等待首次数据"}
-            </p>
             <Button
-              className="h-10 bg-blue-600 px-5 text-white hover:bg-blue-700"
+              className="h-10 bg-white px-5 text-indigo-700 shadow-sm hover:bg-indigo-50"
               disabled={
                 Boolean(busy) ||
                 calibrationState === "EMPTY" ||
                 hasUnsavedEdits ||
                 metrics.some((metric) => (
-                  !(metric.snapshotId && liveOverviewSnapshotIds.has(metric.snapshotId))
+                  !(metric.snapshotId && realtimeCoveredSnapshotIds.has(metric.snapshotId))
                   && metric.sourceStatus === "SOURCE_CONFLICT"
                   && !metric.manualSourceSelection
                 ))
@@ -555,7 +563,7 @@ export default function CollectionDashboardPage() {
             >
               {busy === "confirm-and-diagnose" ? "正在确认并分析..." : "确认可信数据并生成诊断"}
             </Button>
-            <p className={`text-xs ${hasUnsavedEdits ? "text-amber-700" : "text-slate-500"}`}>
+            <p className={`text-xs ${hasUnsavedEdits ? "text-amber-200" : "text-indigo-100/80"}`}>
               {hasUnsavedEdits
                 ? "存在未保存修改，请先在详细数据中保存"
                 : pendingReviewCount > 0
@@ -563,87 +571,31 @@ export default function CollectionDashboardPage() {
                   : "数据已校准，可直接生成诊断"}
             </p>
           </div>
-        </div>
+        }
+        cards={overviewCards}
+        hasRealtimeFrame={Boolean(latestRealtimeFrame)}
+        latestUpdatedAt={latestOverviewAt}
+        realtimeStatus={realtimeStatus}
+        routeCoverageLabel={routeCoverageLabel}
+        snapshotCount={dashboard.summary.snapshotCount}
+      />
 
-        <div className="grid lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,2.18fr)]">
-          <div className="border-b border-slate-200 bg-[#fff8ed] p-4 sm:p-5 lg:border-b-0 lg:border-r">
-            <p className="text-xs font-medium text-amber-700">投放经营</p>
-            {leadCoreMetric ? (
-              <>
-                <strong className="mt-3 block break-words text-4xl font-semibold text-slate-950 sm:text-5xl">
-                  {formatOverviewMetricValue(leadCoreMetric)}
-                </strong>
-                <p className="mt-2 text-sm font-medium text-slate-800">
-                  {leadCoreMetric.metricName}
-                  <span className="ml-2 font-normal text-slate-500">{reviewLabel(leadCoreMetric.reviewStatus)}</span>
-                </p>
-                <p className="mt-2 text-xs text-slate-500">{overviewMetricSource(leadCoreMetric)}</p>
-              </>
-            ) : (
-              <p className="mt-4 max-w-sm text-sm leading-6 text-slate-500">
-                完成本地推数据总览采集后，ROI、消耗和成交等经营指标会显示在这里。
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-px bg-slate-200 sm:grid-cols-3 xl:grid-cols-4">
-            {supportingCoreMetrics.map((metric, index) => (
-              <OverviewMetric key={`${metric.routeKey}:${metric.metricKey}:${index}`} metric={metric} />
-            ))}
-            {!supportingCoreMetrics.length ? (
-              <p className="col-span-full bg-white p-5 text-sm text-slate-500">
-                {leadCoreMetric ? "当前仅采集到一项经营指标。" : "尚无可展示的经营指标。"}
-              </p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="border-t border-slate-200 bg-[#f7fbff] px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">直播现场</p>
-              <p className="mt-0.5 text-xs text-slate-500">直播页面开始持续采集后，现场指标会按固定节拍自动更新。</p>
-            </div>
-            {realtimeFrame ? <span className="text-xs text-emerald-700">直播线路已接入</span> : null}
-          </div>
-          {realtimeMetrics.length ? (
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-              {realtimeMetrics.slice(0, 7).map((metric, index) => (
-                <RealtimeOverviewMetric key={`${metric.key}:${index}`} metric={metric} />
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 border border-dashed border-blue-200 bg-white p-3 text-sm text-slate-500">
-              等待直播现场数据。请在已配对的直播数据大屏打开插件并开始持续采集。
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500 sm:px-6">
-          <span>
-            已采集 {coreMetrics.length} 项经营原值
-            {hiddenCoreMetricCount ? `，主屏优先展示 8 项，另有 ${hiddenCoreMetricCount} 项可在详细数据查看` : ""}
-            {missingCoreMetricCount ? `；${missingCoreMetricCount} 项原值缺失` : ""}
-          </span>
-          <span>有效线路 {requiredRouteCount} 条 · 历史快照 {dashboard.summary.snapshotCount} 份</span>
-        </div>
-      </section>
-
-      <section className="mx-auto mt-4 max-w-[1680px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+      <section className="mx-auto mt-4 max-w-[1680px] rounded-xl border border-white/10 bg-[#08142d] p-3 text-slate-100 shadow-[0_14px_34px_rgba(2,6,23,0.18)] sm:p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-slate-950">采集线路</h2>
-            <p className="mt-1 text-xs text-slate-500">两条有效线路共同汇入经营总览，各自保留来源和更新时间。</p>
+            <h2 className="text-sm font-semibold text-white">采集线路</h2>
+            <p className="mt-1 text-xs text-slate-300">两条有效线路共同汇入经营总览，各自保留来源和更新时间。</p>
           </div>
-          <span className="text-xs font-medium text-slate-600">{routeCoverageLabel}</span>
+          <span className="rounded-full bg-white/10 px-2 py-1 text-xs font-medium text-indigo-100">{routeCoverageLabel}</span>
         </div>
         <CollectionRouteFlow historicalRoutes={historicalRoutes} routes={activeRoutes} />
       </section>
 
-      <details className="mx-auto mt-4 max-w-[1680px] border border-slate-200 bg-white shadow-sm">
-        <summary className="cursor-pointer list-none px-4 py-4 text-sm font-semibold text-slate-900 marker:hidden">
+      <details className="mx-auto mt-4 max-w-[1680px] rounded-xl border border-white/10 bg-[#08142d] shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+        <summary className="cursor-pointer list-none px-4 py-4 text-sm font-semibold text-white marker:hidden">
           <span className="flex flex-wrap items-center justify-between gap-2">
             <span>详细指标与原始表格</span>
-            <span className="font-normal text-slate-500">
+            <span className="font-normal text-slate-300">
               {metrics.length} 项指标 · {dashboard.tableReviewCoverage.totalCount} 个表格单元格 · 点击展开
             </span>
           </span>
@@ -860,17 +812,6 @@ export default function CollectionDashboardPage() {
                   </div>
                 ) : (
                   <EmptyState label="当前筛选没有可校准指标。先确认页面路线后重新采集，系统不会生成虚构数据。" />
-                )}
-              </section>
-
-              <section className="border border-slate-700/80 bg-[#0a172a]">
-                <div className="border-b border-slate-700 px-4 py-3">
-                  <h2 className="font-semibold text-white">小时趋势</h2>
-                </div>
-                {hourlyRows.length ? (
-                  <HourlyTrend rows={hourlyRows} />
-                ) : (
-                  <EmptyState label="当前快照没有真实小时趋势数据，不生成模拟曲线。" />
                 )}
               </section>
 
@@ -1218,38 +1159,6 @@ function MetricEvidenceCell({ metric }: { metric: ReviewedMetricDTO }) {
     </div>
   );
 }
-function HourlyTrend({
-  rows,
-}: {
-  rows: Extract<CollectionDashboardDTO["summary"]["structuredData"][number], { kind: "HOURLY_ROWS" }>["rows"];
-}) {
-  const maxViews = Math.max(1, ...rows.map((row) => row.liveViews || 0));
-  return (
-    <div className="overflow-x-auto p-4">
-      <div className="min-w-[720px] space-y-2">
-        {rows.map((row, index) => (
-          <div
-            className="grid grid-cols-[110px_minmax(180px,1fr)_90px_90px] items-center gap-3 text-xs"
-            key={`${row.intervalStart || row.intervalLabel || "hour"}:${index}`}
-          >
-            <span className="text-slate-400">{row.intervalLabel || row.intervalStart || "时间缺失"}</span>
-            <div className="h-4 bg-slate-800">
-              <div
-                className="h-full bg-cyan-500"
-                style={{
-                  width: `${Math.max(0, ((row.liveViews || 0) / maxViews) * 100)}%`,
-                }}
-              />
-            </div>
-            <span>看播 {row.liveViews ?? "缺失"}</span>
-            <span>ROI {row.roi ?? "缺失"}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function DashboardStat({
   label,
   value,
@@ -1260,36 +1169,15 @@ function DashboardStat({
   tone?: "slate" | "amber" | "blue" | "green";
 }) {
   const toneClass = {
-    slate: "text-slate-900",
-    amber: "text-amber-700",
-    blue: "text-blue-700",
-    green: "text-emerald-700",
+    slate: "text-slate-100",
+    amber: "text-amber-200",
+    blue: "text-cyan-200",
+    green: "text-emerald-200",
   }[tone];
   return (
-    <div className={`min-w-28 bg-white px-3 py-2.5 ${toneClass}`}>
-      <p className="text-xs text-slate-500">{label}</p>
+    <div className={`min-w-28 bg-[#0d1d43] px-3 py-2.5 ${toneClass}`}>
+      <p className="text-xs text-slate-400">{label}</p>
       <strong className="mt-1 block truncate text-sm font-semibold">{value}</strong>
-    </div>
-  );
-}
-function OverviewMetric({ metric }: { metric: CollectionDashboardDTO["summary"]["overviewMetrics"][number] }) {
-  return (
-    <div className="min-w-0 bg-white p-4">
-      <p className="truncate text-xs text-slate-500">{metric.metricName}</p>
-      <strong className="mt-1 block break-words text-xl font-semibold text-slate-950 sm:text-2xl">{formatOverviewMetricValue(metric)}</strong>
-      <p className="mt-2 text-xs text-slate-500">
-        {Math.round(metric.confidence * 100)}% · {overviewMetricReviewState(metric.reviewStatus)}
-      </p>
-      <p className="mt-1 text-[11px] leading-4 text-slate-400">{overviewMetricSource(metric)}</p>
-    </div>
-  );
-}
-function RealtimeOverviewMetric({ metric }: { metric: VisibleMetric }) {
-  return (
-    <div className="min-w-0 border border-blue-100 bg-white p-3 shadow-sm">
-      <p className="truncate text-xs text-slate-500">{metric.name}</p>
-      <strong className="mt-1 block break-words text-lg font-semibold text-slate-950">{formatRealtimeMetricValue(metric)}</strong>
-      <p className="mt-1 text-[11px] text-emerald-700">现场更新</p>
     </div>
   );
 }
@@ -1391,91 +1279,12 @@ function EditableCell({
   );
 }
 
-function prioritizeCoreMetrics(metrics: CollectionDashboardDTO["summary"]["metrics"]) {
-  const priority = [
-    "full_domain_pay_roi",
-    "pay_roi",
-    "verify_roi",
-    "gross_profit_roi",
-    "target_roi",
-    "gmv",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "orders",
-    "cpa",
-    "target_cpa",
-    "impressions",
-    "clicks",
-    "ctr",
-    "live_viewers",
-    "gpm",
-  ];
-  return [...metrics].sort((left, right) => {
-    const leftIndex = priority.indexOf(identifyMetricKey(left.metricKey));
-    const rightIndex = priority.indexOf(identifyMetricKey(right.metricKey));
-    return (leftIndex < 0 ? priority.length : leftIndex) - (rightIndex < 0 ? priority.length : rightIndex);
-  });
-}
-function hasSummaryMetricValue(metric: CollectionDashboardDTO["summary"]["metrics"][number]) {
-  return Boolean(metric.displayValue?.trim() || metric.originalValue?.trim() || metric.metricValue.trim());
-}
-
-function hasRealtimeMetricValue(metric: VisibleMetric) {
-  return metric.value != null && String(metric.value).trim() !== "";
-}
-
-function formatRealtimeMetricValue(metric: VisibleMetric) {
-  const displayValue = metric.rawEvidence?.displayValue?.trim();
-  if (displayValue) return displayValue;
-  const value = metric.value == null ? "--" : String(metric.value);
-  return metric.unit ? `${value}${metric.unit}` : value;
-}
-
-function realtimeStatusLabel(status: RealtimeMetricStreamStatus, hasFrame: boolean) {
-  if (status === "CONNECTED") return hasFrame ? "持续更新中" : "已连接，等待采集";
-  if (status === "RECONNECTING") return "正在重连";
-  return "正在连接";
-}
-
-function realtimeStatusTone(status: RealtimeMetricStreamStatus, hasFrame: boolean) {
-  if (status === "CONNECTED" && hasFrame) return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "CONNECTED") return "border-blue-200 bg-blue-50 text-blue-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
-}
 function formatMetricValue(value: string, unit: string | null) {
   return `${value}${unit === "yuan" ? " 元" : unit || ""}`;
-}
-function formatOverviewMetricValue(metric: CollectionDashboardDTO["summary"]["overviewMetrics"][number]) {
-  if (metric.displayValue) return metric.displayValue;
-  const originalValue = metric.originalValue?.trim();
-  if (originalValue) return formatMetricValue(originalValue, metric.metricUnit);
-  const normalizedValue = metric.metricValue.trim();
-  return normalizedValue ? formatMetricValue(normalizedValue, metric.metricUnit) : "原始值缺失";
 }
 function formatNormalizedMetricValue(metric: ReviewedMetricDTO) {
   const value = metric.normalizedValue ?? metric.originalValue ?? "数据缺失";
   return metric.metricUnit === "%" ? `${value}（比例）` : formatMetricValue(value, metric.metricUnit || null);
-}
-function reviewLabel(status: MetricReviewStatus) {
-  return status === "PENDING" ? "待复核" : status === "CONFIRMED" ? "已确认" : status === "MODIFIED" ? "已修改" : "已忽略";
-}
-function overviewMetricReviewState(status: MetricReviewStatus) {
-  return status === "PENDING" ? "原始采集值 · 待复核" : reviewLabel(status);
-}
-function formatCaptureTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "时间缺失"
-    : date.toLocaleString("zh-CN", {
-        month: "numeric",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-}
-function overviewMetricSource(metric: CollectionDashboardDTO["summary"]["overviewMetrics"][number]) {
-  return `${collectionRouteLabels[metric.routeKey || "UNKNOWN"] || "未知路线"} · ${formatCaptureTime(metric.capturedAt)}`;
 }
 function collectionRunStatusLabel(
   status: CollectionDashboardDTO["summary"]["collectionRun"] extends infer Run

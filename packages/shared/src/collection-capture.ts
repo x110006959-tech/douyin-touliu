@@ -6,6 +6,10 @@ import {
   liveScreenRoomIdPattern,
   liveScreenRoomIdSources
 } from "./live-screen-internal-api.js";
+import {
+  localPromotionInternalApiEndpointKeys,
+  localPromotionInternalApiEvidencePurposes
+} from "./local-promotion-internal-api.js";
 import { metricValidationStatuses } from "./metric-value.js";
 import { snapshotSafetyLimits } from "./safety.js";
 
@@ -62,7 +66,8 @@ export const metricRawEvidenceSchema = z.object({
   apiContractVersion: z.string().max(50).optional(),
   apiAdapterVersion: z.string().max(50).optional(),
   endpointKey: z.string().max(100).optional(),
-  evidencePurpose: z.enum(liveScreenApiEvidencePurposes).optional()
+  evidencePurpose: z.enum(liveScreenApiEvidencePurposes).optional(),
+  routeKey: z.enum(collectionRouteKeys).optional()
 });
 
 export const visibleMetricSchema = z.object({
@@ -82,6 +87,13 @@ export const networkRecordSchema = z.object({
   status: z.number().int().min(0).max(599),
   responseJson: z.unknown(),
   capturedAt: z.string().datetime()
+});
+
+const localPromotionIdentityEvidenceSchema = z.object({
+  advid: z.array(z.string().regex(/^\d{1,64}$/)).max(2),
+  roomId: z.array(z.string().regex(/^\d{1,64}$/)).max(2),
+  selectedAdvid: z.array(z.string().regex(/^\d{1,64}$/)).max(2),
+  selectedAwemeId: z.array(z.string().regex(/^\d{1,64}$/)).max(2)
 });
 
 export const captureMetaSchema = z.object({
@@ -138,6 +150,29 @@ export const captureMetaSchema = z.object({
       intervalLabel: z.string().min(1).max(100),
       liveViews: z.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
     })).max(120).optional()
+  }).optional(),
+  localPromotionInternalApi: z.object({
+    contractVersion: z.string().max(50),
+    adapterVersion: z.string().max(50),
+    enabled: z.boolean(),
+    identity: z.object({
+      advid: z.string().regex(/^\d{1,64}$/).nullable(),
+      roomId: z.string().regex(/^\d{1,64}$/).nullable(),
+      selectedAdvid: z.string().regex(/^\d{1,64}$/).nullable(),
+      selectedAwemeId: z.string().regex(/^\d{1,64}$/).nullable(),
+      source: z.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+      evidence: z.object({
+        url: localPromotionIdentityEvidenceSchema,
+        dom: localPromotionIdentityEvidenceSchema
+      })
+    }),
+    endpointStatuses: z.array(z.object({
+      endpoint: z.enum(localPromotionInternalApiEndpointKeys),
+      status: z.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+      acceptedBytes: z.number().int().min(0).max(384 * 1024),
+      reason: z.string().max(100).optional()
+    })).max(localPromotionInternalApiEndpointKeys.length),
+    evidencePurpose: z.enum(localPromotionInternalApiEvidencePurposes)
   }).optional()
 });
 

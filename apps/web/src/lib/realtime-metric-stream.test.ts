@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSseEventParser } from "./realtime-metric-stream";
+import { createSseEventParser, usableRealtimeMetrics } from "./realtime-metric-stream";
 
 describe("realtime metric SSE parser", () => {
   it("reassembles chunked pulse events without confusing heartbeats or signals", () => {
@@ -23,5 +23,22 @@ describe("realtime metric SSE parser", () => {
     parser.push("event: pulse\ndata: first\ndata: second\n\n");
 
     expect(received).toEqual(["first\nsecond"]);
+  });
+
+  it("accepts only fresh metrics from the expected route", () => {
+    const now = Date.parse("2026-08-22T12:00:00.000Z");
+    const frame = {
+      collectionTaskId: "task-1",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD" as const,
+      pageType: "LOCAL_PROMOTION_DASHBOARD" as const,
+      observedAt: new Date(now - 5_000).toISOString(),
+      receivedAt: new Date(now - 4_000).toISOString(),
+      successfulEndpoints: ["pageMetrics"],
+      metrics: [{ key: "spend", name: "消耗", value: "100", source: "network" as const }]
+    };
+
+    expect(usableRealtimeMetrics(frame, "LOCAL_PROMOTION_DASHBOARD", now)).toHaveLength(1);
+    expect(usableRealtimeMetrics(frame, "LIVE_DATA_SCREEN", now)).toEqual([]);
+    expect(usableRealtimeMetrics(frame, "LOCAL_PROMOTION_DASHBOARD", now + 120_000)).toEqual([]);
   });
 });

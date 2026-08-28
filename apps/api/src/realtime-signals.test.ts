@@ -3,6 +3,7 @@ import type { MetricPulse, VisibleMetric } from "@douyin-local-life/shared";
 import {
   clearRealtimeSignalStore,
   latestRealtimeMetricFrame,
+  latestRealtimeMetricFrames,
   recordMetricPulse,
   subscribeRealtimeMetricFrames,
   subscribeRealtimeSignals
@@ -57,6 +58,22 @@ describe("realtime signals", () => {
     unsubscribe();
     recordMetricPulse("task-4", pulse(start + 5_000, [metric("spend", 120)]), start + 5_000);
     expect(received).toEqual(["100"]);
+  });
+
+  it("keeps the latest live and local-promotion frames independently", () => {
+    const start = Date.parse("2026-08-19T12:00:00.000Z");
+    recordMetricPulse("task-routes", pulse(start, [metric("spend", 100)]), start);
+    recordMetricPulse("task-routes", {
+      ...pulse(start + 5_000, [metric("gmv", 200)]),
+      routeKey: "LIVE_DATA_SCREEN",
+      pageType: "LIVE_DATA_SCREEN"
+    }, start + 5_000);
+    recordMetricPulse("task-routes", pulse(start + 10_000, [metric("spend", 120)]), start + 10_000);
+
+    expect(latestRealtimeMetricFrames("task-routes", start + 10_000)).toMatchObject([
+      { routeKey: "LIVE_DATA_SCREEN", metrics: [{ key: "gmv", value: 200 }] },
+      { routeKey: "LOCAL_PROMOTION_DASHBOARD", metrics: [{ key: "spend", value: 120 }] }
+    ]);
   });
 
   it("turns live-room API values into factual trends and manual observation suggestions", () => {

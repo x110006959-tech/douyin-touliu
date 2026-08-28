@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PXXIS 智能投流采集（本地测试）",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "本地测试包：只用于本机开发验收，不得上传 Chrome 网上应用店。",
   "permissions": [
     "activeTab",

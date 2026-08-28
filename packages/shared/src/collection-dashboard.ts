@@ -4,6 +4,7 @@ import type {
   MetricReviewStatus,
   ReviewCoverage
 } from "./index.js";
+import type { CollectionRouteKey } from "./collection-routes.js";
 
 export type TableCellReviewDTO = {
   id: string;
@@ -36,6 +37,45 @@ export type ConfirmTableBindingInput = {
   tableIndex: number;
 };
 
+export type DashboardOverviewSourceType = "REALTIME_API" | "SNAPSHOT";
+export type DashboardOverviewCardStatus = "REALTIME" | "SNAPSHOT" | "MISSING" | "CONFLICT";
+export type DashboardOverviewCandidateStatus = "ELIGIBLE" | "INVALID" | "EMPTY" | "IGNORED";
+export type DashboardOverviewSection = "LIVE_ROOM" | "DELIVERY";
+
+export type DashboardOverviewCandidateDTO = {
+  routeKey: CollectionRouteKey;
+  metricKey: string;
+  metricName: string;
+  scopeLabel: string;
+  displayValue: string | null;
+  normalizedValue: string | null;
+  unit: string | null;
+  sourceType: DashboardOverviewSourceType;
+  capturedAt: string | null;
+  updatedAt: string | null;
+  snapshotId: string | null;
+  reviewStatus: MetricReviewStatus;
+  valueStatus: DashboardOverviewCandidateStatus;
+  confidence: number;
+};
+
+export type DashboardOverviewCardDTO = {
+  displayKey: string;
+  label: string;
+  scopeLabel: string;
+  section: DashboardOverviewSection;
+  value: string | null;
+  normalizedValue: string | null;
+  unit: string | null;
+  status: DashboardOverviewCardStatus;
+  updatedAt: string | null;
+  reviewStatus: MetricReviewStatus | null;
+  sourceRouteKey: CollectionRouteKey | null;
+  sourceType: DashboardOverviewSourceType | null;
+  hasConflict: boolean;
+  candidates: DashboardOverviewCandidateDTO[];
+};
+
 export type CollectionDashboardDTO = {
   task: {
     id: string;
@@ -44,6 +84,7 @@ export type CollectionDashboardDTO = {
     projectName: string;
   };
   summary: CaptureSummaryDTO;
+  overviewCards: DashboardOverviewCardDTO[];
   reviewCoverage: ReviewCoverage;
   tableReviewCoverage: ReviewCoverage;
 };

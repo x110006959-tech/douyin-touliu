@@ -21,8 +21,46 @@ describe("extension web bridge protocol", () => {
 
   it("rejects malformed and incompatible requests", () => {
     expect(parseBridgeRequest({ requestId: "ok-1", protocolVersion: extensionBridgeProtocolVersion, type: "GET_STATUS" })).toEqual(expect.objectContaining({ type: "GET_STATUS" }));
+    expect(parseBridgeRequest({ requestId: "sync-1", protocolVersion: extensionBridgeProtocolVersion, type: "SYNC_CURRENT_TASK" })).toEqual(expect.objectContaining({ type: "SYNC_CURRENT_TASK" }));
     expect(parseBridgeRequest({ requestId: "ok-1", protocolVersion: extensionBridgeProtocolVersion - 1, type: "GET_STATUS" })).toBeNull();
     expect(parseBridgeRequest({ requestId: "<script>", protocolVersion: extensionBridgeProtocolVersion, type: "PAIR_TASK" })).toBeNull();
+    expect(parseBridgeRequest({ requestId: "unknown-1", protocolVersion: extensionBridgeProtocolVersion, type: "SELECT_TASK" })).toBeNull();
+  });
+
+  it("accepts the web pairing request without exposing extra credentials", () => {
+    const request = parseBridgeRequest({
+      requestId: "pair-web-1",
+      protocolVersion: extensionBridgeProtocolVersion,
+      type: "PAIR_TASK",
+      payload: { code: "123456", apiBaseUrl: "http://127.0.0.1:4300" }
+    });
+    expect(request).toEqual({
+      requestId: "pair-web-1",
+      protocolVersion: extensionBridgeProtocolVersion,
+      type: "PAIR_TASK",
+      payload: { code: "123456", apiBaseUrl: "http://127.0.0.1:4300" }
+    });
+    expect(parseBridgeRequest({
+      requestId: "pair-web-extra",
+      protocolVersion: extensionBridgeProtocolVersion,
+      type: "PAIR_TASK",
+      payload: { code: "123456", apiBaseUrl: "http://127.0.0.1:4300", taskPageUrl: "http://127.0.0.1:3300/tasks/task-1" }
+    })).toBeNull();
+    expect(parseBridgeRequest({
+      requestId: "pair-web-label",
+      protocolVersion: extensionBridgeProtocolVersion,
+      type: "PAIR_TASK",
+      payload: { code: "123456", apiBaseUrl: "http://127.0.0.1:4300", label: "网页任务一键配对" }
+    })).toBeNull();
+  });
+
+  it("rejects payloads on read-only bridge requests", () => {
+    expect(parseBridgeRequest({
+      requestId: "status-with-payload",
+      protocolVersion: extensionBridgeProtocolVersion,
+      type: "GET_STATUS",
+      payload: { code: "123456" }
+    })).toBeNull();
   });
 
   it("accepts only valid JSON postMessage envelopes", () => {
@@ -65,5 +103,31 @@ describe("extension web bridge protocol", () => {
     });
 
     expect(response).toEqual(expect.objectContaining({ ok: true, paired: true, boundTaskId: "task-a", pendingConfirmation: false }));
+  });
+
+  it("reduces unknown runtime failures to a fixed safe code and message", () => {
+    const response = sanitizeBridgeResponse({
+      requestId: "pair-error",
+      extensionVersion: "0.2.4",
+      buildFingerprint: "abc123",
+      runtimeResult: { ok: false, errorCode: "SERVER_INTERNAL_SECRET", error: "token=private" }
+    });
+
+    expect(response.errorCode).toBe("BRIDGE_REQUEST_FAILED");
+    expect(response.message).not.toContain("private");
+    expect(JSON.stringify(response)).not.toContain("SERVER_INTERNAL_SECRET");
+  });
+
+  it("keeps a pairing transport failure actionable without exposing runtime details", () => {
+    const response = sanitizeBridgeResponse({
+      requestId: "pair-transport-error",
+      extensionVersion: "0.2.4",
+      buildFingerprint: "abc123",
+      runtimeResult: { ok: false, errorCode: "PAIRING_REQUEST_FAILED", error: "private network detail" }
+    });
+
+    expect(response.errorCode).toBe("PAIRING_REQUEST_FAILED");
+    expect(response.message).toContain("无法连接诊断服务");
+    expect(JSON.stringify(response)).not.toContain("private network detail");
   });
 });

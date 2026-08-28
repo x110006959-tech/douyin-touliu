@@ -6,7 +6,7 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // ../../packages/shared/dist/collection-routes.js
+  // ../../packages/shared/src/collection-routes.ts
   var collectionRouteKeys = [
     "LOCAL_PROMOTION_DASHBOARD",
     "LIVE_DATA_SCREEN",
@@ -59,7 +59,9 @@
       urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
     }
   ];
-  var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
+  var collectionRouteLabels = Object.fromEntries(
+    collectionRouteTemplates.map((route) => [route.routeKey, route.label])
+  );
   var collectionFreshnessPolicy = {
     agingAfterMs: 5 * 60 * 1e3,
     staleAfterMs: 10 * 60 * 1e3,
@@ -87,9 +89,15 @@
     SUBMIT_LIVE_PULSE: "AI_DIAGNOSIS_SUBMIT_LIVE_PULSE",
     START_LIVE_PULSE: "AI_DIAGNOSIS_START_LIVE_PULSE",
     STOP_LIVE_PULSE: "AI_DIAGNOSIS_STOP_LIVE_PULSE",
+    BEGIN_LOCAL_PROMOTION_PULSE_LOOP: "AI_DIAGNOSIS_BEGIN_LOCAL_PROMOTION_PULSE_LOOP",
+    SUBMIT_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_SUBMIT_LOCAL_PROMOTION_PULSE",
+    START_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_START_LOCAL_PROMOTION_PULSE",
+    STOP_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_STOP_LOCAL_PROMOTION_PULSE",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     VERIFY_BOUND_CONTEXT: "AI_DIAGNOSIS_VERIFY_BOUND_CONTEXT",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
+    SYNC_CURRENT_TASK: "AI_DIAGNOSIS_SYNC_CURRENT_TASK",
+    PAIR_TASK_FROM_WEB: "AI_DIAGNOSIS_PAIR_TASK_FROM_WEB",
     REQUEST_PAIRING_CONFIRMATION: "AI_DIAGNOSIS_REQUEST_PAIRING_CONFIRMATION",
     CONFIRM_PAIRING: "AI_DIAGNOSIS_CONFIRM_PAIRING",
     CANCEL_PAIRING: "AI_DIAGNOSIS_CANCEL_PAIRING",
@@ -4140,7 +4148,7 @@
   };
   var NEVER = INVALID;
 
-  // ../../packages/shared/dist/safety.js
+  // ../../packages/shared/src/safety.ts
   var snapshotSafetyLimits = {
     rawDomTextChars: 2e5,
     pageTitleChars: 500,
@@ -4156,7 +4164,7 @@
     stringChars: 2e5
   };
 
-  // ../../packages/shared/dist/decision-tables.js
+  // ../../packages/shared/src/decision-tables.ts
   var decisionTableCellSchema = external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean(), external_exports.null()]);
   var decisionTableInputSchema = external_exports.object({
     routeKey: external_exports.enum(collectionRouteKeys).nullable(),
@@ -4164,10 +4172,10 @@
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
-  // ../../packages/shared/dist/metric-value.js
+  // ../../packages/shared/src/metric-value.ts
   var metricValidationStatuses = ["TRUSTED", "REQUIRES_REVIEW", "INVALID"];
 
-  // ../../packages/shared/dist/collection-diagnostics.js
+  // ../../packages/shared/src/collection-diagnostics.ts
   var collectionRouteDiagnosticStatuses = [
     "UPLOADED",
     "AGING",
@@ -4227,7 +4235,7 @@
     blocksStrongActions: external_exports.boolean()
   });
 
-  // ../../packages/shared/dist/collection-records.js
+  // ../../packages/shared/src/collection-records.ts
   var structuredCollectionDataVersion = "collection-records-v1";
   var nullableNumber = external_exports.number().finite().nullable();
   var provenanceSchema = external_exports.object({
@@ -4294,62 +4302,7 @@
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
-  // ../../packages/shared/dist/metric-keys.js
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "average_watch_duration_seconds",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "current_online_viewers",
-    "exposure_users",
-    "click_users",
-    "transaction_users",
-    "product_click_rate",
-    "product_conversion_rate",
-    "live_room_click_rate",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
-  var [, ...recordableMetricKeys] = metricKeys;
-
-  // ../../packages/shared/dist/live-screen-internal-api.js
+  // ../../packages/shared/src/live-screen-internal-api.ts
   var liveScreenRoomIdSources = ["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"];
   var liveScreenRoomIdPattern = /^\d{1,32}$/;
   var liveScreenInternalApiEndpointKeys = [
@@ -4493,7 +4446,122 @@
   };
   var liveScreenSnapshotEndpointKeys = liveScreenInternalApiEndpointKeys.filter((key) => liveScreenInternalApiContracts[key].fields.some((field) => field.purpose !== "PULSE_ONLY"));
 
-  // ../../packages/shared/dist/collection-capture.js
+  // ../../packages/shared/src/local-promotion-internal-api.ts
+  var localPromotionInternalApiFrameId = "7405161088825688102";
+  var localPromotionInternalApiModuleId = "7405161354203529243";
+  var localPromotionInternalApiDataSetKey = "pc_data_liveboard_center_data_card";
+  var localPromotionInternalApiEndpointKeys = ["pageMetrics", "liveReportPromoteMeta", "statQuery"];
+  var localPromotionInternalApiEvidencePurposes = ["PULSE_ONLY"];
+  var localPromotionApiMetricKeys = [
+    "total_watch_count",
+    "gmv",
+    "orders",
+    "gpm",
+    "live_viewers",
+    "clicks",
+    "average_watch_duration_seconds",
+    "current_online_viewers",
+    "spend",
+    "full_domain_gmv",
+    "full_domain_orders",
+    "full_domain_pay_roi",
+    "full_domain_product_clicks"
+  ];
+  var localPromotionPulseMetricLabels = {
+    total_watch_count: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570",
+    gmv: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)",
+    orders: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570",
+    gpm: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)",
+    live_viewers: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570",
+    clicks: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570",
+    average_watch_duration_seconds: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F",
+    current_online_viewers: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570",
+    spend: "\u5168\u57DF\u6D88\u8017(\u5143)",
+    full_domain_gmv: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)",
+    full_domain_orders: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570",
+    full_domain_pay_roi: "\u5168\u57DF\u652F\u4ED8ROI",
+    full_domain_product_clicks: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570",
+    daily_budget: "\u65E5\u9884\u7B97"
+  };
+  var localPromotionInternalApiFields = [
+    { metricKey: "total_watch_count", metricName: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u7D2F\u8BA1\u89C2\u770B\u603B\u4EBA\u6570"] },
+    { metricKey: "gmv", metricName: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", "\u6574\u4F53\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "orders", metricName: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "gpm", metricName: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "live_viewers", metricName: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570"] },
+    { metricKey: "clicks", metricName: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] },
+    { metricKey: "average_watch_duration_seconds", metricName: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", unit: "s", semanticScope: "\u672C\u573A\u4EBA\u5747\u89C2\u770B\u65F6\u957F", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u4EBA\u5747\u89C2\u770B\u65F6\u957F"] },
+    { metricKey: "current_online_viewers", metricName: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570"] },
+    { metricKey: "spend", metricName: "\u5168\u57DF\u6D88\u8017(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6D88\u8017(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6D88\u8017", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6D88\u8017(\u5143)", "\u5168\u57DF\u6D88\u8017"] },
+    { metricKey: "full_domain_gmv", metricName: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "full_domain_orders", metricName: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "full_domain_pay_roi", metricName: "\u5168\u57DF\u652F\u4ED8ROI", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u652F\u4ED8ROI", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u652F\u4ED8 ROI", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u652F\u4ED8ROI", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF\u6295\u653EROI", "\u5168\u57DF\u6295\u653E ROI"] },
+    { metricKey: "full_domain_product_clicks", metricName: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] }
+  ];
+  var localPromotionInternalApiEndpointContracts = {
+    pageMetrics: {
+      key: "pageMetrics",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/pageMetrics",
+      maxResponseBytes: 96 * 1024,
+      fields: []
+    },
+    liveReportPromoteMeta: {
+      key: "liveReportPromoteMeta",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/getLiveReportPromoteMeta",
+      maxResponseBytes: 64 * 1024,
+      // 仅瞬时读取直播时间区间与当前广告 ID 白名单，用于构造 roi2_promotion 的固定过滤条件。
+      fields: []
+    },
+    statQuery: {
+      key: "statQuery",
+      method: "POST",
+      path: "/api/lamp/pc/v2/statistics/data/statQuery",
+      // 平台前端在账号命中 BFF 白名单时会把同一请求切到 v3；v2 仍是主路径，v3 仅作业务失败后的固定兜底。
+      fallbackPaths: ["/api/lamp/pc/v3/data/statQuery"],
+      maxResponseBytes: 96 * 1024,
+      fields: localPromotionInternalApiFields.filter((field) => field.endpoint === "statQuery")
+    }
+  };
+  var localPromotionInternalApiRequestSchema = external_exports.object({
+    FrameId: external_exports.literal(localPromotionInternalApiFrameId),
+    ModuleId: external_exports.literal(localPromotionInternalApiModuleId),
+    DataSetKey: external_exports.literal(localPromotionInternalApiDataSetKey),
+    Metrics: external_exports.array(external_exports.string().regex(/^[A-Za-z0-9_]{1,128}$/)).min(1).max(localPromotionApiMetricKeys.length),
+    Filters: external_exports.object({
+      ConditionRelationshipType: external_exports.literal(1),
+      Conditions: external_exports.array(external_exports.union([
+        external_exports.object({
+          Field: external_exports.enum(["room_id", "advertiser_id", "is_order", "adlab_mode"]),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(2),
+          Operator: external_exports.union([external_exports.literal(6), external_exports.literal(7)])
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("stat_time"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{10,16}$/)).length(2),
+          Operator: external_exports.literal(9)
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("ad_id"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(200),
+          Operator: external_exports.literal(7)
+        }).strict()
+      ])).min(1).max(6)
+    }).strict().optional(),
+    PageParams: external_exports.object({ Limit: external_exports.literal(-1), Offset: external_exports.literal(0) }).strict()
+  }).strict();
+  var localPromotionInternalApiPageMetricsRequestSchema = external_exports.object({
+    frameId: external_exports.literal(localPromotionInternalApiFrameId),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+  var localPromotionInternalApiPromoteMetaRequestSchema = external_exports.object({
+    iesCoreUserId: external_exports.string().regex(/^\d{1,64}$/),
+    roomId: external_exports.string().regex(/^\d{1,64}$/),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+
+  // ../../packages/shared/src/collection-capture.ts
   var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
   var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricSourceStatuses = ["INTERNAL_API", "DOM_TEXT", "API_AND_DOM", "SOURCE_CONFLICT"];
@@ -4550,7 +4618,8 @@
     apiContractVersion: external_exports.string().max(50).optional(),
     apiAdapterVersion: external_exports.string().max(50).optional(),
     endpointKey: external_exports.string().max(100).optional(),
-    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional()
+    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional(),
+    routeKey: external_exports.enum(collectionRouteKeys).optional()
   });
   var visibleMetricSchema = external_exports.object({
     key: external_exports.string().min(1),
@@ -4568,6 +4637,12 @@
     status: external_exports.number().int().min(0).max(599),
     responseJson: external_exports.unknown(),
     capturedAt: external_exports.string().datetime()
+  });
+  var localPromotionIdentityEvidenceSchema = external_exports.object({
+    advid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    roomId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAdvid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAwemeId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2)
   });
   var captureMetaSchema = external_exports.object({
     adapterId: external_exports.string().min(1).max(100),
@@ -4623,6 +4698,29 @@
         intervalLabel: external_exports.string().min(1).max(100),
         liveViews: external_exports.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
       })).max(120).optional()
+    }).optional(),
+    localPromotionInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      identity: external_exports.object({
+        advid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        roomId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAdvid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAwemeId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        source: external_exports.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+        evidence: external_exports.object({
+          url: localPromotionIdentityEvidenceSchema,
+          dom: localPromotionIdentityEvidenceSchema
+        })
+      }),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.enum(localPromotionInternalApiEndpointKeys),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().min(0).max(384 * 1024),
+        reason: external_exports.string().max(100).optional()
+      })).max(localPromotionInternalApiEndpointKeys.length),
+      evidencePurpose: external_exports.enum(localPromotionInternalApiEvidencePurposes)
     }).optional()
   });
   var collectionSnapshotSchema = external_exports.object({
@@ -4652,7 +4750,76 @@
     captureProtocolVersion: external_exports.number().int().min(1).max(100).optional()
   });
 
-  // ../../packages/shared/dist/collection-dashboard.js
+  // ../../packages/shared/src/realtime-evidence.ts
+  var realtimeEvidenceSummarySchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    pageType: external_exports.enum(pageTypes),
+    observedAt: external_exports.string().datetime(),
+    receivedAt: external_exports.string().datetime(),
+    metricCount: external_exports.number().int().nonnegative(),
+    successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
+    source: external_exports.enum(["LIVE_SCREEN_INTERNAL_API", "LOCAL_PROMOTION_INTERNAL_API"])
+  });
+  function realtimeEvidenceRouteMatchesSource(evidence) {
+    return evidence.source === "LIVE_SCREEN_INTERNAL_API" ? evidence.routeKey === "LIVE_DATA_SCREEN" && evidence.pageType === "LIVE_DATA_SCREEN" : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD" && evidence.pageType === "LOCAL_PROMOTION_DASHBOARD";
+  }
+
+  // ../../packages/shared/src/metric-keys.ts
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/src/collection-dashboard.ts
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -4674,7 +4841,69 @@
     tableIndex: external_exports.number().int().min(0).max(3)
   });
 
-  // ../../packages/shared/dist/index.js
+  // ../../packages/shared/src/dashboard-overview.ts
+  var liveRealtimeMetricKeySet = new Set(liveScreenPulseCoreMetricKeys);
+  var localRealtimeMetricKeySet = new Set(localPromotionApiMetricKeys);
+  var overviewDefinitions = [
+    definition("live_gmv", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gmv"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gmv")
+    ]),
+    definition("live_current_online_viewers", "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "current_online_viewers"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "current_online_viewers")
+    ]),
+    definition("live_gpm", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gpm"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gpm")
+    ]),
+    definition("live_watch_duration", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "average_watch_duration_seconds"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "average_watch_duration_seconds")
+    ]),
+    definition("live_orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "orders"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "orders")
+    ]),
+    definition("live_transaction_users", "\u6210\u4EA4\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "transaction_users")
+    ]),
+    definition("live_conversion", "\u5546\u54C1\u8F6C\u5316\u7387", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "product_conversion_rate")
+    ]),
+    definition("local_total_watch_count", "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "total_watch_count")
+    ]),
+    definition("local_live_viewers", "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "live_viewers")
+    ]),
+    definition("local_clicks", "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "clicks")
+    ]),
+    definition("local_spend", "\u5168\u57DF\u6D88\u8017", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "spend")
+    ]),
+    definition("local_full_domain_gmv", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_gmv")
+    ]),
+    definition("local_full_domain_orders", "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_orders")
+    ]),
+    definition("local_full_domain_pay_roi", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_pay_roi")
+    ]),
+    definition("local_full_domain_product_clicks", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_product_clicks")
+    ])
+  ];
+  function definition(displayKey, label, scopeLabel, section, candidateReferences) {
+    return { displayKey, label, scopeLabel, section, candidateReferences };
+  }
+  function reference(routeKey, metricKey) {
+    return { routeKey, metricKey };
+  }
+
+  // ../../packages/shared/src/index.ts
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
     "SUBJECT_PENDING",
@@ -4868,7 +5097,9 @@
     \u503E\u659C\u9AD8\u6838\u9500\u95E8\u5E97: "ALLOCATE_HIGH_VERIFY_STORES",
     \u4E3B\u4F53\u8BC6\u522B\u6821\u51C6: "CALIBRATE_SUBJECT"
   };
-  var actionTypeToDiagnosisAction = Object.fromEntries(Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label]));
+  var actionTypeToDiagnosisAction = Object.fromEntries(
+    Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label])
+  );
   var diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"];
   var recommendationPriorities = ["P0", "P1", "P2"];
   var decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"];
@@ -5049,22 +5280,24 @@
     }
   });
   var bulkReviewMetricInputSchema = external_exports.object({
-    items: external_exports.array(external_exports.object({
-      metricId: external_exports.string().min(1),
-      expectedSnapshotUpdatedAt: external_exports.string().datetime(),
-      reviewedValue: external_exports.string().optional(),
-      timeRange: external_exports.string().trim().min(1).max(100).optional(),
-      sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
-      reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
-    }).superRefine((value, ctx) => {
-      if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          path: ["reviewedValue"],
-          message: "MODIFIED requires reviewedValue"
-        });
-      }
-    })).min(1)
+    items: external_exports.array(
+      external_exports.object({
+        metricId: external_exports.string().min(1),
+        expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+        reviewedValue: external_exports.string().optional(),
+        timeRange: external_exports.string().trim().min(1).max(100).optional(),
+        sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
+        reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+      }).superRefine((value, ctx) => {
+        if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+          ctx.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["reviewedValue"],
+            message: "MODIFIED requires reviewedValue"
+          });
+        }
+      })
+    ).min(1)
   });
   var confirmAllReviewMetricsInputSchema = external_exports.object({
     snapshotVersions: external_exports.array(external_exports.object({
@@ -5144,15 +5377,28 @@
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
     }).optional(),
-    realtimeEvidence: external_exports.object({
-      routeKey: external_exports.enum(collectionRouteKeys),
-      pageType: external_exports.enum(pageTypes),
-      observedAt: external_exports.string().datetime(),
-      receivedAt: external_exports.string().datetime(),
-      metricCount: external_exports.number().int().nonnegative(),
-      successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
-      source: external_exports.literal("LIVE_SCREEN_INTERNAL_API")
-    }).optional()
+    realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
+    realtimeEvidenceItems: external_exports.array(realtimeEvidenceSummarySchema).max(4).optional()
+  }).superRefine((input, context) => {
+    const items = input.realtimeEvidenceItems?.length ? input.realtimeEvidenceItems : input.realtimeEvidence ? [input.realtimeEvidence] : [];
+    const seenRoutes = /* @__PURE__ */ new Set();
+    items.forEach((evidence, index) => {
+      if (!realtimeEvidenceRouteMatchesSource(evidence)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index],
+          message: "\u5B9E\u65F6\u8BC1\u636E\u6765\u6E90\u4E0E\u8DEF\u7EBF\u4E0D\u5339\u914D"
+        });
+      }
+      if (seenRoutes.has(evidence.routeKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index, "routeKey"],
+          message: "\u540C\u4E00\u8DEF\u7EBF\u53EA\u80FD\u4FDD\u7559\u4E00\u4EFD\u6700\u65B0\u5B9E\u65F6\u8BC1\u636E"
+        });
+      }
+      seenRoutes.add(evidence.routeKey);
+    });
   });
   var decisionEngineOutputSchema = external_exports.object({
     engineVersion: external_exports.string().optional(),
@@ -5168,36 +5414,44 @@
       mode: external_exports.enum(decisionAnalysisModes).optional(),
       headline: external_exports.string().min(1),
       performanceSnapshot: external_exports.array(external_exports.string()),
-      findings: external_exports.array(external_exports.object({
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        conclusion: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string()),
-        riskLevel: external_exports.enum(riskLevels)
-      })),
-      recommendations: external_exports.array(external_exports.object({
-        priority: external_exports.enum(recommendationPriorities),
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        reason: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string().min(1)).optional(),
-        steps: external_exports.array(external_exports.string().min(1)),
-        verifyMetrics: external_exports.array(external_exports.string().min(1)),
-        ruleBoundary: external_exports.string().min(1)
-      })),
-      metricExplanations: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        value: external_exports.number().nullable(),
-        meaning: external_exports.string().min(1),
-        use: external_exports.string().min(1),
-        caveat: external_exports.string().min(1)
-      })),
-      ruleReferences: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        url: external_exports.string().url(),
-        scope: external_exports.string().min(1),
-        checkedAt: external_exports.string().min(1)
-      }))
+      findings: external_exports.array(
+        external_exports.object({
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          conclusion: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string()),
+          riskLevel: external_exports.enum(riskLevels)
+        })
+      ),
+      recommendations: external_exports.array(
+        external_exports.object({
+          priority: external_exports.enum(recommendationPriorities),
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          reason: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string().min(1)).optional(),
+          steps: external_exports.array(external_exports.string().min(1)),
+          verifyMetrics: external_exports.array(external_exports.string().min(1)),
+          ruleBoundary: external_exports.string().min(1)
+        })
+      ),
+      metricExplanations: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          value: external_exports.number().nullable(),
+          meaning: external_exports.string().min(1),
+          use: external_exports.string().min(1),
+          caveat: external_exports.string().min(1)
+        })
+      ),
+      ruleReferences: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          url: external_exports.string().url(),
+          scope: external_exports.string().min(1),
+          checkedAt: external_exports.string().min(1)
+        })
+      )
     }).optional(),
     calculatedMetrics: external_exports.object({
       serviceProviderAfterCost: external_exports.number().nullable().optional(),
@@ -5248,7 +5502,10 @@
     storeName: external_exports.string().trim().max(100).optional().nullable(),
     memo: external_exports.string().trim().max(1e3).optional().nullable()
   });
-  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine((value) => Object.keys(value).length > 0, { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" });
+  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine(
+    (value) => Object.keys(value).length > 0,
+    { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" }
+  );
   var deleteAccountProfileSchema = external_exports.object({
     accountName: external_exports.string().trim().min(1, "\u8BF7\u786E\u8BA4\u8981\u5220\u9664\u7684\u8D26\u53F7\u540D\u79F0")
   });
@@ -5295,11 +5552,13 @@
   function normalizeMetricLookupValue(value) {
     return value.toLowerCase().replace(/[（）()]/g, "").replace(/[\s_\-:/：，,。]+/g, "");
   }
-  var metricAliasLookup = new Map(metricKeys.flatMap((key) => [
-    [normalizeMetricLookupValue(key), key],
-    [normalizeMetricLookupValue(metricKeyLabels[key]), key],
-    ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
-  ]));
+  var metricAliasLookup = new Map(
+    metricKeys.flatMap((key) => [
+      [normalizeMetricLookupValue(key), key],
+      [normalizeMetricLookupValue(metricKeyLabels[key]), key],
+      ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
+    ])
+  );
 
   // src/safety.ts
   function isSupportedExtensionCollectionUrl(value) {
@@ -5332,7 +5591,7 @@
         const reason = livePulse.lastFailureReason ? livePulseFailureReasonText(livePulse.lastFailureReason) : "\u672A\u77E5\u767D\u540D\u5355\u5931\u8D25\u539F\u56E0";
         return `\u7B2C ${livePulse.consecutiveFailures}/3 \u6B21\u5931\u8D25${endpoint2}\uFF1A${reason}\uFF1B\u4ECD\u5728\u7B49\u5F85\u4E0B\u4E00\u6B21\u56FA\u5B9A\u8282\u62CD\u3002`;
       }
-      return livePulse.successCount ? `\u91C7\u96C6\u4E2D\uFF1B\u6700\u8FD1\u4E00\u8F6E\u6838\u5FC3\u6307\u6807 ${livePulseMetricCoverage(livePulse.lastMetricKeys).count}/${liveScreenPulseCoreMetricKeys.length}` : "API \u5DF2\u542F\u52A8\uFF0C\u6B63\u5728\u53D1\u8D77\u9996\u8F6E\u8BF7\u6C42";
+      return livePulse.successCount ? `\u91C7\u96C6\u4E2D\uFF1B\u6700\u8FD1\u4E00\u8F6E\u5DF2\u4E0A\u4F20 ${livePulse.lastMetricCount || 0} \u9879\u6838\u5FC3\u6307\u6807` : "API \u5DF2\u542F\u52A8\uFF0C\u6B63\u5728\u53D1\u8D77\u9996\u8F6E\u8BF7\u6C42";
     }
     if (livePulse?.lastOutcome) return livePulseOutcomeMessage(livePulse.lastOutcome);
     return internalApiEnabled ? "API \u5DF2\u5C31\u7EEA\uFF1B\u70B9\u51FB\u4E00\u6B21\u5373\u53EF\u6301\u7EED\u66F4\u65B0\u4EFB\u52A1\u5927\u5C4F" : "\u670D\u52A1\u7AEF API \u672A\u5F00\u542F\uFF1B\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM";
@@ -5349,7 +5608,29 @@
       keys,
       count: keys.length,
       total: liveScreenPulseCoreMetricKeys.length,
+      presentLabels: keys.map((key) => liveScreenPulseCoreMetricLabels[key]),
       missingLabels: liveScreenPulseCoreMetricKeys.filter((key) => !keySet.has(key)).map((key) => liveScreenPulseCoreMetricLabels[key])
+    };
+  }
+  function localPromotionPulseMetricCoverage(value) {
+    if (!Array.isArray(value)) {
+      return {
+        keys: [],
+        count: 0,
+        total: localPromotionApiMetricKeys.length,
+        presentLabels: [],
+        missingLabels: localPromotionApiMetricKeys.map((key) => localPromotionPulseMetricLabels[key])
+      };
+    }
+    const supplied = new Set(value.filter((item) => typeof item === "string"));
+    const keys = localPromotionApiMetricKeys.filter((key) => supplied.has(key));
+    const keySet = new Set(keys);
+    return {
+      keys,
+      count: keys.length,
+      total: localPromotionApiMetricKeys.length,
+      presentLabels: keys.map((key) => localPromotionPulseMetricLabels[key]),
+      missingLabels: localPromotionApiMetricKeys.filter((key) => !keySet.has(key)).map((key) => localPromotionPulseMetricLabels[key])
     };
   }
   function livePulseOutcomeMessage(outcome) {
@@ -5362,16 +5643,32 @@
       case "HTTP_401":
       case "HTTP_429":
         return `\u5E73\u53F0 API \u8FD4\u56DE ${outcome.reason}${endpoint2}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+      case "RATE_LIMITED":
+        return `\u5B9E\u65F6\u4E0A\u4F20\u63A5\u53E3\u8FD4\u56DE\u9650\u6D41${endpoint2}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+      case "BYTE_LIMIT":
+      case "TOTAL_BYTE_LIMIT":
+        return `API \u54CD\u5E94\u5B57\u8282\u8D85\u9650${endpoint2}\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62\uFF1B\u672C\u6B21\u672A\u4E0A\u4F20\u3002`;
       case "PAGE_INACTIVE":
-        return "\u76F4\u64AD\u5E73\u53F0\u9875\u4E0D\u518D\u53EF\u7528\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62\u5B9E\u65F6\u8109\u51B2\u3002";
+        return "\u91C7\u96C6\u6E90\u5E73\u53F0\u9875\u4E0D\u518D\u53EF\u7528\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\u3002";
       case "PAGE_NAVIGATED":
-        return "\u76F4\u64AD\u5E73\u53F0\u9875\u5DF2\u5BFC\u822A\u79BB\u5F00\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62\u5B9E\u65F6\u8109\u51B2\u3002";
-      case "THREE_CONSECUTIVE_FAILURES":
-        return `API \u8FDE\u7EED\u5931\u8D25 3 \u6B21${outcome.lastFailureReason ? `\uFF08\u6700\u540E\u539F\u56E0\uFF1A${livePulseFailureReasonText(outcome.lastFailureReason)}\uFF09` : ""}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+        return "\u91C7\u96C6\u6E90\u5E73\u53F0\u9875\u5DF2\u5BFC\u822A\u79BB\u5F00\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\u3002";
+      case "IDENTITY_CHANGED":
+        return "\u672C\u5730\u63A8\u9875\u9762\u7684\u5E7F\u544A\u8EAB\u4EFD\u5DF2\u53D8\u5316\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\u3002";
+      case "CONTENT_SCRIPT_UNAVAILABLE":
+        return "\u91C7\u96C6\u9875\u9762\u811A\u672C\u4E0D\u53EF\u7528\uFF0C\u5DF2\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\uFF1B\u8BF7\u5237\u65B0\u5E73\u53F0\u9875\u540E\u91CD\u8BD5\u3002";
+      case "PULSE_TRANSPORT_UNAVAILABLE":
+        return "\u9875\u9762\u4E0E\u63D2\u4EF6\u540E\u53F0\u8FDE\u7EED\u901A\u4FE1\u5931\u8D25\uFF0C\u5DF2\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\uFF1B\u8BF7\u5237\u65B0\u5E73\u53F0\u9875\u540E\u91CD\u8BD5\u3002";
+      case "THREE_CONSECUTIVE_FAILURES": {
+        const details = [
+          outcome.endpoint ? `\u6700\u540E\u7AEF\u70B9\uFF1A${outcome.endpoint}` : null,
+          outcome.lastFailureReason ? `\u6700\u540E\u539F\u56E0\uFF1A${livePulseFailureReasonText(outcome.lastFailureReason)}` : null
+        ].filter((value) => Boolean(value));
+        return `API \u8FDE\u7EED\u5931\u8D25 3 \u6B21${details.length ? `\uFF08${details.join("\uFF1B")}\uFF09` : ""}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+      }
       case "USER_STOPPED":
         return "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62\u3002";
       default:
-        return outcome?.failure ? `API \u5B9E\u65F6\u91C7\u96C6\u5931\u8D25\uFF08${outcome?.reason || "UNKNOWN"}\uFF09\uFF0C\u5DF2\u505C\u6B62\u3002` : "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62\u3002";
+        return outcome?.failure ? `API \u5B9E\u65F6\u91C7\u96C6\u5931\u8D25${endpoint2}\uFF08${outcome?.reason || "UNKNOWN"}\uFF09\uFF0C\u5DF2\u505C\u6B62\u3002` : "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62\u3002";
     }
   }
   function livePulseReasonText(reason) {
@@ -5385,15 +5682,22 @@
       PULSE_UPLOAD_TIMEOUT: "\u5B9E\u65F6\u8109\u51B2\u4E0A\u4F20\u8D85\u65F6\uFF08PULSE_UPLOAD_TIMEOUT\uFF09",
       PULSE_UPLOAD_ABORTED: "\u5B9E\u65F6\u8109\u51B2\u4E0A\u4F20\u88AB\u53D6\u6D88\uFF08PULSE_UPLOAD_ABORTED\uFF09",
       PULSE_NETWORK_ERROR: "\u5B9E\u65F6\u8109\u51B2\u4E0A\u4F20\u7F51\u7EDC\u5931\u8D25\uFF08PULSE_NETWORK_ERROR\uFF09",
+      PULSE_TRANSPORT_UNAVAILABLE: "\u9875\u9762\u4E0E\u63D2\u4EF6\u540E\u53F0\u8FDE\u7EED\u901A\u4FE1\u5931\u8D25\uFF08PULSE_TRANSPORT_UNAVAILABLE\uFF09",
+      NO_USABLE_METRICS: "\u56FA\u5B9A\u7AEF\u70B9\u8FD4\u56DE\u6210\u529F\uFF0C\u4F46\u6CA1\u6709\u53EF\u7528\u767D\u540D\u5355\u6307\u6807\uFF08NO_USABLE_METRICS\uFF09",
       REQUEST_FAILED: "\u5E73\u53F0 API \u8BF7\u6C42\u5931\u8D25\uFF08REQUEST_FAILED\uFF09",
+      REQUEST_INVALID: "\u672C\u5730\u63A8 API \u56FA\u5B9A\u8BF7\u6C42\u53C2\u6570\u6821\u9A8C\u5931\u8D25\uFF08REQUEST_INVALID\uFF09",
       REQUEST_TIMEOUT: "\u5E73\u53F0 API \u8BF7\u6C42\u8D85\u65F6\uFF08REQUEST_TIMEOUT\uFF09",
       JSON_PARSE_FAILED: "\u5E73\u53F0 API \u8FD4\u56DE\u65E0\u6548 JSON\uFF08JSON_PARSE_FAILED\uFF09",
       EMPTY_RESPONSE: "\u5E73\u53F0 API \u8FD4\u56DE\u7A7A\u54CD\u5E94\uFF08EMPTY_RESPONSE\uFF09",
       BUSINESS_ERROR: "\u5E73\u53F0 API \u4E1A\u52A1\u54CD\u5E94\u5931\u8D25\uFF08BUSINESS_ERROR\uFF09",
+      RATE_LIMITED: "\u5E73\u53F0 API \u8FD4\u56DE\u9650\u6D41\uFF08RATE_LIMITED\uFF09\uFF0C\u5DF2\u505C\u6B62\u3002",
       ABORTED: "\u8BF7\u6C42\u88AB\u505C\u6B62\uFF08ABORTED\uFF09"
     };
     return labels[reason] || `HTTP \u54CD\u5E94\u5931\u8D25\uFF08${reason}\uFF09`;
   }
+
+  // src/live-pulse-schedule.ts
+  var localPromotionPulseCadenceMs = 3e4;
 
   // src/popup.ts
   var els = {
@@ -5413,8 +5717,6 @@
     pairingPanel: document.getElementById("pairingPanel"),
     pairingConfirmationPanel: document.getElementById("pairingConfirmationPanel"),
     taskPanel: document.getElementById("taskPanel"),
-    boundPanel: document.getElementById("boundPanel"),
-    captureResult: document.getElementById("captureResult"),
     pairingCode: document.getElementById("pairingCode"),
     apiBaseUrl: document.getElementById("apiBaseUrl"),
     pairBtn: document.getElementById("pairBtn"),
@@ -5427,18 +5729,20 @@
     taskSelect: document.getElementById("taskSelect"),
     selectTaskBtn: document.getElementById("selectTaskBtn"),
     clearPairingBtn: document.getElementById("clearPairingBtn"),
+    logs: document.getElementById("logs"),
+    copyLogsBtn: document.getElementById("copyLogsBtn"),
     sidePanelBtn: document.getElementById("sidePanelBtn"),
-    captureBtn: document.getElementById("captureBtn"),
     livePulsePanel: document.getElementById("livePulsePanel"),
+    livePulseTitle: document.getElementById("livePulseTitle"),
     livePulseStatus: document.getElementById("livePulseStatus"),
     livePulseData: document.getElementById("livePulseData"),
     livePulseUpdatedAt: document.getElementById("livePulseUpdatedAt"),
     livePulseCoverage: document.getElementById("livePulseCoverage"),
+    livePulseCollected: document.getElementById("livePulseCollected"),
     livePulseMissing: document.getElementById("livePulseMissing"),
     livePulseErrorRow: document.getElementById("livePulseErrorRow"),
     livePulseLastError: document.getElementById("livePulseLastError"),
     livePulseBtn: document.getElementById("livePulseBtn"),
-    nextRoute: document.getElementById("nextRoute"),
     refreshBtn: document.getElementById("refreshBtn"),
     clearBtn: document.getElementById("clearBtn")
   };
@@ -5446,6 +5750,10 @@
   var livePulsePairingVerified = false;
   var livePulseTarget = null;
   var livePulseActive = false;
+  var currentPagePulse = void 0;
+  var currentPagePulseRoute = null;
+  var popupRenderGeneration = 0;
+  var livePulseActionInFlight = false;
   void render();
   void refreshLivePulseStatus();
   els.pairBtn.addEventListener("click", pairExtension);
@@ -5454,17 +5762,18 @@
   els.selectTaskBtn.addEventListener("click", selectTask);
   els.clearPairingBtn.addEventListener("click", clearPairing);
   els.sidePanelBtn.addEventListener("click", openSidePanel);
-  els.captureBtn.addEventListener("click", captureAndUpload);
   els.livePulseBtn.addEventListener("click", toggleLivePulse);
   els.refreshBtn.addEventListener("click", render);
   els.clearBtn.addEventListener("click", clearSnapshot);
+  els.copyLogsBtn.addEventListener("click", copyRecentCollectionLogs);
   window.setInterval(() => void refreshLivePulseStatus(), 1e3);
   async function activeTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     return tab;
   }
   async function render() {
-    setStatus("\u6B63\u5728\u68C0\u67E5\u63D2\u4EF6\u72B6\u6001", "neutral");
+    const renderGeneration = ++popupRenderGeneration;
+    if (!livePulseActionInFlight) setStatus("\u6B63\u5728\u68C0\u67E5\u63D2\u4EF6\u72B6\u6001", "neutral");
     const [tabResult, stateResult] = await Promise.allSettled([
       activeTab(),
       runtimeMessage({ type: MESSAGE.GET_STATE })
@@ -5481,6 +5790,7 @@
     const currentActivity = state?.pageActivity?.tabId === tab?.id && state?.pageActivity?.currentUrl === url ? state.pageActivity : null;
     const pageContext = tab?.id && collectable ? await contentMessage(tab.id, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null) : null;
     const routeKey = normalizeCollectionRouteKey(pageContext?.routeKey || currentActivity?.routeKey);
+    if (renderGeneration !== popupRenderGeneration) return;
     els.currentUrl.textContent = url || "\u65E0\u6CD5\u8BFB\u53D6\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u63D2\u4EF6";
     const currentPageType = pageTypeLabel(pageContext?.pageType || currentActivity?.pageType || inferPageTypeFromUrl(url));
     const currentRouteLabel = routeLabel(routeKey);
@@ -5490,7 +5800,7 @@
     els.accountName.textContent = state?.config?.accountName || "\u672A\u7ED1\u5B9A";
     els.projectName.textContent = state?.config?.projectName || "\u672A\u7ED1\u5B9A";
     els.collectionRunId.textContent = state?.activeCollectionSession?.collectionRunId || "-";
-    els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${"1a4bc20a9d72"}`;
+    els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${"e078d8fdfcdf"}`;
     els.snapshot.textContent = state?.latestSnapshot ? JSON.stringify({
       pageType: state.latestSnapshot.pageType,
       routeKey: state.latestSnapshot.routeKey,
@@ -5498,35 +5808,40 @@
       capturedAt: state.latestSnapshot.localCollectedAt,
       routeUploadState: state.routeUploadState || {}
     }, null, 2) : "\u6682\u65E0\u672C\u5730\u5FEB\u7167";
+    els.logs.textContent = formatRecentCollectionLogs(state?.logs);
     renderTaskOptions(state?.context, state?.config?.collectionTaskId);
-    const boundTask = currentTask(state);
     const hasToken = Boolean(state?.hasToken);
     const pendingPairing = state?.pendingPairingConfirmation;
     const hasTask = Boolean(state?.config?.collectionTaskId);
     const pairingVerified = hasToken && hasTask && Boolean(verification?.ok);
-    const isExactLiveScreen = /^https:\/\/eos\.douyin\.com\/dp\/liveScreen(?:[/?#]|$)/.test(url);
-    const isLocalPromotionPage = /^https:\/\/localads\.chengzijianzhan\.cn\/lamp\/pc\/liveboard2(?:[/?#]|$)/.test(url);
+    const pagePulseRoute = pulseRouteForUrl(url);
+    const isExactLiveScreen = pagePulseRoute === "LIVE_DATA_SCREEN";
+    const isLocalPromotionPage = pagePulseRoute === "LOCAL_PROMOTION_DASHBOARD";
     const internalApiEnabled = state?.context?.liveScreenInternalApi?.enabled === true;
+    const localPromotionInternalApiEnabled = state?.context?.localPromotionInternalApi?.enabled === true;
     const livePulseRoomReady = pageContext?.livePulseEligible === true;
+    const localPromotionIdentityReady = pageContext?.localPromotionPulseEligible === true;
     const isLiveApiPage = hasToken && hasTask && isExactLiveScreen;
-    const apiContinuousAvailable = isLiveApiPage && internalApiEnabled && livePulseRoomReady;
+    const isLocalPromotionApiPage = hasToken && hasTask && isLocalPromotionPage;
+    const pulseTargetRoute = isLiveApiPage ? "LIVE_DATA_SCREEN" : isLocalPromotionApiPage ? "LOCAL_PROMOTION_DASHBOARD" : null;
+    const apiContinuousAvailable = isLiveApiPage && internalApiEnabled && livePulseRoomReady || isLocalPromotionApiPage && localPromotionInternalApiEnabled && localPromotionIdentityReady;
     els.hasToken.textContent = !hasToken ? "\u5C1A\u672A\u914D\u5BF9" : !hasTask ? "\u5DF2\u6709\u672C\u673A\u51ED\u8BC1\uFF0C\u9009\u62E9\u4EFB\u52A1\u540E\u6821\u9A8C" : pairingVerified ? "\u5DF2\u5411\u672C\u673A API \u6821\u9A8C" : "\u672C\u673A API \u6821\u9A8C\u5931\u8D25";
     toggle(els.pairingPanel, !hasToken || hasTask && !pairingVerified);
     toggle(els.pairingConfirmationPanel, Boolean(pendingPairing));
     toggle(els.taskPanel, hasToken && !hasTask);
-    toggle(els.boundPanel, hasToken && hasTask && isLocalPromotionPage);
-    els.captureBtn.disabled = !isLocalPromotionPage || !hasTask || !pairingVerified;
     livePulsePairingVerified = pairingVerified;
-    livePulseTarget = tab?.id && apiContinuousAvailable ? { tabId: tab.id, currentUrl: url } : null;
-    livePulseActive = state?.livePulse?.active === true;
-    els.captureBtn.textContent = "\u91C7\u96C6\u5E76\u4E0A\u4F20\u6570\u636E\u603B\u89C8";
-    toggle(els.captureBtn, isLocalPromotionPage);
-    toggle(els.livePulsePanel, isLiveApiPage);
-    els.collectionNotice.textContent = isLiveApiPage ? "\u76F4\u64AD\u91C7\u96C6\u53EA\u8C03\u7528\u5DF2\u6279\u51C6\u7684\u5E73\u53F0\u5185\u90E8 API\uFF0C\u53EA\u4E0A\u4F20\u767D\u540D\u5355\u6307\u6807\uFF0C\u4E0D\u8BFB\u53D6 DOM \u6570\u503C\u8865\u9F50\u3002" : "\u672C\u5730\u63A8\u91C7\u96C6\u53EA\u8BFB\u53D6\u5F53\u524D\u6570\u636E\u603B\u89C8\u7684\u53EF\u89C1 DOM\u3001\u771F\u5B9E\u8868\u683C\u548C\u767D\u540D\u5355\u6307\u6807\u3002";
-    els.livePulseStatus.textContent = livePulseStatusText(state?.livePulse, internalApiEnabled);
-    renderLivePulseData(state?.livePulse);
-    syncLivePulseButton(state);
-    els.nextRoute.textContent = nextPendingRouteLabel(state);
+    livePulseTarget = tab?.id && apiContinuousAvailable && pulseTargetRoute ? { tabId: tab.id, currentUrl: url, routeKey: pulseTargetRoute } : null;
+    currentPagePulseRoute = pagePulseRoute;
+    currentPagePulse = pulseForCurrentPage(state?.livePulse, tab?.id, pagePulseRoute, state?.livePulses);
+    livePulseActive = currentPagePulse?.active === true;
+    toggle(els.livePulsePanel, isLiveApiPage || isLocalPromotionApiPage);
+    els.livePulseTitle.textContent = isLocalPromotionPage ? "\u5DE8\u91CF\u672C\u5730\u63A8 API \u91C7\u96C6" : "\u76F4\u64AD API \u91C7\u96C6";
+    els.collectionNotice.textContent = isLiveApiPage ? "\u76F4\u64AD\u91C7\u96C6\u53EA\u8C03\u7528\u5DF2\u6279\u51C6\u7684\u5E73\u53F0\u5185\u90E8 API\uFF0C\u53EA\u4E0A\u4F20\u767D\u540D\u5355\u6307\u6807\uFF0C\u4E0D\u8BFB\u53D6 DOM \u6570\u503C\u8865\u9F50\u3002" : "\u672C\u5730\u63A8\u53EA\u8C03\u7528\u5DF2\u6279\u51C6\u7684\u5E73\u53F0\u5185\u90E8 API \u6301\u7EED\u91C7\u96C6\uFF0C\u4E0D\u8BFB\u53D6 DOM \u6570\u503C\uFF0C\u4E5F\u4E0D\u521B\u5EFA\u5FEB\u7167\u3002";
+    const currentPulseRoute = pagePulseRoute || pulseTargetRoute;
+    const currentApiEnabled = currentPulseRoute === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionInternalApiEnabled : internalApiEnabled;
+    els.livePulseStatus.textContent = livePulseStatusText(currentPagePulse, currentApiEnabled);
+    renderLivePulseData(currentPagePulse, currentPulseRoute);
+    syncLivePulseButton(currentPagePulse, currentApiEnabled);
     els.pendingPairServer.textContent = pendingPairing?.apiBaseUrl || "-";
     els.pendingPairAccount.textContent = pendingPairing ? pendingPairing.account.accountName : "-";
     els.pendingPairTask.textContent = pendingPairing?.task ? `${pendingPairing.task.projectName} / ${pendingPairing.task.pageTitle || pendingPairing.task.id}` : "\u672A\u7ED1\u5B9A\u5177\u4F53\u4EFB\u52A1";
@@ -5545,119 +5860,163 @@
       setStatus("\u8BF7\u6253\u5F00\u5DE8\u91CF\u672C\u5730\u63A8\u6570\u636E\u9875\u6216\u76F4\u64AD\u6570\u636E\u5927\u5C4F", "warning");
     } else if (isExactLiveScreen && pageContext?.livePulseFailureCode === "ROOM_ID_UNAVAILABLE") {
       setStatus("\u5F53\u524D\u76F4\u64AD\u9875\u672A\u63D0\u4F9B\u53EF\u4FE1 room_id\uFF1B\u672A\u542F\u52A8 API \u91C7\u96C6\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM\u3002\u8BF7\u786E\u8BA4\u5DF2\u6253\u5F00\u5177\u4F53\u76F4\u64AD\u573A\u6B21\u3002", "error");
-    } else if (state?.livePulse?.lastOutcome?.failure) {
-      setStatus(livePulseOutcomeMessage(state.livePulse.lastOutcome), "error");
+    } else if (isLocalPromotionPage && pageContext?.localPromotionPulseFailureCode === "IDENTITY_UNAVAILABLE") {
+      setStatus("\u5F53\u524D\u672C\u5730\u63A8\u9875\u9762\u7F3A\u5C11\u53EF\u4FE1\u5E7F\u544A\u8EAB\u4EFD\uFF1BAPI \u6301\u7EED\u91C7\u96C6\u4FDD\u6301\u5173\u95ED\uFF0C\u4E5F\u4E0D\u4F1A\u6539\u7528 DOM \u5FEB\u7167\u3002", "error");
+    } else if (currentPagePulse?.lastOutcome?.failure) {
+      setStatus(livePulseOutcomeMessage(currentPagePulse.lastOutcome), "error");
     } else {
       setStatus("\u63D2\u4EF6\u3001\u8D26\u53F7\u548C\u4EFB\u52A1\u5747\u6B63\u5E38\uFF0C\u53EF\u4EE5\u5F00\u59CB\u91C7\u96C6", "ready");
     }
   }
   var livePulseStatusRefreshInFlight = false;
   async function refreshLivePulseStatus() {
-    if (document.visibilityState !== "visible" || livePulseStatusRefreshInFlight) return;
+    if (document.visibilityState !== "visible" || livePulseStatusRefreshInFlight || livePulseActionInFlight) return;
+    const refreshGeneration = popupRenderGeneration;
     livePulseStatusRefreshInFlight = true;
     try {
-      const state = await runtimeMessage({ type: MESSAGE.GET_STATE });
-      const internalApiEnabled = state?.context?.liveScreenInternalApi?.enabled === true;
-      els.livePulseStatus.textContent = livePulseStatusText(state?.livePulse, internalApiEnabled);
-      renderLivePulseData(state?.livePulse);
-      syncLivePulseButton(state);
-      if (state?.livePulse?.lastOutcome?.failure) {
-        setStatus(livePulseOutcomeMessage(state.livePulse.lastOutcome), "error");
+      const [state, tab] = await Promise.all([runtimeMessage({ type: MESSAGE.GET_STATE }), activeTab()]);
+      if (livePulseActionInFlight || refreshGeneration !== popupRenderGeneration) return;
+      const routeKey = pulseRouteForUrl(tab?.url || "");
+      if (routeKey !== currentPagePulseRoute) {
+        await render();
+        return;
+      }
+      currentPagePulse = pulseForCurrentPage(state?.livePulse, tab?.id, routeKey, state?.livePulses);
+      livePulseActive = currentPagePulse?.active === true;
+      const internalApiEnabled = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? state?.context?.localPromotionInternalApi?.enabled === true : state?.context?.liveScreenInternalApi?.enabled === true;
+      els.livePulseStatus.textContent = livePulseStatusText(currentPagePulse, internalApiEnabled);
+      renderLivePulseData(currentPagePulse, routeKey);
+      syncLivePulseButton(currentPagePulse, internalApiEnabled);
+      if (currentPagePulse?.lastOutcome?.failure) {
+        setStatus(livePulseOutcomeMessage(currentPagePulse.lastOutcome), "error");
       }
     } catch {
     } finally {
       livePulseStatusRefreshInFlight = false;
     }
   }
-  function syncLivePulseButton(state) {
-    const pairingVerified = livePulsePairingVerified && state?.hasToken === true && Boolean(state.config?.collectionTaskId);
+  function syncLivePulseButton(livePulse, internalApiEnabled) {
+    const pairingVerified = livePulsePairingVerified && Boolean(livePulseTarget || livePulse?.active);
     const buttonState = livePulseButtonState(
-      state?.livePulse,
+      livePulse,
       pairingVerified,
-      state?.context?.liveScreenInternalApi?.enabled === true
+      internalApiEnabled
     );
     els.livePulseBtn.textContent = buttonState.text;
     els.livePulseBtn.disabled = buttonState.disabled || !livePulseActive && !livePulseTarget;
   }
-  function renderLivePulseData(livePulse) {
+  function renderLivePulseData(livePulse, routeKey) {
     toggle(els.livePulseData, livePulse?.active === true || Boolean(livePulse?.lastSuccessAt || livePulse?.lastFailureReason || livePulse?.lastOutcome?.failure));
     els.livePulseUpdatedAt.textContent = livePulse?.lastSuccessAt ? `\u6700\u8FD1 ${new Date(livePulse.lastSuccessAt).toLocaleTimeString("zh-CN", { hour12: false })} \xB7 \u7D2F\u8BA1 ${livePulse.successCount || 0} \u6B21` : "\u7B49\u5F85\u9996\u6B21\u4E0A\u4F20";
-    const coverage = livePulseMetricCoverage(livePulse?.lastMetricKeys);
+    const coverage = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseMetricCoverage(livePulse?.lastMetricKeys) : livePulseMetricCoverage(livePulse?.lastMetricKeys);
     els.livePulseCoverage.textContent = `\u6838\u5FC3\u6307\u6807 ${coverage.count}/${coverage.total}`;
-    els.livePulseMissing.textContent = coverage.missingLabels.length ? `\u7F3A\u5C11\uFF1A${coverage.missingLabels.join("\u3001")}` : "7 \u9879\u6838\u5FC3\u6307\u6807\u5DF2\u9F50\u5168";
-    toggle(els.livePulseMissing, Boolean(livePulse?.lastSuccessAt));
+    const hasObservation = Boolean(livePulse?.lastSuccessAt || livePulse?.lastFailureReason || livePulse?.lastOutcome?.failure);
+    els.livePulseCollected.textContent = coverage.presentLabels.length ? `\u5DF2\u91C7\u5230\uFF1A${coverage.presentLabels.join("\u3001")}\uFF08\u5E73\u53F0 API\uFF09` : "\u672C\u8F6E\u672A\u91C7\u5230\u53EF\u4FE1\u6307\u6807";
+    toggle(els.livePulseCollected, hasObservation && coverage.presentLabels.length > 0);
+    els.livePulseMissing.textContent = coverage.missingLabels.length ? `${livePulse?.lastSuccessAt ? "\u7F3A\u5C11" : "\u672C\u8F6E\u672A\u91C7\u5230"}\uFF1A${coverage.missingLabels.join("\u3001")}` : `${coverage.total} \u9879\u6838\u5FC3\u6307\u6807\u5DF2\u9F50\u5168`;
+    toggle(els.livePulseMissing, hasObservation);
     const lastError = livePulse?.lastFailureReason ? livePulseReasonText(livePulse.lastFailureReason) : livePulse?.lastOutcome?.failure ? livePulseOutcomeMessage(livePulse.lastOutcome) : "-";
     els.livePulseLastError.textContent = lastError;
     toggle(els.livePulseErrorRow, lastError !== "-");
   }
+  function formatRecentCollectionLogs(logs) {
+    const entries = (logs || []).filter((entry) => typeof entry.action === "string" && /^(?:live_pulse|local_promotion_pulse)\./.test(entry.action)).slice(0, 10).map((entry) => {
+      const timestamp = typeof entry.createdAt === "string" ? new Date(entry.createdAt).toLocaleTimeString("zh-CN", { hour12: false }) : "--:--:--";
+      const action = String(entry.action);
+      const detail = formatSafeLogDetail(entry.detail);
+      return `${timestamp} ${action}${detail ? ` \xB7 ${detail}` : ""}`;
+    });
+    return entries.length ? entries.join("\n") : "\u6682\u65E0\u91C7\u96C6\u65E5\u5FD7";
+  }
+  async function copyRecentCollectionLogs() {
+    const text = els.logs.textContent || "\u6682\u65E0\u91C7\u96C6\u65E5\u5FD7";
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("\u91C7\u96C6\u65E5\u5FD7\u5DF2\u590D\u5236\uFF0C\u53EF\u76F4\u63A5\u7C98\u8D34\u7ED9\u6211", "ready");
+    } catch {
+      setStatus("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u76F4\u63A5\u622A\u56FE\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u7684\u91C7\u96C6\u65E5\u5FD7", "warning");
+    }
+  }
+  function formatSafeLogDetail(detail) {
+    if (!detail || typeof detail !== "object" || Array.isArray(detail)) return "";
+    const record = detail;
+    const allowedKeys = ["endpoint", "reason", "lastFailureReason", "consecutiveFailures", "metricCount", "status", "ok"];
+    const scalarParts = allowedKeys.filter((key) => typeof record[key] === "string" || typeof record[key] === "number" || typeof record[key] === "boolean").map((key) => {
+      const value = String(record[key]);
+      const display = key === "reason" || key === "lastFailureReason" ? formatCollectionReason(value) : value;
+      return `${key}=${display}`;
+    });
+    const missing = Array.isArray(record.missingMetricKeys) ? record.missingMetricKeys.filter((key) => typeof key === "string").slice(0, 8) : [];
+    if (missing.length) scalarParts.push(`missing=${missing.join(",")}`);
+    const fallback = record.statQueryFallback;
+    if (fallback && typeof fallback === "object" && !Array.isArray(fallback)) {
+      const fallbackRecord = fallback;
+      const succeeded = fallbackRecord.succeeded === true ? "success" : "failed";
+      const failureReason = typeof fallbackRecord.failureReason === "string" ? `/${formatCollectionReason(fallbackRecord.failureReason)}` : "";
+      scalarParts.push(`v3=${succeeded}${failureReason}`);
+    }
+    const groups = Array.isArray(record.metadataGroups) ? record.metadataGroups.filter((group) => Boolean(group) && typeof group === "object").slice(0, 6).map((group) => {
+      const groupKey = typeof group.groupKey === "string" ? group.groupKey : "?";
+      const labels = Array.isArray(group.labels) ? group.labels.filter((label) => typeof label === "string").slice(0, 12) : [];
+      return `${groupKey}[${labels.join("|")}]`;
+    }) : [];
+    if (groups.length) scalarParts.push(`labels=${groups.join(" ")}`);
+    const endpoints = Array.isArray(record.endpointStatuses) ? record.endpointStatuses.filter((item) => Boolean(item) && typeof item === "object").slice(0, 3).map((item) => {
+      const endpoint2 = typeof item.endpoint === "string" ? item.endpoint : "?";
+      const status = typeof item.status === "string" ? item.status : "?";
+      const reason = typeof item.reason === "string" ? `/${formatCollectionReason(item.reason)}` : "";
+      return `${endpoint2}=${status}${reason}`;
+    }) : [];
+    if (endpoints.length) scalarParts.push(`endpoints=${endpoints.join(",")}`);
+    return scalarParts.join(" ");
+  }
+  function formatCollectionReason(reason) {
+    if (reason === "V3_FALLBACK") return "\u5DF2\u5207\u6362\u5907\u7528 v3 \u63A5\u53E3\uFF08V3_FALLBACK\uFF09";
+    if (reason === "PARTIAL_METRICS") return "\u90E8\u5206\u53EF\u4FE1\u6307\u6807\u6210\u529F\uFF08PARTIAL_METRICS\uFF09";
+    return livePulseReasonText(reason);
+  }
   async function toggleLivePulse() {
+    if (livePulseActionInFlight) return;
     const target = livePulseTarget;
     const active = livePulseActive;
     if (!active && !target) {
-      setStatus("\u5B9E\u65F6\u8109\u51B2\u4EC5\u652F\u6301\u5F53\u524D\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u9875\u9762", "error");
+      setStatus("\u5B9E\u65F6\u8109\u51B2\u4EC5\u652F\u6301\u5F53\u524D\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6216\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8\u7CBE\u786E\u9875\u9762", "error");
       return;
     }
+    livePulseActionInFlight = true;
+    popupRenderGeneration += 1;
     els.livePulseBtn.disabled = true;
     let actionMessage = "";
     let actionTone = "ready";
     try {
+      const routeKey = target?.routeKey || currentPagePulseRoute;
+      if (!routeKey) {
+        actionMessage = "\u5F53\u524D\u9875\u9762\u4E0D\u662F\u53EF\u6301\u7EED\u91C7\u96C6\u7684\u8DEF\u7EBF";
+        actionTone = "error";
+        return;
+      }
+      const localPromotion = routeKey === "LOCAL_PROMOTION_DASHBOARD";
       const response = await runtimeMessage({
-        type: active ? MESSAGE.STOP_LIVE_PULSE : MESSAGE.START_LIVE_PULSE,
-        payload: active ? {} : target
+        type: active ? localPromotion ? MESSAGE.STOP_LOCAL_PROMOTION_PULSE : MESSAGE.STOP_LIVE_PULSE : localPromotion ? MESSAGE.START_LOCAL_PROMOTION_PULSE : MESSAGE.START_LIVE_PULSE,
+        payload: active ? { tabId: currentPagePulse?.tabId || target?.tabId } : target
       });
-      actionMessage = response?.ok ? active ? "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62" : "API \u6301\u7EED\u91C7\u96C6\u5DF2\u5F00\u542F\uFF1B\u63D2\u4EF6\u4F1A\u5728\u540E\u53F0\u6301\u7EED\u4E0A\u4F20\uFF0C\u5173\u95ED\u5F39\u7A97\u4E0D\u4F1A\u505C\u6B62\uFF0C\u7F51\u9875\u7AEF\u5B9E\u65F6\u6570\u636E\u680F\u4F1A\u6301\u7EED\u66F4\u65B0" : chineseError(response?.error, "API \u6301\u7EED\u91C7\u96C6\u72B6\u6001\u66F4\u65B0\u5931\u8D25");
+      actionMessage = response?.ok ? active ? "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62" : localPromotion ? `\u672C\u5730\u63A8 API \u6301\u7EED\u91C7\u96C6\u5DF2\u5F00\u542F\uFF1B\u4E3A\u907F\u514D\u5E73\u53F0\u9650\u6D41\uFF0C\u6BCF ${localPromotionPulseCadenceMs / 1e3} \u79D2\u91C7\u96C6\u4E00\u6B21\uFF0C\u5173\u95ED\u5F39\u7A97\u4E0D\u4F1A\u505C\u6B62\u3002` : "API \u6301\u7EED\u91C7\u96C6\u5DF2\u5F00\u542F\uFF1B\u63D2\u4EF6\u4F1A\u5728\u540E\u53F0\u6301\u7EED\u4E0A\u4F20\uFF0C\u5173\u95ED\u5F39\u7A97\u4E0D\u4F1A\u505C\u6B62\uFF0C\u7F51\u9875\u7AEF\u5B9E\u65F6\u6570\u636E\u680F\u4F1A\u6301\u7EED\u66F4\u65B0" : chineseError(response?.error, "API \u6301\u7EED\u91C7\u96C6\u72B6\u6001\u66F4\u65B0\u5931\u8D25");
       actionTone = response?.ok ? "ready" : "error";
     } catch {
       actionMessage = "API \u6301\u7EED\u91C7\u96C6\u901A\u4FE1\u4E2D\u65AD\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6";
       actionTone = "error";
     } finally {
-      await render();
-      setStatus(actionMessage, actionTone);
-    }
-  }
-  async function captureAndUpload() {
-    const tab = await activeTab().catch(() => void 0);
-    if (!tab?.id || !isCollectable(tab.url || "")) {
-      setStatus("\u5F53\u524D\u9875\u9762\u4E0D\u5728\u5141\u8BB8\u91C7\u96C6\u7684\u57DF\u540D\u767D\u540D\u5355\u4E2D", "error");
-      return;
-    }
-    els.captureBtn.disabled = true;
-    els.captureBtn.textContent = "\u6B63\u5728\u91C7\u96C6\u5E76\u4E0A\u4F20...";
-    hideCaptureResult();
-    try {
-      const response = await runtimeMessage({
-        type: MESSAGE.CAPTURE_AND_UPLOAD,
-        payload: {
-          tabId: tab.id,
-          currentUrl: tab.url || ""
+      try {
+        await render();
+        if (currentPagePulse?.lastOutcome?.failure) {
+          setStatus(livePulseOutcomeMessage(currentPagePulse.lastOutcome), "error");
+        } else if (actionMessage) {
+          setStatus(actionMessage, actionTone);
         }
-      });
-      if (!response?.ok) {
-        setStatus(chineseError(response?.error, "\u91C7\u96C6\u6216\u4E0A\u4F20\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"), "error");
-        showCaptureResult(chineseError(response?.error, "\u91C7\u96C6\u6216\u4E0A\u4F20\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"), false);
-        return;
+      } finally {
+        livePulseActionInFlight = false;
       }
-      const skippedMessage = response.skipped ? "\u6570\u636E\u672A\u53D8\u5316\uFF0C\u5DF2\u4FDD\u7559\u4E0A\u6B21\u4E0A\u4F20" : "\u5FEB\u7167\u5DF2\u4E0A\u4F20";
-      const recognizedMetricCount = response.recognizedMetricCount ?? response.metricCount ?? 0;
-      const missingMetricCount = response.missingMetricCount ?? Math.max(0, recognizedMetricCount - (response.metricCount || 0));
-      setStatus("\u91C7\u96C6\u5B8C\u6210\uFF0C\u7F51\u9875\u4EFB\u52A1\u9875\u4F1A\u81EA\u52A8\u66F4\u65B0", "ready");
-      showCaptureResult(
-        `${skippedMessage}\uFF1B${captureSourceLabel(response.captureSource, response.apiEndpointSuccessCount)}\uFF1B\u8BC6\u522B ${recognizedMetricCount} \u4E2A\u5B57\u6BB5\uFF0C\u5176\u4E2D ${response.metricCount || 0} \u4E2A\u6709\u539F\u503C\u3001${missingMetricCount} \u4E2A\u7F3A\u5931\uFF1B\u8986\u76D6\u7387 ${formatPercent(response.coverageRatio)}\u3002`,
-        true
-      );
-    } catch {
-      setStatus("\u63D2\u4EF6\u901A\u4FE1\u4E2D\u65AD\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u548C\u76EE\u6807\u9875\u9762", "error");
-      showCaptureResult("\u63D2\u4EF6\u901A\u4FE1\u4E2D\u65AD\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u548C\u76EE\u6807\u9875\u9762\u3002", false);
-    } finally {
-      els.captureBtn.textContent = "\u91C7\u96C6\u5E76\u4E0A\u4F20\u6570\u636E\u603B\u89C8";
-      await render();
     }
-  }
-  function captureSourceLabel(source, apiEndpointSuccessCount = 0) {
-    if (source === "API") return `API \u91C7\u96C6\uFF08${apiEndpointSuccessCount} \u4E2A\u7AEF\u70B9\u6210\u529F\uFF09`;
-    if (source === "API_AND_DOM") return `API \u4F18\u5148\u5E76\u4FDD\u7559 DOM \u5BF9\u8D26\uFF08${apiEndpointSuccessCount} \u4E2A\u7AEF\u70B9\u6210\u529F\uFF09`;
-    if (source === "API_FAILED_DOM_FALLBACK") return "API \u5DF2\u5C1D\u8BD5\u4F46\u6CA1\u6709\u53EF\u7528\u7AEF\u70B9\uFF0C\u5DF2\u660E\u786E\u56DE\u9000 DOM";
-    return "DOM \u91C7\u96C6\uFF08\u5F53\u524D\u8DEF\u7EBF\u65E0\u53EF\u7528 API \u8BC1\u636E\uFF09";
   }
   async function pairExtension() {
     const code = els.pairingCode.value.trim();
@@ -5723,7 +6082,6 @@
   async function clearPairing() {
     const response = await runtimeMessage({ type: MESSAGE.CLEAR_PAIRING });
     setStatus(response?.ok ? "\u5DF2\u89E3\u9664\u672C\u5730\u7ED1\u5B9A\uFF1B\u670D\u52A1\u7AEF\u6388\u6743\u53EF\u5728\u8D26\u53F7\u6863\u6848\u4E2D\u64A4\u9500" : chineseError(response?.error, "\u89E3\u9664\u7ED1\u5B9A\u5931\u8D25"), response?.ok ? "warning" : "error");
-    hideCaptureResult();
     await render();
   }
   function renderTaskOptions(context, selectedTaskId) {
@@ -5750,7 +6108,6 @@
   async function clearSnapshot() {
     await runtimeMessage({ type: MESSAGE.CLEAR_SNAPSHOT });
     setStatus("\u672C\u5730\u5FEB\u7167\u5DF2\u6E05\u7A7A", "warning");
-    hideCaptureResult();
     await render();
   }
   function setStatus(message, tone) {
@@ -5760,21 +6117,24 @@
   function toggle(element, visible) {
     element.classList.toggle("hidden", !visible);
   }
-  function showCaptureResult(message, success2) {
-    els.captureResult.textContent = message;
-    els.captureResult.className = `panel ${success2 ? "success" : "error-box"}`;
-  }
-  function hideCaptureResult() {
-    els.captureResult.className = "panel success hidden";
-    els.captureResult.textContent = "";
-  }
   function isCollectable(url) {
     return isSupportedExtensionCollectionUrl(url);
   }
-  function inferPageTypeFromUrl(url) {
+  function pulseRouteForUrl(url) {
     if (/^https:\/\/eos\.douyin\.com\/dp\/liveScreen(?:[/?#]|$)/.test(url)) return "LIVE_DATA_SCREEN";
     if (/^https:\/\/localads\.chengzijianzhan\.cn\/lamp\/pc\/liveboard2(?:[/?#]|$)/.test(url)) return "LOCAL_PROMOTION_DASHBOARD";
-    return "UNKNOWN";
+    return null;
+  }
+  function pulseForCurrentPage(livePulse, tabId, routeKey, livePulses = []) {
+    if (!routeKey || !Number.isInteger(tabId)) return { active: false };
+    const pagePulse = livePulses.find((candidate) => candidate?.routeKey === routeKey && candidate.tabId === tabId);
+    if (pagePulse) return pagePulse;
+    const belongsToCurrentPage = livePulse?.routeKey === routeKey && livePulse.tabId === tabId;
+    const outcomeBelongsToCurrentPage = livePulse?.lastOutcome?.routeKey === routeKey && livePulse.lastOutcome.tabId === tabId;
+    return belongsToCurrentPage || outcomeBelongsToCurrentPage ? livePulse : { active: false };
+  }
+  function inferPageTypeFromUrl(url) {
+    return pulseRouteForUrl(url) || "UNKNOWN";
   }
   function pageTypeLabel(value) {
     const labels = {
@@ -5787,23 +6147,6 @@
   }
   function routeLabel(routeKey) {
     return collectionRouteLabels[routeKey] || (routeKey === "UNKNOWN" ? "\u5C1A\u672A\u8BC6\u522B" : routeKey);
-  }
-  function nextPendingRouteLabel(state) {
-    const task = currentTask(state);
-    const routes = formalSnapshotRoutes(task);
-    if (!task || !routes.length) return "\u7B49\u5F85\u4EFB\u52A1\u4FE1\u606F";
-    const route = routes[0];
-    return Number(state?.routeUploadState?.[route.routeKey]?.lastUploadAt || 0) > 0 ? "\u5DF2\u6709\u6210\u529F\u8BB0\u5F55\uFF0C\u53EF\u91CD\u65B0\u91C7\u96C6" : "\u5C1A\u672A\u91C7\u96C6";
-  }
-  function formalSnapshotRoutes(task) {
-    return (task?.routeSources || []).filter((route) => {
-      const routeKey = normalizeCollectionRouteKey(route.routeKey);
-      return routeKey === "LOCAL_PROMOTION_DASHBOARD";
-    });
-  }
-  function currentTask(state) {
-    const taskId = state?.config?.collectionTaskId;
-    return state?.context?.account?.projects?.flatMap((project) => project.tasks).find((item) => item.id === taskId) || null;
   }
   function runtimeMessage(message, timeoutMs = 5e3) {
     return new Promise((resolve, reject) => {
@@ -5834,9 +6177,6 @@
         }
       );
     });
-  }
-  function formatPercent(value) {
-    return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "\u5F85\u786E\u8BA4";
   }
   function chineseError(value, fallback) {
     const message = typeof value === "string" ? value.trim() : "";

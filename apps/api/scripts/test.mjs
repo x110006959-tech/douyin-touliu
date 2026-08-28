@@ -14,6 +14,7 @@ const env = {
   // Keep the smoke suite deterministic even when a developer enables the
   // separately authorized local API collector in the repository .env file.
   LIVE_SCREEN_INTERNAL_API_ENABLED: "false",
+  LOCAL_PROMOTION_INTERNAL_API_ENABLED: "false",
   NODE_ENV: "test"
 };
 const pnpmCli = process.env.npm_execpath;

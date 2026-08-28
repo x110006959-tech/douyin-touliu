@@ -68,12 +68,12 @@ describe("extension source safety guard", () => {
     expect(worker).not.toMatch(/chrome\.tabs\.(create|update)/);
   });
 
-  it("keeps the popup focused on explicit capture and API continuous collection", () => {
+  it("keeps the popup focused on API continuous collection only", () => {
     const popup = readFileSync(resolve(root, "src/popup.ts"), "utf8");
     const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
     const html = readFileSync(resolve(root, "popup.html"), "utf8");
-    expect(popup).toContain("CAPTURE_AND_UPLOAD");
-    expect(popup).toContain("采集并上传数据总览");
+    expect(popup).not.toContain("CAPTURE_AND_UPLOAD");
+    expect(popup).not.toContain("采集并上传数据总览");
     expect(popup).not.toContain("renderRouteOverrideOptions");
     expect(popup).toContain("VERIFY_BOUND_CONTEXT");
     expect(popup).toContain("START_LIVE_PULSE");
@@ -81,11 +81,11 @@ describe("extension source safety guard", () => {
     expect(popup).not.toContain('window.addEventListener("pagehide"');
     expect(content).toContain('document.addEventListener("visibilitychange"');
     expect(content).toContain('window.addEventListener("pagehide"');
-    expect(popup).toContain("已有成功记录，可重新采集");
+    expect(popup).toContain("不创建快照");
     expect(popup).not.toContain("本轮路线已完成");
     expect(popup).not.toMatch(/\bprompt\s*\(/);
     expect(html).toContain("输入六位配对码");
-    expect(html).toContain("任务或计划列表不再采集");
+    expect(html).not.toContain("采集并上传数据总览");
     expect(html).toContain("确认插件配对");
     expect(popup).toContain("CONFIRM_PAIRING");
     expect(html).not.toContain('id="routeOverride"');
@@ -121,18 +121,48 @@ describe("extension source safety guard", () => {
     expect(content).toContain("liveScreenCapturePlan");
   });
 
-  it("requires Popup confirmation before a web bridge can exchange a pairing code", () => {
+  it("allows only a trusted task-page bridge to exchange a pairing code directly", () => {
     const bridge = readFileSync(resolve(root, "src/web-bridge.ts"), "utf8");
     const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
-    expect(bridge).toContain("REQUEST_PAIRING_CONFIRMATION");
+    expect(bridge).toContain("PAIR_TASK_FROM_WEB");
     expect(bridge).not.toContain("CONFIRM_PAIRING");
+    expect(bridge).not.toContain("label");
     expect(worker).toContain("/extension/pairing-codes/preview");
+    expect(worker).toContain("taskIdFromBridgePageUrl");
+    expect(worker).toContain("const taskPageUrl = sender.tab?.url;");
+    expect(worker).not.toContain("payload.taskPageUrl || sender.url");
+    expect(worker).toContain("TASK_PAGE_MISMATCH");
+    expect(worker).toContain("createTaskPageConnectionActivity(taskPageUrl)");
+    expect(worker).toContain("HEARTBEAT_FAILED");
     expect(worker).toContain("isPopupSender");
     expect(worker).toContain("/extension/pairing-codes/exchange");
     expect(worker).toContain("任务切换只能在插件 Popup 中完成。");
     expect(worker).toContain("解除配对只能在插件 Popup 中完成。");
     expect(worker).toContain("采集确认只能在插件 Popup 中完成。");
     expect(worker).toContain("if (!isPopupSender(sender))");
+    const directPairingSource = worker.slice(
+      worker.indexOf("async function pairTaskFromWeb"),
+      worker.indexOf("async function confirmPairing")
+    );
+    expect(directPairingSource).not.toContain("PENDING_PAIRING_CONFIRMATION");
+    expect(directPairingSource).toContain('payload: { apiBaseUrl?: string; code?: string }');
+    expect(directPairingSource).toContain('label: "网页任务一键配对"');
+    expect(directPairingSource).toContain("const pulseConflict = await pairingPulseConflict(taskId)");
+    expect(directPairingSource.indexOf("pairingPulseConflict(taskId)")).toBeLessThan(
+      directPairingSource.indexOf("exchangePairingConfirmation(exchangeInput, taskId, taskPageUrl)")
+    );
+    expect(directPairingSource).toContain("exchangePairingConfirmation(exchangeInput, taskId, taskPageUrl)");
+    expect(worker).toContain("reportExtensionHeartbeatForCredentials");
+    const exchangeSource = worker.slice(
+      worker.indexOf("async function exchangePairingConfirmation"),
+      worker.indexOf("async function cancelPairingConfirmation")
+    );
+    const heartbeatIndex = exchangeSource.indexOf("const heartbeat = taskPageUrl");
+    const rejectedHeartbeatIndex = exchangeSource.indexOf("if (!heartbeat.ok)");
+    const credentialCommitIndex = exchangeSource.indexOf("await chrome.storage.local.set({ [STORAGE.TOKEN]: token");
+    expect(heartbeatIndex).toBeGreaterThanOrEqual(0);
+    expect(rejectedHeartbeatIndex).toBeGreaterThan(heartbeatIndex);
+    expect(credentialCommitIndex).toBeGreaterThan(rejectedHeartbeatIndex);
   });
 
   it("rejects auto-detected snapshot routes that are no longer enabled for the current task", () => {
@@ -147,6 +177,17 @@ describe("extension source safety guard", () => {
     expect(captureSource).toContain("当前任务已取消");
   });
 
+  it("rejects local-promotion DOM snapshots even if a stale popup sends the old message", () => {
+    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const captureSource = worker.slice(
+      worker.indexOf("async function captureAndUpload("),
+      worker.indexOf("async function startLivePulse")
+    );
+
+    expect(captureSource).toContain("isExactLocalPromotionInternalApiPage");
+    expect(captureSource).toContain("巨量本地推仅支持 API 持续采集，不再创建 DOM 快照");
+  });
+
   it("uses authenticated JSON postMessage envelopes across page worlds", () => {
     const bridge = readFileSync(resolve(root, "src/web-bridge.ts"), "utf8");
     expect(bridge).toContain('window.addEventListener("message"');
@@ -155,6 +196,14 @@ describe("extension source safety guard", () => {
     expect(bridge).toContain("event.source !== window || event.origin !== window.location.origin");
     expect(bridge).toContain("window.postMessage");
     expect(bridge).not.toContain("new CustomEvent");
+  });
+
+  it("can still tell the task page to refresh after an extension reload invalidates runtime", () => {
+    const bridge = readFileSync(resolve(root, "src/web-bridge.ts"), "utf8");
+    expect(bridge).toContain("const extensionVersion = chrome.runtime.getManifest().version");
+    expect(bridge).toContain("EXTENSION_CONTEXT_INVALIDATED");
+    expect(bridge).toContain("isExtensionContextInvalidated(error)");
+    expect(bridge).not.toContain("catch {\n    dispatchResponse(sanitizeBridgeResponse({\n      requestId: request.requestId,\n      extensionVersion: chrome.runtime.getManifest().version");
   });
 
   it("keeps one-shot manual route confirmation scoped to the current task", () => {
@@ -179,13 +228,18 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("collectionRunId");
   });
 
-  it("restores a saved task binding only from the active task-page tab", () => {
+  it("keeps status polling local and synchronizes only exact trusted task pages", () => {
     const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
     const recovery = readFileSync(resolve(root, "src/task-page-bridge-recovery.ts"), "utf8");
-    expect(worker).toContain("restoreBoundTaskPageConnection");
-    expect(worker).toContain("restoreTaskPageConnection");
-    expect(recovery).not.toContain("input.sender.tab?.active");
-    expect(recovery).toContain("taskPageTaskId !== input.boundTaskId");
+    const statusStart = worker.indexOf("async function getBridgeStatus");
+    const syncStart = worker.indexOf("async function syncCurrentTaskFromBridge");
+    const statusSource = worker.slice(statusStart, syncStart);
+    expect(statusSource).not.toContain("fetchWithTimeout");
+    expect(worker).toContain("taskIdFromBridgePageUrl(taskPageUrl)");
+    expect(worker).toContain("resolveTaskPageBinding(context, taskId)");
+    expect(worker).not.toContain('stopLivePulse("TASK_CHANGED")');
+    expect(recovery).toContain("isProductionTaskPage");
+    expect(recovery).toContain("isLocalTaskPage");
     expect(recovery).toContain("pageType: \"TASK_TABLE\"");
     expect(recovery).toContain("collectable: false");
     expect(worker).toContain("bridgeRecoveryRequestTimeoutMs");
@@ -228,8 +282,19 @@ describe("extension source safety guard", () => {
     const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
     expect(buildScript).toContain('sourceFiles("apps/extension/src")');
     expect(buildScript).toContain('sourceFiles("packages/shared/src")');
-    expect(packageJson.scripts.build).toContain("--dist-only");
+    expect(buildScript).toContain('"apps/extension/scripts/build.mjs"');
+    expect(buildScript).toContain('name: "workspace-shared-source"');
+    expect(buildScript).toContain('"@douyin-local-life/shared", "packages/shared/src/index.ts"');
+    expect(packageJson.scripts.build).not.toContain("--dist-only");
     expect(packageJson.scripts["build:local"]).not.toContain("--dist-only");
+  });
+
+  it("bundles the current shared local-promotion adapter instead of stale dist output", () => {
+    const sharedSource = readFileSync(resolve(root, "../../packages/shared/src/local-promotion-internal-api.ts"), "utf8");
+    const adapterVersion = sharedSource.match(/localPromotionInternalApiAdapterVersion\s*=\s*"([^"]+)"/)?.[1];
+    expect(adapterVersion).toBeTruthy();
+    const releaseWorker = readFileSync(resolve(root, "release/local-unpacked-test-extension/service-worker.js"), "utf8");
+    expect(releaseWorker).toContain(`localPromotionInternalApiAdapterVersion = "${adapterVersion}"`);
   });
 
   it("validates the current-version ZIP when that release artifact is present", () => {

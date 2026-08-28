@@ -5,6 +5,8 @@ import {
   exchangeExtensionPairingCodeSchema,
   extensionCollectionProtocolVersion,
   extensionHeartbeatSchema,
+  localPromotionInternalApiAdapterVersion,
+  localPromotionInternalApiContractVersion,
   liveScreenInternalApiAdapterVersion,
   liveScreenInternalApiContractVersion
 } from "@douyin-local-life/shared";
@@ -18,6 +20,7 @@ import { sendError, sendSuccess, validationErrorOptions } from "../response.js";
 import { currentUser, toJson } from "../server-utils.js";
 import { getBuildMetadata } from "../version.js";
 import { liveScreenInternalApiEnabled } from "../live-screen-internal-api-config.js";
+import { localPromotionInternalApiEnabled } from "../local-promotion-internal-api-config.js";
 
 const pairingLifetimeMs = 2 * 60 * 1000;
 const credentialLifetimeMs = 30 * 24 * 60 * 60 * 1000;
@@ -306,6 +309,11 @@ export function createExtensionProtectedRouter() {
         enabled: liveScreenInternalApiEnabled(),
         contractVersion: liveScreenInternalApiContractVersion,
         adapterVersion: liveScreenInternalApiAdapterVersion
+      },
+      localPromotionInternalApi: {
+        enabled: localPromotionInternalApiEnabled(),
+        contractVersion: localPromotionInternalApiContractVersion,
+        adapterVersion: localPromotionInternalApiAdapterVersion
       }
     });
   });

@@ -16,9 +16,15 @@
     SUBMIT_LIVE_PULSE: "AI_DIAGNOSIS_SUBMIT_LIVE_PULSE",
     START_LIVE_PULSE: "AI_DIAGNOSIS_START_LIVE_PULSE",
     STOP_LIVE_PULSE: "AI_DIAGNOSIS_STOP_LIVE_PULSE",
+    BEGIN_LOCAL_PROMOTION_PULSE_LOOP: "AI_DIAGNOSIS_BEGIN_LOCAL_PROMOTION_PULSE_LOOP",
+    SUBMIT_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_SUBMIT_LOCAL_PROMOTION_PULSE",
+    START_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_START_LOCAL_PROMOTION_PULSE",
+    STOP_LOCAL_PROMOTION_PULSE: "AI_DIAGNOSIS_STOP_LOCAL_PROMOTION_PULSE",
     GET_STATE: "AI_DIAGNOSIS_GET_STATE",
     VERIFY_BOUND_CONTEXT: "AI_DIAGNOSIS_VERIFY_BOUND_CONTEXT",
     GET_BRIDGE_STATUS: "AI_DIAGNOSIS_GET_BRIDGE_STATUS",
+    SYNC_CURRENT_TASK: "AI_DIAGNOSIS_SYNC_CURRENT_TASK",
+    PAIR_TASK_FROM_WEB: "AI_DIAGNOSIS_PAIR_TASK_FROM_WEB",
     REQUEST_PAIRING_CONFIRMATION: "AI_DIAGNOSIS_REQUEST_PAIRING_CONFIRMATION",
     CONFIRM_PAIRING: "AI_DIAGNOSIS_CONFIRM_PAIRING",
     CANCEL_PAIRING: "AI_DIAGNOSIS_CANCEL_PAIRING",
@@ -4083,7 +4089,7 @@
   };
   var NEVER = INVALID;
 
-  // ../../packages/shared/dist/safety.js
+  // ../../packages/shared/src/safety.ts
   var snapshotSafetyLimits = {
     rawDomTextChars: 2e5,
     pageTitleChars: 500,
@@ -4099,7 +4105,7 @@
     stringChars: 2e5
   };
 
-  // ../../packages/shared/dist/collection-routes.js
+  // ../../packages/shared/src/collection-routes.ts
   var collectionRouteKeys = [
     "LOCAL_PROMOTION_DASHBOARD",
     "LIVE_DATA_SCREEN",
@@ -4152,7 +4158,9 @@
       urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
     }
   ];
-  var collectionRouteLabels = Object.fromEntries(collectionRouteTemplates.map((route) => [route.routeKey, route.label]));
+  var collectionRouteLabels = Object.fromEntries(
+    collectionRouteTemplates.map((route) => [route.routeKey, route.label])
+  );
   var collectionFreshnessPolicy = {
     agingAfterMs: 5 * 60 * 1e3,
     staleAfterMs: 10 * 60 * 1e3,
@@ -4167,7 +4175,7 @@
   var defaultRequiredCollectionRoutes = [...primaryCollectionRouteKeys];
   var defaultCollectionRouteTemplates = collectionRouteTemplates.filter((route) => defaultRequiredCollectionRoutes.includes(route.routeKey));
 
-  // ../../packages/shared/dist/decision-tables.js
+  // ../../packages/shared/src/decision-tables.ts
   var decisionTableCellSchema = external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean(), external_exports.null()]);
   var decisionTableInputSchema = external_exports.object({
     routeKey: external_exports.enum(collectionRouteKeys).nullable(),
@@ -4175,10 +4183,10 @@
     rows: external_exports.array(external_exports.array(decisionTableCellSchema).max(100)).max(1e3)
   });
 
-  // ../../packages/shared/dist/metric-value.js
+  // ../../packages/shared/src/metric-value.ts
   var metricValidationStatuses = ["TRUSTED", "REQUIRES_REVIEW", "INVALID"];
 
-  // ../../packages/shared/dist/collection-diagnostics.js
+  // ../../packages/shared/src/collection-diagnostics.ts
   var collectionRouteDiagnosticStatuses = [
     "UPLOADED",
     "AGING",
@@ -4238,7 +4246,7 @@
     blocksStrongActions: external_exports.boolean()
   });
 
-  // ../../packages/shared/dist/collection-records.js
+  // ../../packages/shared/src/collection-records.ts
   var structuredCollectionDataVersion = "collection-records-v1";
   var nullableNumber = external_exports.number().finite().nullable();
   var provenanceSchema = external_exports.object({
@@ -4305,62 +4313,7 @@
     external_exports.object({ ...baseSchema, kind: external_exports.literal("MATERIAL_ROWS"), rows: external_exports.array(materialCollectionRowSchema) })
   ]);
 
-  // ../../packages/shared/dist/metric-keys.js
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "average_watch_duration_seconds",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "current_online_viewers",
-    "exposure_users",
-    "click_users",
-    "transaction_users",
-    "product_click_rate",
-    "product_conversion_rate",
-    "live_room_click_rate",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
-  var [, ...recordableMetricKeys] = metricKeys;
-
-  // ../../packages/shared/dist/live-screen-internal-api.js
+  // ../../packages/shared/src/live-screen-internal-api.ts
   var liveScreenRoomIdSources = ["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"];
   var liveScreenRoomIdPattern = /^\d{1,32}$/;
   var liveScreenInternalApiEndpointKeys = [
@@ -4504,7 +4457,122 @@
   };
   var liveScreenSnapshotEndpointKeys = liveScreenInternalApiEndpointKeys.filter((key) => liveScreenInternalApiContracts[key].fields.some((field) => field.purpose !== "PULSE_ONLY"));
 
-  // ../../packages/shared/dist/collection-capture.js
+  // ../../packages/shared/src/local-promotion-internal-api.ts
+  var localPromotionInternalApiFrameId = "7405161088825688102";
+  var localPromotionInternalApiModuleId = "7405161354203529243";
+  var localPromotionInternalApiDataSetKey = "pc_data_liveboard_center_data_card";
+  var localPromotionInternalApiEndpointKeys = ["pageMetrics", "liveReportPromoteMeta", "statQuery"];
+  var localPromotionInternalApiEvidencePurposes = ["PULSE_ONLY"];
+  var localPromotionApiMetricKeys = [
+    "total_watch_count",
+    "gmv",
+    "orders",
+    "gpm",
+    "live_viewers",
+    "clicks",
+    "average_watch_duration_seconds",
+    "current_online_viewers",
+    "spend",
+    "full_domain_gmv",
+    "full_domain_orders",
+    "full_domain_pay_roi",
+    "full_domain_product_clicks"
+  ];
+  var localPromotionPulseMetricLabels = {
+    total_watch_count: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570",
+    gmv: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)",
+    orders: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570",
+    gpm: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)",
+    live_viewers: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570",
+    clicks: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570",
+    average_watch_duration_seconds: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F",
+    current_online_viewers: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570",
+    spend: "\u5168\u57DF\u6D88\u8017(\u5143)",
+    full_domain_gmv: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)",
+    full_domain_orders: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570",
+    full_domain_pay_roi: "\u5168\u57DF\u652F\u4ED8ROI",
+    full_domain_product_clicks: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570",
+    daily_budget: "\u65E5\u9884\u7B97"
+  };
+  var localPromotionInternalApiFields = [
+    { metricKey: "total_watch_count", metricName: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u7D2F\u8BA1\u89C2\u770B\u603B\u4EBA\u6570"] },
+    { metricKey: "gmv", metricName: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u91D1\u989D(\u5143)", "\u6574\u4F53\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "orders", metricName: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u6574\u4F53\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "gpm", metricName: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "live_viewers", metricName: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570"] },
+    { metricKey: "clicks", metricName: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] },
+    { metricKey: "average_watch_duration_seconds", metricName: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", unit: "s", semanticScope: "\u672C\u573A\u4EBA\u5747\u89C2\u770B\u65F6\u957F", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u4EBA\u5747\u89C2\u770B\u65F6\u957F"] },
+    { metricKey: "current_online_viewers", metricName: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", unit: null, semanticScope: "\u672C\u573A\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["group_total_data"], metadataLabels: ["\u5B9E\u65F6\u5728\u7EBF\u4EBA\u6570"] },
+    { metricKey: "spend", metricName: "\u5168\u57DF\u6D88\u8017(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6D88\u8017(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6D88\u8017", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6D88\u8017(\u5143)", "\u5168\u57DF\u6D88\u8017"] },
+    { metricKey: "full_domain_gmv", metricName: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", unit: "yuan", semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u91D1\u989D", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D"] },
+    { metricKey: "full_domain_orders", metricName: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570"] },
+    { metricKey: "full_domain_pay_roi", metricName: "\u5168\u57DF\u652F\u4ED8ROI", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u652F\u4ED8ROI", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u652F\u4ED8 ROI", displayPrecision: 2, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u652F\u4ED8ROI", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF\u6295\u653EROI", "\u5168\u57DF\u6295\u653E ROI"] },
+    { metricKey: "full_domain_product_clicks", metricName: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", fieldPath: "data.StatsData.Totals[metric].Value", approvedFieldPaths: ["data.StatsData.Totals[metric].Value"], fieldLabel: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", unit: null, semanticScope: "\u672C\u573A\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", displayPrecision: 0, endpoint: "statQuery", purpose: "PULSE_ONLY", groupKeys: ["roi2_promotion"], metadataLabels: ["\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570"] }
+  ];
+  var localPromotionInternalApiEndpointContracts = {
+    pageMetrics: {
+      key: "pageMetrics",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/pageMetrics",
+      maxResponseBytes: 96 * 1024,
+      fields: []
+    },
+    liveReportPromoteMeta: {
+      key: "liveReportPromoteMeta",
+      method: "GET",
+      path: "/api/lamp/pc/v2/statistics/data/getLiveReportPromoteMeta",
+      maxResponseBytes: 64 * 1024,
+      // 仅瞬时读取直播时间区间与当前广告 ID 白名单，用于构造 roi2_promotion 的固定过滤条件。
+      fields: []
+    },
+    statQuery: {
+      key: "statQuery",
+      method: "POST",
+      path: "/api/lamp/pc/v2/statistics/data/statQuery",
+      // 平台前端在账号命中 BFF 白名单时会把同一请求切到 v3；v2 仍是主路径，v3 仅作业务失败后的固定兜底。
+      fallbackPaths: ["/api/lamp/pc/v3/data/statQuery"],
+      maxResponseBytes: 96 * 1024,
+      fields: localPromotionInternalApiFields.filter((field) => field.endpoint === "statQuery")
+    }
+  };
+  var localPromotionInternalApiRequestSchema = external_exports.object({
+    FrameId: external_exports.literal(localPromotionInternalApiFrameId),
+    ModuleId: external_exports.literal(localPromotionInternalApiModuleId),
+    DataSetKey: external_exports.literal(localPromotionInternalApiDataSetKey),
+    Metrics: external_exports.array(external_exports.string().regex(/^[A-Za-z0-9_]{1,128}$/)).min(1).max(localPromotionApiMetricKeys.length),
+    Filters: external_exports.object({
+      ConditionRelationshipType: external_exports.literal(1),
+      Conditions: external_exports.array(external_exports.union([
+        external_exports.object({
+          Field: external_exports.enum(["room_id", "advertiser_id", "is_order", "adlab_mode"]),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(2),
+          Operator: external_exports.union([external_exports.literal(6), external_exports.literal(7)])
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("stat_time"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{10,16}$/)).length(2),
+          Operator: external_exports.literal(9)
+        }).strict(),
+        external_exports.object({
+          Field: external_exports.literal("ad_id"),
+          Values: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).min(1).max(200),
+          Operator: external_exports.literal(7)
+        }).strict()
+      ])).min(1).max(6)
+    }).strict().optional(),
+    PageParams: external_exports.object({ Limit: external_exports.literal(-1), Offset: external_exports.literal(0) }).strict()
+  }).strict();
+  var localPromotionInternalApiPageMetricsRequestSchema = external_exports.object({
+    frameId: external_exports.literal(localPromotionInternalApiFrameId),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+  var localPromotionInternalApiPromoteMetaRequestSchema = external_exports.object({
+    iesCoreUserId: external_exports.string().regex(/^\d{1,64}$/),
+    roomId: external_exports.string().regex(/^\d{1,64}$/),
+    advid: external_exports.string().regex(/^\d{1,64}$/)
+  }).strict();
+
+  // ../../packages/shared/src/collection-capture.ts
   var pageTypes = ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN", "TASK_TABLE", "UNKNOWN"];
   var metricSources = ["XHR_JSON", "TABLE", "DOM_TEXT", "SCREENSHOT", "MANUAL_INPUT", "UNKNOWN"];
   var metricSourceStatuses = ["INTERNAL_API", "DOM_TEXT", "API_AND_DOM", "SOURCE_CONFLICT"];
@@ -4561,7 +4629,8 @@
     apiContractVersion: external_exports.string().max(50).optional(),
     apiAdapterVersion: external_exports.string().max(50).optional(),
     endpointKey: external_exports.string().max(100).optional(),
-    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional()
+    evidencePurpose: external_exports.enum(liveScreenApiEvidencePurposes).optional(),
+    routeKey: external_exports.enum(collectionRouteKeys).optional()
   });
   var visibleMetricSchema = external_exports.object({
     key: external_exports.string().min(1),
@@ -4579,6 +4648,12 @@
     status: external_exports.number().int().min(0).max(599),
     responseJson: external_exports.unknown(),
     capturedAt: external_exports.string().datetime()
+  });
+  var localPromotionIdentityEvidenceSchema = external_exports.object({
+    advid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    roomId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAdvid: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2),
+    selectedAwemeId: external_exports.array(external_exports.string().regex(/^\d{1,64}$/)).max(2)
   });
   var captureMetaSchema = external_exports.object({
     adapterId: external_exports.string().min(1).max(100),
@@ -4634,6 +4709,29 @@
         intervalLabel: external_exports.string().min(1).max(100),
         liveViews: external_exports.string().regex(/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/)
       })).max(120).optional()
+    }).optional(),
+    localPromotionInternalApi: external_exports.object({
+      contractVersion: external_exports.string().max(50),
+      adapterVersion: external_exports.string().max(50),
+      enabled: external_exports.boolean(),
+      identity: external_exports.object({
+        advid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        roomId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAdvid: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        selectedAwemeId: external_exports.string().regex(/^\d{1,64}$/).nullable(),
+        source: external_exports.enum(["URL", "DOM", "URL_AND_DOM", "MISSING", "MISMATCH"]),
+        evidence: external_exports.object({
+          url: localPromotionIdentityEvidenceSchema,
+          dom: localPromotionIdentityEvidenceSchema
+        })
+      }),
+      endpointStatuses: external_exports.array(external_exports.object({
+        endpoint: external_exports.enum(localPromotionInternalApiEndpointKeys),
+        status: external_exports.enum(["SUCCESS", "SKIPPED", "FAILED", "ABORTED"]),
+        acceptedBytes: external_exports.number().int().min(0).max(384 * 1024),
+        reason: external_exports.string().max(100).optional()
+      })).max(localPromotionInternalApiEndpointKeys.length),
+      evidencePurpose: external_exports.enum(localPromotionInternalApiEvidencePurposes)
     }).optional()
   });
   var collectionSnapshotSchema = external_exports.object({
@@ -4663,7 +4761,76 @@
     captureProtocolVersion: external_exports.number().int().min(1).max(100).optional()
   });
 
-  // ../../packages/shared/dist/collection-dashboard.js
+  // ../../packages/shared/src/realtime-evidence.ts
+  var realtimeEvidenceSummarySchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    pageType: external_exports.enum(pageTypes),
+    observedAt: external_exports.string().datetime(),
+    receivedAt: external_exports.string().datetime(),
+    metricCount: external_exports.number().int().nonnegative(),
+    successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
+    source: external_exports.enum(["LIVE_SCREEN_INTERNAL_API", "LOCAL_PROMOTION_INTERNAL_API"])
+  });
+  function realtimeEvidenceRouteMatchesSource(evidence) {
+    return evidence.source === "LIVE_SCREEN_INTERNAL_API" ? evidence.routeKey === "LIVE_DATA_SCREEN" && evidence.pageType === "LIVE_DATA_SCREEN" : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD" && evidence.pageType === "LOCAL_PROMOTION_DASHBOARD";
+  }
+
+  // ../../packages/shared/src/metric-keys.ts
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/src/collection-dashboard.ts
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -4685,7 +4852,69 @@
     tableIndex: external_exports.number().int().min(0).max(3)
   });
 
-  // ../../packages/shared/dist/index.js
+  // ../../packages/shared/src/dashboard-overview.ts
+  var liveRealtimeMetricKeySet = new Set(liveScreenPulseCoreMetricKeys);
+  var localRealtimeMetricKeySet = new Set(localPromotionApiMetricKeys);
+  var overviewDefinitions = [
+    definition("live_gmv", "\u76F4\u64AD\u95F4\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gmv"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gmv")
+    ]),
+    definition("live_current_online_viewers", "\u5F53\u524D\u5728\u7EBF\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "current_online_viewers"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "current_online_viewers")
+    ]),
+    definition("live_gpm", "\u5343\u6B21\u89C2\u770B\u6210\u4EA4\u91D1\u989D", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "gpm"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "gpm")
+    ]),
+    definition("live_watch_duration", "\u4EBA\u5747\u89C2\u770B\u65F6\u957F", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "average_watch_duration_seconds"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "average_watch_duration_seconds")
+    ]),
+    definition("live_orders", "\u6210\u4EA4\u8BA2\u5355\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "orders"),
+      reference("LOCAL_PROMOTION_DASHBOARD", "orders")
+    ]),
+    definition("live_transaction_users", "\u6210\u4EA4\u4EBA\u6570", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "transaction_users")
+    ]),
+    definition("live_conversion", "\u5546\u54C1\u8F6C\u5316\u7387", "\u76F4\u64AD\u95F4", "LIVE_ROOM", [
+      reference("LIVE_DATA_SCREEN", "product_conversion_rate")
+    ]),
+    definition("local_total_watch_count", "\u7D2F\u8BA1\u89C2\u770B\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "total_watch_count")
+    ]),
+    definition("local_live_viewers", "\u7D2F\u8BA1\u89C2\u770B\u4EBA\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "live_viewers")
+    ]),
+    definition("local_clicks", "\u7D2F\u8BA1\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u672C\u573A", "LIVE_ROOM", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "clicks")
+    ]),
+    definition("local_spend", "\u5168\u57DF\u6D88\u8017", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "spend")
+    ]),
+    definition("local_full_domain_gmv", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_gmv")
+    ]),
+    definition("local_full_domain_orders", "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_orders")
+    ]),
+    definition("local_full_domain_pay_roi", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_pay_roi")
+    ]),
+    definition("local_full_domain_product_clicks", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF", "DELIVERY", [
+      reference("LOCAL_PROMOTION_DASHBOARD", "full_domain_product_clicks")
+    ])
+  ];
+  function definition(displayKey, label, scopeLabel, section, candidateReferences) {
+    return { displayKey, label, scopeLabel, section, candidateReferences };
+  }
+  function reference(routeKey, metricKey) {
+    return { routeKey, metricKey };
+  }
+
+  // ../../packages/shared/src/index.ts
   var businessTypes = ["DOUYIN_LOCAL_LIFE"];
   var subjectTypes = [
     "SUBJECT_PENDING",
@@ -4879,7 +5108,9 @@
     \u503E\u659C\u9AD8\u6838\u9500\u95E8\u5E97: "ALLOCATE_HIGH_VERIFY_STORES",
     \u4E3B\u4F53\u8BC6\u522B\u6821\u51C6: "CALIBRATE_SUBJECT"
   };
-  var actionTypeToDiagnosisAction = Object.fromEntries(Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label]));
+  var actionTypeToDiagnosisAction = Object.fromEntries(
+    Object.entries(diagnosisActionToActionType).map(([label, type]) => [type, label])
+  );
   var diagnosticDimensions = ["DATA_QUALITY", "PROFITABILITY", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "COMPLIANCE"];
   var recommendationPriorities = ["P0", "P1", "P2"];
   var decisionAnalysisModes = ["MANAGED_LIVE_GROWTH", "FULL_BUSINESS"];
@@ -5060,22 +5291,24 @@
     }
   });
   var bulkReviewMetricInputSchema = external_exports.object({
-    items: external_exports.array(external_exports.object({
-      metricId: external_exports.string().min(1),
-      expectedSnapshotUpdatedAt: external_exports.string().datetime(),
-      reviewedValue: external_exports.string().optional(),
-      timeRange: external_exports.string().trim().min(1).max(100).optional(),
-      sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
-      reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
-    }).superRefine((value, ctx) => {
-      if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          path: ["reviewedValue"],
-          message: "MODIFIED requires reviewedValue"
-        });
-      }
-    })).min(1)
+    items: external_exports.array(
+      external_exports.object({
+        metricId: external_exports.string().min(1),
+        expectedSnapshotUpdatedAt: external_exports.string().datetime(),
+        reviewedValue: external_exports.string().optional(),
+        timeRange: external_exports.string().trim().min(1).max(100).optional(),
+        sourceSelection: external_exports.enum(["API", "DOM", "IGNORE"]).optional(),
+        reviewStatus: external_exports.enum(["CONFIRMED", "MODIFIED", "IGNORED"])
+      }).superRefine((value, ctx) => {
+        if (value.reviewStatus === "MODIFIED" && !value.reviewedValue?.trim()) {
+          ctx.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["reviewedValue"],
+            message: "MODIFIED requires reviewedValue"
+          });
+        }
+      })
+    ).min(1)
   });
   var confirmAllReviewMetricsInputSchema = external_exports.object({
     snapshotVersions: external_exports.array(external_exports.object({
@@ -5155,15 +5388,28 @@
       staleRoutes: external_exports.array(external_exports.enum(collectionRouteKeys)),
       blocksStrongActions: external_exports.boolean()
     }).optional(),
-    realtimeEvidence: external_exports.object({
-      routeKey: external_exports.enum(collectionRouteKeys),
-      pageType: external_exports.enum(pageTypes),
-      observedAt: external_exports.string().datetime(),
-      receivedAt: external_exports.string().datetime(),
-      metricCount: external_exports.number().int().nonnegative(),
-      successfulEndpoints: external_exports.array(external_exports.string().min(1)).max(20),
-      source: external_exports.literal("LIVE_SCREEN_INTERNAL_API")
-    }).optional()
+    realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
+    realtimeEvidenceItems: external_exports.array(realtimeEvidenceSummarySchema).max(4).optional()
+  }).superRefine((input, context) => {
+    const items = input.realtimeEvidenceItems?.length ? input.realtimeEvidenceItems : input.realtimeEvidence ? [input.realtimeEvidence] : [];
+    const seenRoutes = /* @__PURE__ */ new Set();
+    items.forEach((evidence, index) => {
+      if (!realtimeEvidenceRouteMatchesSource(evidence)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index],
+          message: "\u5B9E\u65F6\u8BC1\u636E\u6765\u6E90\u4E0E\u8DEF\u7EBF\u4E0D\u5339\u914D"
+        });
+      }
+      if (seenRoutes.has(evidence.routeKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["realtimeEvidenceItems", index, "routeKey"],
+          message: "\u540C\u4E00\u8DEF\u7EBF\u53EA\u80FD\u4FDD\u7559\u4E00\u4EFD\u6700\u65B0\u5B9E\u65F6\u8BC1\u636E"
+        });
+      }
+      seenRoutes.add(evidence.routeKey);
+    });
   });
   var decisionEngineOutputSchema = external_exports.object({
     engineVersion: external_exports.string().optional(),
@@ -5179,36 +5425,44 @@
       mode: external_exports.enum(decisionAnalysisModes).optional(),
       headline: external_exports.string().min(1),
       performanceSnapshot: external_exports.array(external_exports.string()),
-      findings: external_exports.array(external_exports.object({
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        conclusion: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string()),
-        riskLevel: external_exports.enum(riskLevels)
-      })),
-      recommendations: external_exports.array(external_exports.object({
-        priority: external_exports.enum(recommendationPriorities),
-        dimension: external_exports.enum(diagnosticDimensions),
-        title: external_exports.string().min(1),
-        reason: external_exports.string().min(1),
-        evidence: external_exports.array(external_exports.string().min(1)).optional(),
-        steps: external_exports.array(external_exports.string().min(1)),
-        verifyMetrics: external_exports.array(external_exports.string().min(1)),
-        ruleBoundary: external_exports.string().min(1)
-      })),
-      metricExplanations: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        value: external_exports.number().nullable(),
-        meaning: external_exports.string().min(1),
-        use: external_exports.string().min(1),
-        caveat: external_exports.string().min(1)
-      })),
-      ruleReferences: external_exports.array(external_exports.object({
-        title: external_exports.string().min(1),
-        url: external_exports.string().url(),
-        scope: external_exports.string().min(1),
-        checkedAt: external_exports.string().min(1)
-      }))
+      findings: external_exports.array(
+        external_exports.object({
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          conclusion: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string()),
+          riskLevel: external_exports.enum(riskLevels)
+        })
+      ),
+      recommendations: external_exports.array(
+        external_exports.object({
+          priority: external_exports.enum(recommendationPriorities),
+          dimension: external_exports.enum(diagnosticDimensions),
+          title: external_exports.string().min(1),
+          reason: external_exports.string().min(1),
+          evidence: external_exports.array(external_exports.string().min(1)).optional(),
+          steps: external_exports.array(external_exports.string().min(1)),
+          verifyMetrics: external_exports.array(external_exports.string().min(1)),
+          ruleBoundary: external_exports.string().min(1)
+        })
+      ),
+      metricExplanations: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          value: external_exports.number().nullable(),
+          meaning: external_exports.string().min(1),
+          use: external_exports.string().min(1),
+          caveat: external_exports.string().min(1)
+        })
+      ),
+      ruleReferences: external_exports.array(
+        external_exports.object({
+          title: external_exports.string().min(1),
+          url: external_exports.string().url(),
+          scope: external_exports.string().min(1),
+          checkedAt: external_exports.string().min(1)
+        })
+      )
     }).optional(),
     calculatedMetrics: external_exports.object({
       serviceProviderAfterCost: external_exports.number().nullable().optional(),
@@ -5259,7 +5513,10 @@
     storeName: external_exports.string().trim().max(100).optional().nullable(),
     memo: external_exports.string().trim().max(1e3).optional().nullable()
   });
-  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine((value) => Object.keys(value).length > 0, { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" });
+  var updateAccountProfileSchema = createAccountProfileSchema.omit({ workspaceId: true }).partial().refine(
+    (value) => Object.keys(value).length > 0,
+    { message: "\u8BF7\u81F3\u5C11\u4FEE\u6539\u4E00\u9879\u8D26\u53F7\u8D44\u6599" }
+  );
   var deleteAccountProfileSchema = external_exports.object({
     accountName: external_exports.string().trim().min(1, "\u8BF7\u786E\u8BA4\u8981\u5220\u9664\u7684\u8D26\u53F7\u540D\u79F0")
   });
@@ -5306,11 +5563,13 @@
   function normalizeMetricLookupValue(value) {
     return value.toLowerCase().replace(/[（）()]/g, "").replace(/[\s_\-:/：，,。]+/g, "");
   }
-  var metricAliasLookup = new Map(metricKeys.flatMap((key) => [
-    [normalizeMetricLookupValue(key), key],
-    [normalizeMetricLookupValue(metricKeyLabels[key]), key],
-    ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
-  ]));
+  var metricAliasLookup = new Map(
+    metricKeys.flatMap((key) => [
+      [normalizeMetricLookupValue(key), key],
+      [normalizeMetricLookupValue(metricKeyLabels[key]), key],
+      ...metricAliases[key].map((alias) => [normalizeMetricLookupValue(alias), key])
+    ])
+  );
 
   // src/live-pulse-status.ts
   function livePulseStatusText(livePulse, internalApiEnabled) {
@@ -5324,7 +5583,7 @@
         const reason = livePulse.lastFailureReason ? livePulseFailureReasonText(livePulse.lastFailureReason) : "\u672A\u77E5\u767D\u540D\u5355\u5931\u8D25\u539F\u56E0";
         return `\u7B2C ${livePulse.consecutiveFailures}/3 \u6B21\u5931\u8D25${endpoint2}\uFF1A${reason}\uFF1B\u4ECD\u5728\u7B49\u5F85\u4E0B\u4E00\u6B21\u56FA\u5B9A\u8282\u62CD\u3002`;
       }
-      return livePulse.successCount ? `\u91C7\u96C6\u4E2D\uFF1B\u6700\u8FD1\u4E00\u8F6E\u6838\u5FC3\u6307\u6807 ${livePulseMetricCoverage(livePulse.lastMetricKeys).count}/${liveScreenPulseCoreMetricKeys.length}` : "API \u5DF2\u542F\u52A8\uFF0C\u6B63\u5728\u53D1\u8D77\u9996\u8F6E\u8BF7\u6C42";
+      return livePulse.successCount ? `\u91C7\u96C6\u4E2D\uFF1B\u6700\u8FD1\u4E00\u8F6E\u5DF2\u4E0A\u4F20 ${livePulse.lastMetricCount || 0} \u9879\u6838\u5FC3\u6307\u6807` : "API \u5DF2\u542F\u52A8\uFF0C\u6B63\u5728\u53D1\u8D77\u9996\u8F6E\u8BF7\u6C42";
     }
     if (livePulse?.lastOutcome) return livePulseOutcomeMessage(livePulse.lastOutcome);
     return internalApiEnabled ? "API \u5DF2\u5C31\u7EEA\uFF1B\u70B9\u51FB\u4E00\u6B21\u5373\u53EF\u6301\u7EED\u66F4\u65B0\u4EFB\u52A1\u5927\u5C4F" : "\u670D\u52A1\u7AEF API \u672A\u5F00\u542F\uFF1B\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM";
@@ -5341,7 +5600,29 @@
       keys,
       count: keys.length,
       total: liveScreenPulseCoreMetricKeys.length,
+      presentLabels: keys.map((key) => liveScreenPulseCoreMetricLabels[key]),
       missingLabels: liveScreenPulseCoreMetricKeys.filter((key) => !keySet.has(key)).map((key) => liveScreenPulseCoreMetricLabels[key])
+    };
+  }
+  function localPromotionPulseMetricCoverage(value) {
+    if (!Array.isArray(value)) {
+      return {
+        keys: [],
+        count: 0,
+        total: localPromotionApiMetricKeys.length,
+        presentLabels: [],
+        missingLabels: localPromotionApiMetricKeys.map((key) => localPromotionPulseMetricLabels[key])
+      };
+    }
+    const supplied = new Set(value.filter((item) => typeof item === "string"));
+    const keys = localPromotionApiMetricKeys.filter((key) => supplied.has(key));
+    const keySet = new Set(keys);
+    return {
+      keys,
+      count: keys.length,
+      total: localPromotionApiMetricKeys.length,
+      presentLabels: keys.map((key) => localPromotionPulseMetricLabels[key]),
+      missingLabels: localPromotionApiMetricKeys.filter((key) => !keySet.has(key)).map((key) => localPromotionPulseMetricLabels[key])
     };
   }
   function livePulseOutcomeMessage(outcome) {
@@ -5354,16 +5635,32 @@
       case "HTTP_401":
       case "HTTP_429":
         return `\u5E73\u53F0 API \u8FD4\u56DE ${outcome.reason}${endpoint2}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+      case "RATE_LIMITED":
+        return `\u5B9E\u65F6\u4E0A\u4F20\u63A5\u53E3\u8FD4\u56DE\u9650\u6D41${endpoint2}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+      case "BYTE_LIMIT":
+      case "TOTAL_BYTE_LIMIT":
+        return `API \u54CD\u5E94\u5B57\u8282\u8D85\u9650${endpoint2}\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62\uFF1B\u672C\u6B21\u672A\u4E0A\u4F20\u3002`;
       case "PAGE_INACTIVE":
-        return "\u76F4\u64AD\u5E73\u53F0\u9875\u4E0D\u518D\u53EF\u7528\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62\u5B9E\u65F6\u8109\u51B2\u3002";
+        return "\u91C7\u96C6\u6E90\u5E73\u53F0\u9875\u4E0D\u518D\u53EF\u7528\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\u3002";
       case "PAGE_NAVIGATED":
-        return "\u76F4\u64AD\u5E73\u53F0\u9875\u5DF2\u5BFC\u822A\u79BB\u5F00\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62\u5B9E\u65F6\u8109\u51B2\u3002";
-      case "THREE_CONSECUTIVE_FAILURES":
-        return `API \u8FDE\u7EED\u5931\u8D25 3 \u6B21${outcome.lastFailureReason ? `\uFF08\u6700\u540E\u539F\u56E0\uFF1A${livePulseFailureReasonText(outcome.lastFailureReason)}\uFF09` : ""}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+        return "\u91C7\u96C6\u6E90\u5E73\u53F0\u9875\u5DF2\u5BFC\u822A\u79BB\u5F00\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\u3002";
+      case "IDENTITY_CHANGED":
+        return "\u672C\u5730\u63A8\u9875\u9762\u7684\u5E7F\u544A\u8EAB\u4EFD\u5DF2\u53D8\u5316\uFF0C\u5DF2\u5B89\u5168\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\u3002";
+      case "CONTENT_SCRIPT_UNAVAILABLE":
+        return "\u91C7\u96C6\u9875\u9762\u811A\u672C\u4E0D\u53EF\u7528\uFF0C\u5DF2\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\uFF1B\u8BF7\u5237\u65B0\u5E73\u53F0\u9875\u540E\u91CD\u8BD5\u3002";
+      case "PULSE_TRANSPORT_UNAVAILABLE":
+        return "\u9875\u9762\u4E0E\u63D2\u4EF6\u540E\u53F0\u8FDE\u7EED\u901A\u4FE1\u5931\u8D25\uFF0C\u5DF2\u505C\u6B62 API \u6301\u7EED\u91C7\u96C6\uFF1B\u8BF7\u5237\u65B0\u5E73\u53F0\u9875\u540E\u91CD\u8BD5\u3002";
+      case "THREE_CONSECUTIVE_FAILURES": {
+        const details = [
+          outcome.endpoint ? `\u6700\u540E\u7AEF\u70B9\uFF1A${outcome.endpoint}` : null,
+          outcome.lastFailureReason ? `\u6700\u540E\u539F\u56E0\uFF1A${livePulseFailureReasonText(outcome.lastFailureReason)}` : null
+        ].filter((value) => Boolean(value));
+        return `API \u8FDE\u7EED\u5931\u8D25 3 \u6B21${details.length ? `\uFF08${details.join("\uFF1B")}\uFF09` : ""}\uFF0C\u5DF2\u505C\u6B62\u3002`;
+      }
       case "USER_STOPPED":
         return "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62\u3002";
       default:
-        return outcome?.failure ? `API \u5B9E\u65F6\u91C7\u96C6\u5931\u8D25\uFF08${outcome?.reason || "UNKNOWN"}\uFF09\uFF0C\u5DF2\u505C\u6B62\u3002` : "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62\u3002";
+        return outcome?.failure ? `API \u5B9E\u65F6\u91C7\u96C6\u5931\u8D25${endpoint2}\uFF08${outcome?.reason || "UNKNOWN"}\uFF09\uFF0C\u5DF2\u505C\u6B62\u3002` : "API \u6301\u7EED\u91C7\u96C6\u5DF2\u505C\u6B62\u3002";
     }
   }
   function livePulseReasonText(reason) {
@@ -5377,11 +5674,15 @@
       PULSE_UPLOAD_TIMEOUT: "\u5B9E\u65F6\u8109\u51B2\u4E0A\u4F20\u8D85\u65F6\uFF08PULSE_UPLOAD_TIMEOUT\uFF09",
       PULSE_UPLOAD_ABORTED: "\u5B9E\u65F6\u8109\u51B2\u4E0A\u4F20\u88AB\u53D6\u6D88\uFF08PULSE_UPLOAD_ABORTED\uFF09",
       PULSE_NETWORK_ERROR: "\u5B9E\u65F6\u8109\u51B2\u4E0A\u4F20\u7F51\u7EDC\u5931\u8D25\uFF08PULSE_NETWORK_ERROR\uFF09",
+      PULSE_TRANSPORT_UNAVAILABLE: "\u9875\u9762\u4E0E\u63D2\u4EF6\u540E\u53F0\u8FDE\u7EED\u901A\u4FE1\u5931\u8D25\uFF08PULSE_TRANSPORT_UNAVAILABLE\uFF09",
+      NO_USABLE_METRICS: "\u56FA\u5B9A\u7AEF\u70B9\u8FD4\u56DE\u6210\u529F\uFF0C\u4F46\u6CA1\u6709\u53EF\u7528\u767D\u540D\u5355\u6307\u6807\uFF08NO_USABLE_METRICS\uFF09",
       REQUEST_FAILED: "\u5E73\u53F0 API \u8BF7\u6C42\u5931\u8D25\uFF08REQUEST_FAILED\uFF09",
+      REQUEST_INVALID: "\u672C\u5730\u63A8 API \u56FA\u5B9A\u8BF7\u6C42\u53C2\u6570\u6821\u9A8C\u5931\u8D25\uFF08REQUEST_INVALID\uFF09",
       REQUEST_TIMEOUT: "\u5E73\u53F0 API \u8BF7\u6C42\u8D85\u65F6\uFF08REQUEST_TIMEOUT\uFF09",
       JSON_PARSE_FAILED: "\u5E73\u53F0 API \u8FD4\u56DE\u65E0\u6548 JSON\uFF08JSON_PARSE_FAILED\uFF09",
       EMPTY_RESPONSE: "\u5E73\u53F0 API \u8FD4\u56DE\u7A7A\u54CD\u5E94\uFF08EMPTY_RESPONSE\uFF09",
       BUSINESS_ERROR: "\u5E73\u53F0 API \u4E1A\u52A1\u54CD\u5E94\u5931\u8D25\uFF08BUSINESS_ERROR\uFF09",
+      RATE_LIMITED: "\u5E73\u53F0 API \u8FD4\u56DE\u9650\u6D41\uFF08RATE_LIMITED\uFF09\uFF0C\u5DF2\u505C\u6B62\u3002",
       ABORTED: "\u8BF7\u6C42\u88AB\u505C\u6B62\uFF08ABORTED\uFF09"
     };
     return labels[reason] || `HTTP \u54CD\u5E94\u5931\u8D25\uFF08${reason}\uFF09`;
@@ -5422,7 +5723,7 @@
     );
     elements.liveUpdatedAt.textContent = livePulse?.lastSuccessAt ? new Date(livePulse.lastSuccessAt).toLocaleTimeString("zh-CN", { hour12: false }) : livePulse?.active ? "\u7B49\u5F85\u7B2C\u4E00\u8F6E" : "\u5C1A\u672A\u542F\u52A8";
     elements.liveSuccessCount.textContent = String(livePulse?.successCount || 0);
-    const coverage = livePulseMetricCoverage(livePulse?.lastMetricKeys);
+    const coverage = livePulse?.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseMetricCoverage(livePulse.lastMetricKeys) : livePulseMetricCoverage(livePulse?.lastMetricKeys);
     elements.liveMetricCount.textContent = `${coverage.count}/${coverage.total}`;
     elements.liveLastError.textContent = livePulse?.lastFailureReason ? livePulseReasonText(livePulse.lastFailureReason) : livePulse?.lastOutcome?.failure ? livePulseOutcomeMessage(livePulse.lastOutcome) : "-";
     elements.status.textContent = livePulse?.active ? "\u91C7\u96C6\u4E2D\uFF1B\u5207\u5230\u7F51\u9875\u7AEF\u67E5\u770B\u5B9E\u65F6\u680F\u4E0D\u4F1A\u505C\u6B62" : "\u5728\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u70B9\u51FB\u4E00\u6B21\u201C\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u201D";

@@ -13,6 +13,22 @@ const isLocalBuild = target === "local";
 const syncUnpackedRelease = !process.argv.includes("--dist-only");
 const unpackedRelease = resolve(root, `release/${isLocalBuild ? "local-unpacked-test-extension" : "production-unpacked-extension"}`);
 const entries = ["popup", "content", "service-worker", "sidepanel", "web-bridge"];
+const sharedSourceEntries = new Map([
+  ["@douyin-local-life/shared", "packages/shared/src/index.ts"],
+  ["@douyin-local-life/shared/collection-routes", "packages/shared/src/collection-routes.ts"],
+  ["@douyin-local-life/shared/safety", "packages/shared/src/safety.ts"],
+  ["@douyin-local-life/shared/formal-decision-readiness", "packages/shared/src/formal-decision-readiness.ts"],
+  ["@douyin-local-life/shared/diagnosis", "packages/shared/src/diagnosis.ts"]
+]);
+const workspaceSharedSourcePlugin = {
+  name: "workspace-shared-source",
+  setup(buildContext) {
+    buildContext.onResolve({ filter: /^@douyin-local-life\/shared(?:\/[^/]+)?$/ }, (args) => {
+      const sourcePath = sharedSourceEntries.get(args.path);
+      return sourcePath ? { path: resolve(repoRoot, sourcePath) } : null;
+    });
+  }
+};
 const rootPackage = JSON.parse(await readFile(resolve(repoRoot, "package.json"), "utf8"));
 const schemaVersion = rootPackage.pxxisMetadata?.schemaVersion;
 if (typeof schemaVersion !== "string" || !/^\d{8}_[a-z0-9_]+$/.test(schemaVersion)) {
@@ -30,6 +46,7 @@ const sourceFingerprint = await fingerprintBuildInputs([
     `apps/extension/public/local-test-icons/icon${size}.png`
   ]),
   ...extensionBuildSources,
+  "apps/extension/scripts/build.mjs",
   "apps/extension/scripts/artifact-policy.mjs",
   ...sharedBuildSources
 ]);
@@ -95,6 +112,7 @@ async function buildEntry(entry) {
     sourcemap: false,
     legalComments: "none",
     logLevel: "silent",
+    plugins: [workspaceSharedSourcePlugin],
     define: {
       __PXXIS_EXTENSION_BUILD__: JSON.stringify(sourceFingerprint),
       __PXXIS_EXTENSION_TARGET__: JSON.stringify(target),

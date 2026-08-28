@@ -1,6 +1,23 @@
-import type { RealtimeMetricFrame } from "@douyin-local-life/shared";
+import {
+  realtimeMetricFrameFreshnessMs,
+  type RealtimeMetricFrame
+} from "@douyin-local-life/shared";
 
 export type RealtimeMetricStreamStatus = "CONNECTING" | "CONNECTED" | "RECONNECTING";
+
+export function usableRealtimeMetrics(
+  frame: RealtimeMetricFrame | null | undefined,
+  routeKey: RealtimeMetricFrame["routeKey"],
+  now = Date.now()
+) {
+  if (!frame || frame.routeKey !== routeKey || frame.pageType !== routeKey) return [];
+  const observedAt = Date.parse(frame.observedAt);
+  const receivedAt = Date.parse(frame.receivedAt);
+  if (!Number.isFinite(observedAt) || !Number.isFinite(receivedAt)) return [];
+  const freshestAt = Math.max(observedAt, receivedAt);
+  if (freshestAt > now + realtimeMetricFrameFreshnessMs || now - freshestAt > realtimeMetricFrameFreshnessMs) return [];
+  return frame.metrics.filter((metric) => metric.value != null && String(metric.value).trim() !== "");
+}
 
 type StreamOptions = {
   url: string;

@@ -45,6 +45,7 @@
       .pulse-summary { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
       .pulse-summary span { color: #667085; font-size: 12px; text-align: right; }
       .metric-missing { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; }
+      .metric-collected { margin: 0; color: #166534; font-size: 12px; line-height: 1.45; }
       .helper { margin: 0; color: #667085; font-size: 12px; line-height: 1.5; }
       .hidden { display: none !important; }
       details { border-top: 1px solid #e5e7eb; padding-top: 9px; }
@@ -64,15 +65,16 @@
       </section>
 
       <section id="livePulsePanel" class="panel stack hidden">
-        <h2>直播 API 采集</h2>
+        <h2 id="livePulseTitle">API 持续采集</h2>
         <button id="livePulseBtn" class="primary capture-button">开始 API 持续采集</button>
         <div id="livePulseStatus" class="helper">检查中</div>
         <div id="livePulseData" class="stack hidden">
           <div class="live-data stack">
             <div class="pulse-summary">
-              <strong id="livePulseCoverage">核心指标 0/7</strong>
+              <strong id="livePulseCoverage">核心指标 0/13</strong>
               <span id="livePulseUpdatedAt">等待首次上传</span>
             </div>
+            <p id="livePulseCollected" class="metric-collected hidden">已采到：</p>
             <p id="livePulseMissing" class="metric-missing hidden">等待首轮指标</p>
           </div>
           <div id="livePulseErrorRow" class="live-data hidden"><span class="muted">最近错误</span><div id="livePulseLastError" class="value">-</div></div>
@@ -104,15 +106,6 @@
         <button id="selectTaskBtn" class="primary">绑定所选任务</button>
       </section>
 
-      <section id="boundPanel" class="panel stack hidden">
-        <h2>巨量本地推数据页</h2>
-        <div class="row"><span class="muted">采集记录</span><span id="nextRoute" class="value">等待任务信息</span></div>
-        <button id="captureBtn" class="primary capture-button">采集并上传数据总览</button>
-        <p class="helper">只采集当前打开的数据总览；任务或计划列表不再采集。</p>
-      </section>
-
-      <section id="captureResult" class="panel success hidden"></section>
-
       <section id="advancedPanel" class="panel stack">
         <details>
           <summary>高级设置与故障排查</summary>
@@ -130,6 +123,9 @@
             <button id="clearBtn">清空本地快照</button>
             <button id="clearPairingBtn" class="danger">解除本地绑定</button>
             <p id="collectionNotice" class="helper">插件只读取白名单指标，不会点击或修改平台内容。</p>
+            <div class="muted">最近采集日志（仅显示脱敏字段）</div>
+            <button id="copyLogsBtn">复制最近采集日志</button>
+            <pre id="logs">暂无采集日志</pre>
             <pre id="snapshot">暂无本地快照</pre>
           </div>
         </details>

@@ -1,51 +1,38 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  contextRefreshErrorCode,
   createTaskPageConnectionActivity,
   isTaskBridgePageUrl,
-  restoreBoundTaskPageConnection,
-  restoreTaskPageConnection,
+  resolveTaskPageBinding,
+  shouldBlockTaskSwitchForActivePulse,
   taskIdFromBridgePageUrl
 } from "./task-page-bridge-recovery";
+import type { ExtensionContext } from "./extension-context";
+
+const context: ExtensionContext = {
+  account: {
+    id: "account-1",
+    accountName: "账号一",
+    projects: [{
+      id: "project-1",
+      name: "项目一",
+      tasks: [
+        { id: "task-1", pageTitle: "任务一", routeSources: [] },
+        { id: "task-2", pageTitle: "任务二", routeSources: [] }
+      ]
+    }]
+  },
+  collectionProtocolVersion: 1,
+  liveScreenInternalApi: { enabled: true, contractVersion: "1", adapterVersion: "1" },
+  localPromotionInternalApi: { enabled: true, contractVersion: "1", adapterVersion: "1" }
+};
 
 describe("task-page bridge recovery", () => {
-  it("restores a saved binding only for the active exact task page", async () => {
-    const restore = vi.fn().mockResolvedValue({ ok: true as const });
-    const result = await restoreBoundTaskPageConnection({
-      paired: true,
-      boundTaskId: "task-1",
-      sender: { tab: { active: true, url: "https://www.pxxis.cn/tasks/task-1" } },
-      restore
-    });
-
-    expect(result).toEqual({ attempted: true, result: { ok: true } });
-    expect(restore).toHaveBeenCalledWith("https://www.pxxis.cn/tasks/task-1");
-  });
-
-  it("does not depend on the unreliable sender tab active flag", async () => {
-    const restore = vi.fn().mockResolvedValue({ ok: true as const });
-    await expect(restoreBoundTaskPageConnection({
-      paired: true,
-      boundTaskId: "task-1",
-      sender: { tab: { active: false, url: "https://www.pxxis.cn/tasks/task-1" } },
-      restore
-    })).resolves.toEqual({ attempted: true, result: { ok: true } });
-    expect(restore).toHaveBeenCalledOnce();
-  });
-
-  it("fails closed for unpaired, mismatched-task and non-task pages", async () => {
-    const restore = vi.fn().mockResolvedValue({ ok: true as const });
-    const inputs = [
-      { paired: false, boundTaskId: "task-1", sender: { tab: { active: true, url: "https://www.pxxis.cn/tasks/task-1" } } },
-      { paired: true, boundTaskId: "task-1", sender: { tab: { active: true, url: "https://www.pxxis.cn/tasks/task-2" } } },
-      { paired: true, boundTaskId: "task-1", sender: { tab: { active: true, url: "https://www.pxxis.cn/tasks/task-1/collection-dashboard" } } }
-    ];
-
-    await Promise.all(inputs.map((input) => restoreBoundTaskPageConnection({ ...input, restore })));
-
-    expect(restore).not.toHaveBeenCalled();
+  it("accepts only an exact trusted task page URL", () => {
     expect(isTaskBridgePageUrl("https://www.pxxis.cn/tasks/task-1")).toBe(true);
     expect(taskIdFromBridgePageUrl("https://www.pxxis.cn/tasks/task-1")).toBe("task-1");
     expect(isTaskBridgePageUrl("https://www.pxxis.cn/tasks/task-1/collection-dashboard")).toBe(false);
+    expect(isTaskBridgePageUrl("https://example.com/tasks/task-1")).toBe(false);
   });
 
   it("reports task pages as connected but never collectable", () => {
@@ -59,60 +46,35 @@ describe("task-page bridge recovery", () => {
     });
   });
 
-  it("refreshes context before reporting the non-collectable heartbeat", async () => {
-    const calls: string[] = [];
-    const refreshContext = vi.fn(async () => {
-      calls.push("context");
-      return { ok: true as const };
+  it("resolves only tasks that belong to the paired account context", () => {
+    expect(resolveTaskPageBinding(context, "task-2")).toEqual({
+      project: context.account.projects[0],
+      task: context.account.projects[0]?.tasks[1]
     });
-    const reportHeartbeat = vi.fn(async () => {
-      calls.push("heartbeat");
-      return { ok: true as const };
-    });
-    const appendLog = vi.fn(async () => {
-      calls.push("log");
-    });
-
-    await expect(restoreTaskPageConnection({
-      taskPageUrl: "https://www.pxxis.cn/tasks/task-1",
-      timeoutMs: 1_800,
-      observedAt: "2026-08-08T00:00:00.000Z",
-      refreshContext,
-      reportHeartbeat,
-      appendLog
-    })).resolves.toEqual({ ok: true });
-
-    expect(calls).toEqual(["context", "heartbeat", "log"]);
-    expect(refreshContext).toHaveBeenCalledWith(1_800);
-    expect(reportHeartbeat).toHaveBeenCalledWith({
-      currentUrl: "https://www.pxxis.cn/tasks/task-1",
-      pageType: "TASK_TABLE",
-      routeKey: "UNKNOWN",
-      collectable: false,
-      tabState: "VISIBLE",
-      observedAt: "2026-08-08T00:00:00.000Z"
-    }, 1_800);
+    expect(resolveTaskPageBinding(context, "other-account-task")).toBeNull();
   });
 
-  it("stops recovery when context refresh or heartbeat fails", async () => {
-    const heartbeat = vi.fn().mockResolvedValue({ ok: true as const });
-    const appendLog = vi.fn().mockResolvedValue(undefined);
-    await expect(restoreTaskPageConnection({
-      taskPageUrl: "https://www.pxxis.cn/tasks/task-1",
-      timeoutMs: 1_800,
-      refreshContext: vi.fn().mockResolvedValue({ ok: false as const, error: "上下文失效" }),
-      reportHeartbeat: heartbeat,
-      appendLog
-    })).resolves.toEqual({ ok: false, error: "上下文失效" });
-    expect(heartbeat).not.toHaveBeenCalled();
+  it("blocks only a real task switch while continuous collection is active", () => {
+    expect(shouldBlockTaskSwitchForActivePulse({
+      boundTaskId: "task-1",
+      targetTaskId: "task-2",
+      hasActivePulse: true
+    })).toBe(true);
+    expect(shouldBlockTaskSwitchForActivePulse({
+      boundTaskId: "task-1",
+      targetTaskId: "task-1",
+      hasActivePulse: true
+    })).toBe(false);
+    expect(shouldBlockTaskSwitchForActivePulse({
+      boundTaskId: "task-1",
+      targetTaskId: "task-2",
+      hasActivePulse: false
+    })).toBe(false);
+  });
 
-    await expect(restoreTaskPageConnection({
-      taskPageUrl: "https://www.pxxis.cn/tasks/task-1",
-      timeoutMs: 1_800,
-      refreshContext: vi.fn().mockResolvedValue({ ok: true as const }),
-      reportHeartbeat: vi.fn().mockResolvedValue({ ok: false as const, error: "心跳失败" }),
-      appendLog
-    })).resolves.toEqual({ ok: false, error: "心跳失败" });
-    expect(appendLog).not.toHaveBeenCalled();
+  it("treats rejected credentials as a pairing failure", () => {
+    expect(contextRefreshErrorCode(401)).toBe("PAIRING_REQUIRED");
+    expect(contextRefreshErrorCode(403)).toBe("PAIRING_REQUIRED");
+    expect(contextRefreshErrorCode(500)).toBe("CONTEXT_REFRESH_FAILED");
   });
 });

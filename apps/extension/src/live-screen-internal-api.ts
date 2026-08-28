@@ -14,7 +14,7 @@ import {
 
 const responseSafetyPattern = /cookie|token|authorization|secret|session|credential/i;
 const totalResponseLimit = 384 * 1024;
-/** PULSE must finish before the next five-second boundary instead of hanging in the Popup. */
+/** PULSE must finish before the next thirty-second boundary instead of hanging in the Popup. */
 export const liveScreenInternalApiRequestTimeoutMs = 4_000;
 
 export type LiveScreenInternalApiCollection = {
@@ -178,6 +178,7 @@ function projectMetrics(endpoint: LiveScreenInternalApiEndpointKey, data: Record
       validationReasons: [],
       endpointKey: endpoint,
       semanticScope: field.semanticScope,
+      routeKey: "LIVE_DATA_SCREEN",
       apiContractVersion: liveScreenInternalApiContractVersion,
       apiAdapterVersion: liveScreenInternalApiAdapterVersion,
       evidencePurpose: field.purpose

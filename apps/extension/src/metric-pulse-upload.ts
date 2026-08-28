@@ -34,12 +34,14 @@ export async function uploadMetricPulseRequest(input: {
     if (response.ok) {
       return { ok: true };
     }
-    const body: unknown = await response.json().catch(() => null);
     const retryAfterMs = response.status === 429 ? retryAfterMsFromHeader(response.headers.get("Retry-After")) : undefined;
     return {
       ok: false,
       status: response.status,
-      error: apiError(body) || `HTTP_${response.status}`,
+      // Server response text is not a client-side diagnostic contract. Keep
+      // only the status class so tokens, messages, or future response fields
+      // cannot enter the persisted pulse failure state.
+      error: response.status === 429 ? "RATE_LIMITED" : `HTTP_${response.status}`,
       ...(retryAfterMs ? { retryAfterMs } : {})
     };
   } catch {
@@ -61,13 +63,4 @@ function retryAfterMsFromHeader(value: string | null, now = Date.now()) {
   const retryAt = Date.parse(value);
   if (!Number.isFinite(retryAt) || retryAt <= now) return undefined;
   return Math.min(maxMetricPulseRetryAfterMs, retryAt - now);
-}
-
-function apiError(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || !("error" in value)) return null;
-  const error = value.error;
-  if (!error || typeof error !== "object" || Array.isArray(error)) return null;
-  if ("code" in error && typeof error.code === "string" && error.code.trim()) return error.code;
-  if ("message" in error && typeof error.message === "string" && error.message.trim()) return error.message;
-  return null;
 }

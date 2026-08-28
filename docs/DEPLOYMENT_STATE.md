@@ -1,5 +1,102 @@
 # Deployment State
 
+## 2026-08-28 实时采集 30 秒节拍 Web 本机运行态切换（非生产部署）
+
+- 已从当前工作树构建 `pxxis-prelaunch-20260713-web:dashboard-pulse-cadence-30s-20260828`，构建时固定 `NEXT_PUBLIC_API_URL=http://127.0.0.1:4300`；经营数据总览会明确显示“实时 API 约每 30 秒更新一次”。
+- 候选容器先在 `127.0.0.1:3301` 验证 healthy、HTTP 200，且 `.next` 产物包含该 30 秒文案；随后新镜像已接管 `127.0.0.1:3300`，容器 healthy、首页 HTTP 200，API `/ready` 也为 HTTP 200。
+- API、PostgreSQL、数据卷、Schema、采集配置和业务数据均未修改。之前的旧 Web 回退容器及不再使用的旧项目镜像标签已在随后按用户要求清理。
+- 本次仅为本机验收运行态更新，不是生产部署；未执行 migration、`db push`、平台操作、commit 或 push。已打开的任务大屏需要硬刷新一次以加载新静态资源。
+
+## 2026-08-28 本机 Docker 多余回退资源清理（非生产操作）
+
+- 已删除以下 5 个已停止且无挂载的旧回退容器：旧 Web 节拍版、旧 API 版本、旧 Web 本地推直显版、旧 Web 视觉版、旧 Web 路线门禁版；同时移除对应 5 个不再被使用的项目镜像标签。
+- 当前 `pxxis-prelaunch-20260713` 仅保留 Web `dashboard-pulse-cadence-30s-20260828`、API `local-promotion-contract-v2-20260828`、PostgreSQL 三个运行容器，均 healthy；3300/4300 HTTP 200。
+- 其他项目容器、PostgreSQL 数据卷和业务数据均保留。旧回退资源删除后不可直接通过容器名回退，需要重新构建镜像；未执行数据清理、migration、`db push`、生产部署、平台操作、commit 或 push。
+
+## 2026-08-28 经营大屏移除小时趋势运行态切换（非生产部署）
+
+- 用户反馈页面仍显示“小时趋势”后，确认 `127.0.0.1:3300` 仍运行此前的 `dashboard-local-direct-20260828` 旧镜像；源码修改尚未进入运行容器。
+- 已从当前工作树构建 `pxxis-prelaunch-20260713-web:dashboard-no-hourly-trend-20260828`，构建时固定 `NEXT_PUBLIC_API_URL=http://127.0.0.1:4300`。候选容器先在 `3301` 通过 healthy、HTTP 200，且 `.next` 产物不含“小时趋势”。
+- 新镜像现已接管 `3300`，容器 healthy、首页 HTTP 200；旧 Web 停止保留为 `pxxis-prelaunch-20260713-web-1-before-no-hourly-trend-20260828`。API、PostgreSQL、数据卷、Schema、采集配置和业务数据均未修改。
+- 本次仅为本机验收运行态更新，不是生产部署；未执行 migration、`db push`、平台操作、commit 或 push。已打开的任务页需要硬刷新一次以加载新静态资源。
+
+## 2026-08-28 采集路线门禁 Web 本机运行态切换（非生产部署）
+
+- 从当前工作树构建 `pxxis-prelaunch-20260713-web:dashboard-route-gate-20260828`，用于交付采集页“两条路线完成后进入经营大屏”的灰色按钮、缺失路线提示和自动跳转逻辑；构建时固定 `NEXT_PUBLIC_API_URL=http://127.0.0.1:4300`。
+- 候选容器在 `127.0.0.1:3301` 通过 HTTP 200，且编译产物包含“两条路线均有完整实时指标或正式采集结果后，按钮将可用。”；正式 Web 已接管 `127.0.0.1:3300`，当前 healthy、首页 HTTP 200。
+- 旧 Web 容器停止保留为 `pxxis-prelaunch-20260713-web-1-before-route-gate-20260828`。API 仍为 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5` 且 healthy；PostgreSQL、数据卷、业务数据、Schema、Extension 和采集配置均未修改。
+- 本次为本机验收运行态更新，不是生产部署；未执行 migration、`db push`、数据清理、平台操作、commit 或 push。已打开的任务页需刷新一次加载最新静态资源。
+
+## 2026-08-28 经营大屏 Web 本机运行态切换（非生产部署）
+
+- 为解决用户看到旧版浅色布局的问题，已将本机 `127.0.0.1:3300` 的 Web 从旧镜像 `pxxis-prelaunch-20260713-web:current-bridge8-local-promotion-20260827` 切换为当前工作树构建的 `pxxis-prelaunch-20260713-web:dashboard-overview-20260828`。构建时注入 `NEXT_PUBLIC_API_URL=http://127.0.0.1:4300`。
+- 候选容器先在 `127.0.0.1:3301` 验证 HTTP 200，再按原 Web 的网络、端口、只读文件系统、资源限制和健康检查参数接管 `3300`；正式容器当前 healthy，首页 HTTP 200。独立浏览器标签页已实际确认新版任务大屏结构加载。
+- 旧 Web 容器已停止保留为 `pxxis-prelaunch-20260713-web-1-before-dashboard-overview-20260828`，可供本机人工回退。API 容器仍为 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5` 且 healthy。
+- 未修改 PostgreSQL、数据卷、业务数据、Prisma Schema、API/Extension 运行态或采集配置；未执行 migration、`db push`、生产部署、发布、平台操作、commit 或 push。用户应硬刷新已打开的旧任务页或重新进入大屏。
+
+## 2026-08-28 插件 0.2.5 本机验收制品（非生产部署）
+
+- 已从当前工作树重建本地 unpacked Extension：`apps/extension/release/local-unpacked-test-extension`，manifest/build metadata 为产品/插件 `0.2.5`、Bridge `8`、采集协议 `8`、源码指纹 `a8ed2e9f7b77`。
+- 为保持 API 的插件版本门禁一致，4300 端口已切换到镜像 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5`；容器 healthy，`/ready` 返回 database ready，`/version` 返回产品/插件 `0.2.5`。旧容器 `pxxis-prelaunch-20260713-api-1-before-plugin-v0.2.5` 已停止保留。
+- 本次只更新版本和本机运行制品；未执行 Prisma migration、`db push`、数据库清理、生产部署、发布或商店上架。ROI 采集契约没有变化。
+- 用户需在 Chrome 扩展管理页手动重载本地解包目录，刷新已打开页面后再做真实采集验收。
+
+## 2026-08-28 双页并行采集本地解包制品（未部署）
+
+- 已从当前工作树重建本地 unpacked Extension：`apps/extension/release/local-unpacked-test-extension`，源码指纹 `a8ed2e9f7b77`，产品 `0.2.4`、Bridge `8`、采集协议 `8`。
+- 本轮只更新插件的按标签页实时采集状态隔离；没有替换 API/Web 容器，没有修改 API 开关、数据库、Schema、数据卷或业务数据，也没有执行平台操作。
+- 用户需手动在 Chrome 扩展管理页重载该目录并刷新两条目标页面后验收；本地 API 仍为此前已授权切换的 healthy 运行态。
+
+## 2026-08-28 本地推 13 项契约本机运行态切换（非生产部署）
+
+- 源码和最终本地解包插件已构建为契约 `2026-08-28.1 / 1.2.0`、指纹 `f4f61b2bb11d`；按用户授权已将本机 4300 端口切换到 `pxxis-prelaunch-20260713-api:local-promotion-api-20260828`。
+- 切换后 API 容器 healthy，`/ready` 返回 database ready，`/version` 返回提交 `4ffdf9d3a639`、构建时间 `2026-08-28T00:00:00Z`；容器内共享契约核对为 `2026-08-28.1 / 1.2.0`。
+- 原 API 已停止并保留为 `pxxis-prelaunch-20260713-api-1-before-local-promotion-api-20260828` 回退副本；Web healthy 且 `127.0.0.1:3300` HTTP 200。PostgreSQL、数据卷、业务数据、端口和开关未改动。
+- 已删除 4 个更早、已退出且无挂载的 API/Web 回退容器；运行中的数据库、缓存、网关和其他服务未删除。Chrome 真实 13 项上传仍待用户重载插件、刷新精确页面并手动开始采集。
+
+## 2026-08-25 本机任务页失效脚本恢复运行态（非生产部署）
+
+- 本机 Web 已切换为 `pxxis-prelaunch-20260713-web:bridge-reload-recovery-20260825`，继续只绑定 `127.0.0.1:3300`；正式容器 healthy，任务页 HTTP 200，静态产物包含 `EXTENSION_CONTEXT_INVALIDATED` 与“刷新当前页面”。
+- 候选容器先在 `127.0.0.1:3301` 通过任务页 HTTP 200。旧 Web 已停止保留为 `pxxis-prelaunch-20260713-web-1-before-bridge-reload-recovery-20260825`，未删除。
+- Compose 启动在创建容器前因当前 shell 缺少必填 `POSTGRES_PASSWORD` 而退出；没有读取或输出任何密钥。新 Web 随后按旧容器等价的无密钥运行参数直接启动。
+- API、PostgreSQL、数据库卷、Schema、业务数据及 `127.0.0.1:4300` 均未改变；这不是生产部署，未执行 migration、`db push`、平台采集、commit 或 push。
+- 本地 unpacked 已重建为 `0.2.4 / Bridge 8 / 36d8284e5dd7`，仍需用户在 Chrome 手动重载并刷新已打开页面。
+
+## 2026-08-25 本地 API-only Extension 稳定性制品（未部署）
+
+- 本地 unpacked Extension 已从当前工作树重建为 `0.2.4 / Bridge 8 / 0718bfb63416`。制品修复持续采集瞬时通信断开、本地推请求执行上下文，并移除本地推快照入口。
+- 编译产物已确认 Popup 不含“采集并上传数据总览”，Service Worker 包含固定本地推 API-only 适配器；重建后 Extension 149 项测试通过。
+- 未替换 Web/API 容器，既有本机 `task-auto-sync-bridge8-20260824` 运行态和内部 API 灰度开关保持不变。PostgreSQL、数据卷、Schema、业务数据均未触碰。
+- 该制品不是生产 zip、Chrome 商店上架或服务器部署；用户仍需在 Chrome 扩展管理页手动重新加载目录后验收。
+
+## 2026-08-24 本机任务页插件自动同步运行态（非生产部署）
+
+- 经用户明确授权，从当前工作树构建 `pxxis-prelaunch-20260713-api:task-auto-sync-bridge8-20260824` 与 `pxxis-prelaunch-20260713-web:task-auto-sync-bridge8-20260824`。构建前一次 BuildKit 因 Docker Hub IPv6 鉴权连接失败，未改运行容器；随后使用项目既有 Windows 兼容构建方式成功完成。
+- API/Web 候选容器先分别通过 HTTP 200；随后标准容器 `pxxis-prelaunch-20260713-api-1`、`pxxis-prelaunch-20260713-web-1` 完成切换并均为 healthy，端口仍只绑定 `127.0.0.1:4300/3300`。
+- 运行 API `/ready` 返回 database ready，`/version` 返回 `gitSha=task-auto-sync-bridge8-20260824`、产品 `0.2.4`、Schema `20260731_v035_ai_skill_diagnosis`、采集协议 `8`；运行 Web/API 共享 Bridge 协议均为 `8`，Web 静态产物包含 `SYNC_CURRENT_TASK`。
+- 旧容器已停止保留为 `pxxis-prelaunch-20260713-api-1-before-task-auto-sync-bridge8-20260824` 与 `pxxis-prelaunch-20260713-web-1-before-task-auto-sync-bridge8-20260824`。PostgreSQL 容器 `4b3e9e0a2120`、数据卷 `pxxis-prelaunch-20260713_postgres-data` 未替换；切换前后 Project `11`、CollectionTask `12`、CollectionRun `8`、DataSnapshot `62`、DecisionRun `1`。
+- 本机灰度配置原样复用：直播与本地推内部 API 开启，AI 诊断关闭；没有生成新密钥。Chrome 本机页面强制刷新后只读识别插件 `0.2.4 / Bridge 8 / c0fefa29d3f6`，协议错位已消除。
+- 本次不是生产部署，没有执行 migration、`db push`、业务数据写入、真实平台采集、commit 或 push。用户原任务页仍需刷新并人工确认同账号/异账号/持续采集等交互场景。
+
+## 2026-08-22 本地插件 Popup 路线状态修复（未部署）
+
+- 本地 unpacked Extension 已重建为指纹 `2d98d7dfa35e`。Popup 仅显示当前标签且路线匹配的 PULSE，避免运行中的直播会话被误显示为本地推 API 已采集。
+- 本轮未替换 API/Web 容器，没有修改 `LOCAL_PROMOTION_INTERNAL_API_ENABLED=true` 的本机灰度状态，也没有发起平台请求、迁移或业务数据写入。
+
+## 2026-08-22 本机启用本地推 API 持续采集（非生产部署）
+
+- 用户明确授权后，仅为本机 `127.0.0.1:4300` API 容器设置 `LOCAL_PROMOTION_INTERNAL_API_ENABLED=true`。`LIVE_SCREEN_INTERNAL_API_ENABLED=true` 保持既有本机灰度，`AI_DIAGNOSIS_ENABLED=false` 未改变；默认 Compose 值和其他环境仍为 false。
+- 从当前工作树构建并替换 API/Web 为 `pxxis-prelaunch-20260713-api:local-promotion-api-20260822`、`pxxis-prelaunch-20260713-web:local-promotion-api-20260822`，端口继续仅绑定 `127.0.0.1:4300/3300`。`/ready` 返回 database ready，Web 首页 HTTP 200。
+- 旧容器停止保留为 `pxxis-prelaunch-20260713-api-1-before-local-promotion-api-20260822` 与 `pxxis-prelaunch-20260713-web-1-before-local-promotion-api-20260822`。PostgreSQL、数据卷、Schema、迁移、Worker 和业务数据均未触碰。
+- 本次不是生产部署、发布、DNS 或流量切换，也没有启动插件采集或向巨量平台发起请求；仍需用户手动重载本地 unpacked 插件并显式开始。
+
+## 2026-08-22 本地推实时配置声明与本地制品（未部署）
+
+- `.env.example` 与 API Compose 服务新增 `LOCAL_PROMOTION_INTERNAL_API_ENABLED=false`；默认关闭，只有用户另行授权的本机验收可临时开启。API 测试进程强制覆盖为 false，避免开发机环境污染测试。
+- Compose 仅完成带占位环境变量的静态配置校验；没有构建或替换运行容器，没有修改现有本机 `LIVE_SCREEN_INTERNAL_API_ENABLED`、`AI_DIAGNOSIS_ENABLED` 或任何密钥。
+- 本地 unpacked Extension 已从当前工作区重建，指纹 `a8e4d60ef126`，仍需用户在 Chrome 手动重新加载。该制品不是生产 zip、商店上架或 GitHub Release。
+- 未执行 migration、`db push`、业务数据库写入、部署、发布、提交或推送。
+
 ## 2026-08-16 v0.2.4 发布制品与 GitHub Release（非商店上架）
 
 - 已从干净 `main`（`48b3758adf51`）构建生产版 zip 并通过制品安全校验，发布到 GitHub Release `v0.2.4`，资产为 zip 与 sha256。
@@ -443,3 +540,9 @@
 - Windows Docker Compose 批量 BuildKit 再次触发会话头 gRPC 错误；最终通过逐镜像 `docker build` 和带既有本机参数的 `docker compose up --no-build` 完成。运行日志已复核，API/Web 正常启动；迁移容器只执行 `prisma migrate deploy` 检查并报告 14 个 migration、无待应用项。
 - 本次未新增或执行 migration、`db push`、数据修复、历史快照改写或数据卷清理。任务 `cmslcimbi000loz077k91p0vq` 的旧缺值快照保留原样，必须通过新版插件主动复采生成新快照。
 - 本地 unpacked 已重建为指纹 `27f61909cf44`。Chrome 仍需用户手动重新加载该目录；在此之前真实浏览器继续运行旧构建，本次没有由 Codex 代替用户触发平台内部 API。
+
+## 2026-08-28 本机本地推契约 v2 API 切换（非生产部署）
+
+- 经用户明确授权，仅将本机 `127.0.0.1:4300` API 从 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5` 切换为 `pxxis-prelaunch-20260713-api:local-promotion-contract-v2-20260828`。
+- 新镜像先在临时 4301 容器验证数据库 ready 和共享契约 `2026-08-28.2 / 1.2.1`，再切换正式端口。正式容器 Docker health、API `/ready`、`/version` 均通过；3300 Web 继续返回 HTTP 200。
+- 旧 API 容器停止保留为 `pxxis-prelaunch-20260713-api-1-before-contract-v2-20260828`，可用于本机回退。PostgreSQL、数据卷、Schema、Web 容器、生产环境、DNS 与外部流量均未修改。

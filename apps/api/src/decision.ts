@@ -13,6 +13,7 @@ import {
   metricValueToRuleNumber,
   normalizeCollectionRouteKey,
   type ActionProposalDTO,
+  type CollectionRouteKey,
   type DecisionEngineInput,
   type DecisionEngineOutput,
   type RealtimeMetricFrame
@@ -30,7 +31,7 @@ import { isConfirmableMetricEvidence } from "./metric-validation.js";
 import { applyTableCellReviews, projectSnapshotTables } from "./table-cell-reviews.js";
 import {
   applyLiveOverviewRealtimeRouteCoverage,
-  liveOverviewRealtimeDecisionEvidence
+  realtimeDecisionEvidenceForFrame
 } from "./realtime-decision-evidence.js";
 
 export const strategyVersion = decisionRuleVersion;
@@ -117,16 +118,21 @@ export function buildDecisionInput(task: {
   }>;
 }, options: {
   realtimeFrame?: RealtimeMetricFrame | null;
+  realtimeFrames?: RealtimeMetricFrame[];
   now?: number;
 } = {}): DecisionEngineInput {
-  const realtimeDecisionEvidence = liveOverviewRealtimeDecisionEvidence(options.realtimeFrame, options.now);
-  if (!task.snapshots.length && !realtimeDecisionEvidence) {
+  const realtimeFrames = options.realtimeFrames || (options.realtimeFrame ? [options.realtimeFrame] : []);
+  const realtimeDecisionEvidences = realtimeFrames
+    .map((frame) => realtimeDecisionEvidenceForFrame(frame, options.now))
+    .filter((evidence): evidence is NonNullable<ReturnType<typeof realtimeDecisionEvidenceForFrame>> => Boolean(evidence))
+    .sort((left, right) => realtimeRoutePriority(left.summary.routeKey) - realtimeRoutePriority(right.summary.routeKey));
+  if (!task.snapshots.length && !realtimeDecisionEvidences.length) {
     throw new Error("SNAPSHOT_REQUIRED");
   }
   const latestCollectionRun = task.collectionRuns?.[0];
   const collectionRun = latestCollectionRun;
   const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, collectionRun?.id);
-  const realtimeCoveredRoutes = new Set(realtimeDecisionEvidence ? ["LIVE_DATA_SCREEN"] : []);
+  const realtimeCoveredRoutes = new Set(realtimeDecisionEvidences.map((evidence) => evidence.summary.routeKey));
   const reviewSnapshots = selectedSnapshots.filter((snapshot) => !realtimeCoveredRoutes.has(normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)));
   const selectedSnapshotIds = new Set(reviewSnapshots.map((snapshot) => snapshot.id));
   const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
@@ -140,21 +146,27 @@ export function buildDecisionInput(task: {
     && !hasPendingMetrics
     && tableReview.pendingCount === 0
     && !hasUntrustedEvidence;
-  const collectionQuality = collectionRun
+  const baseCollectionQuality = collectionRun
     ? assessCollectionRunQuality(collectionRun.requiredRoutesJson, collectionRun.snapshots, collectionRun.routeHealth)
     : undefined;
   const reviewedEvidenceMetrics = useReviewedEvidence ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics).map((metric) => ({
     ...metric,
     value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value
   })) : [];
-  const decisionMetrics = mergeRealtimeDecisionMetrics(reviewedEvidenceMetrics, realtimeDecisionEvidence?.metrics || []);
+  const realtimeMetrics = realtimeDecisionEvidences.flatMap((evidence) => evidence.metrics);
+  const decisionMetrics = mergeRealtimeDecisionMetrics(reviewedEvidenceMetrics, realtimeMetrics);
   const reviewCoverageValue = mergeRealtimeReviewCoverage(
     latestReviewedMetrics.length || tableReview.totalCount
       ? mergeReviewCoverage(reviewCoverage(latestReviewedMetrics), tableReview)
       : undefined,
-    realtimeDecisionEvidence?.metrics.length || 0
+    realtimeMetrics.length
   );
-  const realtimeOnly = Boolean(realtimeDecisionEvidence && !useReviewedEvidence);
+  const realtimeOnly = Boolean(realtimeDecisionEvidences.length && !useReviewedEvidence);
+  const realtimeEvidenceItems = realtimeDecisionEvidences.map((evidence) => evidence.summary);
+  const collectionQuality = realtimeEvidenceItems.reduce(
+    (quality, evidence) => applyLiveOverviewRealtimeRouteCoverage(quality, evidence, options.now),
+    baseCollectionQuality
+  );
 
   return {
     projectId: task.project.id,
@@ -184,11 +196,12 @@ export function buildDecisionInput(task: {
     }) : [],
     visibleText: "",
     networkJsonSummary: [],
-    dataReviewStatus: useReviewedEvidence || realtimeDecisionEvidence ? "REVIEWED" : "UNREVIEWED",
+    dataReviewStatus: useReviewedEvidence || realtimeDecisionEvidences.length ? "REVIEWED" : "UNREVIEWED",
     reviewCoverage: reviewCoverageValue,
     metricLayer: realtimeOnly ? "REALTIME_API" : "REVIEWED_METRIC",
-    collectionQuality: applyLiveOverviewRealtimeRouteCoverage(collectionQuality, realtimeDecisionEvidence?.summary, options.now),
-    ...(realtimeDecisionEvidence ? { realtimeEvidence: realtimeDecisionEvidence.summary } : {})
+    collectionQuality,
+    ...(realtimeEvidenceItems[0] ? { realtimeEvidence: realtimeEvidenceItems[0] } : {}),
+    ...(realtimeEvidenceItems.length ? { realtimeEvidenceItems } : {})
   };
 }
 
@@ -336,6 +349,12 @@ function mergeRealtimeDecisionMetrics(reviewedMetrics: DecisionEngineInput["metr
     ...realtimeMetrics,
     ...reviewedMetrics.filter((metric) => !realtimeKeys.has(String(metric.key)))
   ];
+}
+
+function realtimeRoutePriority(routeKey: CollectionRouteKey) {
+  // 投放总览是账户级经营口径；与直播现场重名时，确定性规则优先读取投放总览，
+  // 同时保留带 routeKey 的两份证据供 AI 分路线解释。
+  return routeKey === "LOCAL_PROMOTION_DASHBOARD" ? 0 : routeKey === "LIVE_DATA_SCREEN" ? 1 : 2;
 }
 
 function projectDecisionTables(snapshot: {

@@ -6,6 +6,7 @@ import {
 import {
   livePulseButtonState,
   livePulseMetricCoverage,
+  localPromotionPulseMetricCoverage,
   livePulseOutcomeMessage,
   livePulseStatusText,
   normalizeLivePulseMetricKeys,
@@ -97,6 +98,15 @@ describe("live pulse status", () => {
       keys: [...liveScreenPulseCoreMetricKeys],
       count: 7,
       total: 7,
+      presentLabels: [
+        "直播间成交金额",
+        "在线人数",
+        "人均观看时长",
+        "千次观看成交金额",
+        "成交订单数",
+        "成交人数",
+        "商品转化率"
+      ],
       missingLabels: []
     });
   });
@@ -126,10 +136,25 @@ describe("live pulse status", () => {
     });
   });
 
+  it("reports local promotion coverage using the thirteen target metrics", () => {
+    expect(localPromotionPulseMetricCoverage([
+      "gmv",
+      "full_domain_pay_roi",
+      "gmv",
+      "unknown_metric"
+    ])).toMatchObject({
+      count: 2,
+      total: 13,
+      presentLabels: ["整体成交金额(元)", "全域支付ROI"],
+      missingLabels: expect.arrayContaining(["全域消耗(元)", "累计观看次数"])
+    });
+  });
+
   it("shows the checked final reason after three consecutive failures", () => {
     const outcome = {
       taskId: "task-1",
       reason: "THREE_CONSECUTIVE_FAILURES",
+      endpoint: "statQuery",
       lastFailureReason: "PULSE_METRICS_MISSING",
       occurredAt: "2026-08-11T09:30:00.000Z",
       failure: true,
@@ -137,9 +162,44 @@ describe("live pulse status", () => {
     } as const;
 
     expect(livePulseOutcomeMessage(outcome)).toContain("API 未返回可用白名单指标");
+    expect(livePulseOutcomeMessage(outcome)).toContain("最后端点：statQuery");
     expect(safeLivePulseFailureReason("PULSE_METRICS_MISSING")).toBe("PULSE_METRICS_MISSING");
     expect(safeLivePulseFailureReason("PULSE_KEY_INDEX_NO_USABLE_METRICS")).toBe("PULSE_KEY_INDEX_NO_USABLE_METRICS");
+    expect(safeLivePulseFailureReason("NO_USABLE_METRICS")).toBe("NO_USABLE_METRICS");
     expect(safeLivePulseFailureReason("response body: secret=123")).toBeUndefined();
+  });
+
+  it("keeps immediate safety-stop endpoints actionable", () => {
+    const base = {
+      taskId: "task-1",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD" as const,
+      tabId: 10,
+      occurredAt: "2026-08-26T00:00:00.000Z",
+      failure: true,
+      ...outcomeVersion
+    };
+
+    expect(livePulseOutcomeMessage({ ...base, reason: "RATE_LIMITED", endpoint: "metric-pulses" }))
+      .toContain("metric-pulses");
+    expect(livePulseOutcomeMessage({ ...base, reason: "BYTE_LIMIT", endpoint: "statQuery" }))
+      .toContain("statQuery");
+  });
+
+  it("keeps identity and page-script stops actionable", () => {
+    expect(livePulseOutcomeMessage({
+      taskId: "task-1",
+      reason: "IDENTITY_CHANGED",
+      occurredAt: "2026-08-11T09:30:00.000Z",
+      failure: true,
+      ...outcomeVersion
+    })).toContain("广告身份已变化");
+    expect(livePulseOutcomeMessage({
+      taskId: "task-1",
+      reason: "CONTENT_SCRIPT_UNAVAILABLE",
+      occurredAt: "2026-08-11T09:30:00.000Z",
+      failure: true,
+      ...outcomeVersion
+    })).toContain("刷新平台页");
   });
 
   it("drops a persisted failure from an older extension build", () => {
@@ -170,5 +230,37 @@ describe("live pulse status", () => {
       failure: true,
       ...outcomeVersion
     });
+  });
+
+  it("keeps an outcome scoped to its source route and tab", () => {
+    expect(parseLivePulseOutcome({
+      taskId: "task-1",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      tabId: 42,
+      reason: "PAGE_NAVIGATED",
+      occurredAt: "2026-08-11T10:00:00.000Z",
+      failure: true,
+      ...outcomeVersion
+    }, {
+      ...outcomeVersion,
+      endpointKeys: ["pageMetrics", "statQuery"]
+    })).toMatchObject({
+      taskId: "task-1",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      tabId: 42,
+      reason: "PAGE_NAVIGATED"
+    });
+    expect(parseLivePulseOutcome({
+      taskId: "task-1",
+      routeKey: "OTHER_ROUTE",
+      tabId: 42,
+      reason: "PAGE_NAVIGATED",
+      occurredAt: "2026-08-11T10:00:00.000Z",
+      failure: true,
+      ...outcomeVersion
+    }, {
+      ...outcomeVersion,
+      endpointKeys: ["pageMetrics", "statQuery"]
+    })).toBeNull();
   });
 });

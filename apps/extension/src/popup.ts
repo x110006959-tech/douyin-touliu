@@ -1,6 +1,6 @@
 import type { CollectionRouteKey, CollectionSnapshotPayload } from "@douyin-local-life/shared";
 import { collectionRouteLabels, normalizeCollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
-import type { ExtensionConfig, ExtensionContext, ExtensionTask } from "./extension-context";
+import type { ExtensionConfig, ExtensionContext } from "./extension-context";
 import { MESSAGE } from "./messages";
 import { isSupportedExtensionCollectionUrl } from "./safety";
 import {
@@ -9,8 +9,10 @@ import {
   livePulseReasonText,
   livePulseStatusText,
   livePulseMetricCoverage,
+  localPromotionPulseMetricCoverage,
   type LivePulseDisplayState
 } from "./live-pulse-status";
+import { localPromotionPulseCadenceMs } from "./live-pulse-schedule";
 
 
 const els = {
@@ -30,8 +32,6 @@ const els = {
   pairingPanel: document.getElementById("pairingPanel")!,
   pairingConfirmationPanel: document.getElementById("pairingConfirmationPanel")!,
   taskPanel: document.getElementById("taskPanel")!,
-  boundPanel: document.getElementById("boundPanel")!,
-  captureResult: document.getElementById("captureResult")!,
   pairingCode: document.getElementById("pairingCode") as HTMLInputElement,
   apiBaseUrl: document.getElementById("apiBaseUrl") as HTMLInputElement,
   pairBtn: document.getElementById("pairBtn") as HTMLButtonElement,
@@ -44,25 +44,37 @@ const els = {
   taskSelect: document.getElementById("taskSelect") as HTMLSelectElement,
   selectTaskBtn: document.getElementById("selectTaskBtn") as HTMLButtonElement,
   clearPairingBtn: document.getElementById("clearPairingBtn") as HTMLButtonElement,
+  logs: document.getElementById("logs")!,
+  copyLogsBtn: document.getElementById("copyLogsBtn") as HTMLButtonElement,
   sidePanelBtn: document.getElementById("sidePanelBtn") as HTMLButtonElement,
-  captureBtn: document.getElementById("captureBtn") as HTMLButtonElement,
   livePulsePanel: document.getElementById("livePulsePanel")!,
+  livePulseTitle: document.getElementById("livePulseTitle")!,
   livePulseStatus: document.getElementById("livePulseStatus")!,
   livePulseData: document.getElementById("livePulseData")!,
   livePulseUpdatedAt: document.getElementById("livePulseUpdatedAt")!,
   livePulseCoverage: document.getElementById("livePulseCoverage")!,
+  livePulseCollected: document.getElementById("livePulseCollected")!,
   livePulseMissing: document.getElementById("livePulseMissing")!,
   livePulseErrorRow: document.getElementById("livePulseErrorRow")!,
   livePulseLastError: document.getElementById("livePulseLastError")!,
   livePulseBtn: document.getElementById("livePulseBtn") as HTMLButtonElement,
-  nextRoute: document.getElementById("nextRoute")!,
   refreshBtn: document.getElementById("refreshBtn") as HTMLButtonElement,
   clearBtn: document.getElementById("clearBtn") as HTMLButtonElement
 };
 let pairingError: string | null = null;
 let livePulsePairingVerified = false;
-let livePulseTarget: { tabId: number; currentUrl: string } | null = null;
+let livePulseTarget: { tabId: number; currentUrl: string; routeKey: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD" } | null = null;
 let livePulseActive = false;
+let currentPagePulse: PopupState["livePulse"] = undefined;
+let currentPagePulseRoute: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD" | null = null;
+let popupRenderGeneration = 0;
+let livePulseActionInFlight = false;
+
+type PopupPulse = LivePulseDisplayState & {
+  routeKey?: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD";
+  tabId?: number;
+  lastSuccessAt?: string | null;
+};
 
 type PopupState = {
   config?: ExtensionConfig;
@@ -75,9 +87,8 @@ type PopupState = {
     routeKey?: CollectionRouteKey;
   } | null;
   activeCollectionSession?: { collectionRunId?: string } | null;
-  livePulse?: (LivePulseDisplayState & {
-    lastSuccessAt?: string | null;
-  });
+  livePulse?: PopupPulse;
+  livePulses?: PopupPulse[];
   context?: ExtensionContext | null;
   hasToken?: boolean;
   pendingPairingConfirmation?: {
@@ -86,6 +97,7 @@ type PopupState = {
     task?: { id: string; pageTitle: string | null; projectName: string } | null;
     expiresAt?: string;
   } | null;
+  logs?: Array<{ action?: unknown; detail?: unknown; createdAt?: unknown }>;
 };
 
 type PopupRuntimeResponse = PopupState & {
@@ -110,6 +122,8 @@ type PageContextResponse = {
   livePulseEligible?: boolean;
   livePulseRoomId?: string | null;
   livePulseFailureCode?: "ROOM_ID_UNAVAILABLE" | null;
+  localPromotionPulseEligible?: boolean;
+  localPromotionPulseFailureCode?: "IDENTITY_UNAVAILABLE" | null;
 };
 
 void render();
@@ -120,10 +134,10 @@ els.cancelPairBtn.addEventListener("click", cancelPairing);
 els.selectTaskBtn.addEventListener("click", selectTask);
 els.clearPairingBtn.addEventListener("click", clearPairing);
 els.sidePanelBtn.addEventListener("click", openSidePanel);
-els.captureBtn.addEventListener("click", captureAndUpload);
 els.livePulseBtn.addEventListener("click", toggleLivePulse);
 els.refreshBtn.addEventListener("click", render);
 els.clearBtn.addEventListener("click", clearSnapshot);
+els.copyLogsBtn.addEventListener("click", copyRecentCollectionLogs);
 window.setInterval(() => void refreshLivePulseStatus(), 1_000);
 
 async function activeTab() {
@@ -132,7 +146,8 @@ async function activeTab() {
 }
 
 async function render() {
-  setStatus("正在检查插件状态", "neutral");
+  const renderGeneration = ++popupRenderGeneration;
+  if (!livePulseActionInFlight) setStatus("正在检查插件状态", "neutral");
   const [tabResult, stateResult] = await Promise.allSettled([
     activeTab(),
     runtimeMessage({ type: MESSAGE.GET_STATE })
@@ -154,6 +169,11 @@ async function render() {
     : null;
   const routeKey = normalizeCollectionRouteKey(pageContext?.routeKey || currentActivity?.routeKey);
 
+  // Popup renders can overlap with a start/stop request. Only the newest render
+  // may write controls; an older verification response must not roll the
+  // button back to the state it observed before the user's click.
+  if (renderGeneration !== popupRenderGeneration) return;
+
   els.currentUrl.textContent = url || "无法读取，请重新打开插件";
   const currentPageType = pageTypeLabel(pageContext?.pageType || currentActivity?.pageType || inferPageTypeFromUrl(url));
   const currentRouteLabel = routeLabel(routeKey);
@@ -173,19 +193,24 @@ async function render() {
         routeUploadState: state.routeUploadState || {}
       }, null, 2)
     : "暂无本地快照";
+  els.logs.textContent = formatRecentCollectionLogs(state?.logs);
   renderTaskOptions(state?.context, state?.config?.collectionTaskId);
-  const boundTask = currentTask(state);
-
   const hasToken = Boolean(state?.hasToken);
   const pendingPairing = state?.pendingPairingConfirmation;
   const hasTask = Boolean(state?.config?.collectionTaskId);
   const pairingVerified = hasToken && hasTask && Boolean(verification?.ok);
-  const isExactLiveScreen = /^https:\/\/eos\.douyin\.com\/dp\/liveScreen(?:[/?#]|$)/.test(url);
-  const isLocalPromotionPage = /^https:\/\/localads\.chengzijianzhan\.cn\/lamp\/pc\/liveboard2(?:[/?#]|$)/.test(url);
+  const pagePulseRoute = pulseRouteForUrl(url);
+  const isExactLiveScreen = pagePulseRoute === "LIVE_DATA_SCREEN";
+  const isLocalPromotionPage = pagePulseRoute === "LOCAL_PROMOTION_DASHBOARD";
   const internalApiEnabled = state?.context?.liveScreenInternalApi?.enabled === true;
+  const localPromotionInternalApiEnabled = state?.context?.localPromotionInternalApi?.enabled === true;
   const livePulseRoomReady = pageContext?.livePulseEligible === true;
+  const localPromotionIdentityReady = pageContext?.localPromotionPulseEligible === true;
   const isLiveApiPage = hasToken && hasTask && isExactLiveScreen;
-  const apiContinuousAvailable = isLiveApiPage && internalApiEnabled && livePulseRoomReady;
+  const isLocalPromotionApiPage = hasToken && hasTask && isLocalPromotionPage;
+  const pulseTargetRoute = isLiveApiPage ? "LIVE_DATA_SCREEN" : isLocalPromotionApiPage ? "LOCAL_PROMOTION_DASHBOARD" : null;
+  const apiContinuousAvailable = (isLiveApiPage && internalApiEnabled && livePulseRoomReady)
+    || (isLocalPromotionApiPage && localPromotionInternalApiEnabled && localPromotionIdentityReady);
   els.hasToken.textContent = !hasToken
     ? "尚未配对"
     : !hasTask
@@ -197,21 +222,21 @@ async function render() {
   // A new task pairing still requires an explicit confirmation when the account is already paired.
   toggle(els.pairingConfirmationPanel, Boolean(pendingPairing));
   toggle(els.taskPanel, hasToken && !hasTask);
-  toggle(els.boundPanel, hasToken && hasTask && isLocalPromotionPage);
-  els.captureBtn.disabled = !isLocalPromotionPage || !hasTask || !pairingVerified;
   livePulsePairingVerified = pairingVerified;
-  livePulseTarget = tab?.id && apiContinuousAvailable ? { tabId: tab.id, currentUrl: url } : null;
-  livePulseActive = state?.livePulse?.active === true;
-  els.captureBtn.textContent = "采集并上传数据总览";
-  toggle(els.captureBtn, isLocalPromotionPage);
-  toggle(els.livePulsePanel, isLiveApiPage);
+  livePulseTarget = tab?.id && apiContinuousAvailable && pulseTargetRoute ? { tabId: tab.id, currentUrl: url, routeKey: pulseTargetRoute } : null;
+  currentPagePulseRoute = pagePulseRoute;
+  currentPagePulse = pulseForCurrentPage(state?.livePulse, tab?.id, pagePulseRoute, state?.livePulses);
+  livePulseActive = currentPagePulse?.active === true;
+  toggle(els.livePulsePanel, isLiveApiPage || isLocalPromotionApiPage);
+  els.livePulseTitle.textContent = isLocalPromotionPage ? "巨量本地推 API 采集" : "直播 API 采集";
   els.collectionNotice.textContent = isLiveApiPage
     ? "直播采集只调用已批准的平台内部 API，只上传白名单指标，不读取 DOM 数值补齐。"
-    : "本地推采集只读取当前数据总览的可见 DOM、真实表格和白名单指标。";
-  els.livePulseStatus.textContent = livePulseStatusText(state?.livePulse, internalApiEnabled);
-  renderLivePulseData(state?.livePulse);
-  syncLivePulseButton(state);
-  els.nextRoute.textContent = nextPendingRouteLabel(state);
+    : "本地推只调用已批准的平台内部 API 持续采集，不读取 DOM 数值，也不创建快照。";
+  const currentPulseRoute = pagePulseRoute || pulseTargetRoute;
+  const currentApiEnabled = currentPulseRoute === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionInternalApiEnabled : internalApiEnabled;
+  els.livePulseStatus.textContent = livePulseStatusText(currentPagePulse, currentApiEnabled);
+  renderLivePulseData(currentPagePulse, currentPulseRoute);
+  syncLivePulseButton(currentPagePulse, currentApiEnabled);
   els.pendingPairServer.textContent = pendingPairing?.apiBaseUrl || "-";
   els.pendingPairAccount.textContent = pendingPairing
     ? pendingPairing.account.accountName
@@ -235,8 +260,10 @@ async function render() {
     setStatus("请打开巨量本地推数据页或直播数据大屏", "warning");
   } else if (isExactLiveScreen && pageContext?.livePulseFailureCode === "ROOM_ID_UNAVAILABLE") {
     setStatus("当前直播页未提供可信 room_id；未启动 API 采集，也不会改用 DOM。请确认已打开具体直播场次。", "error");
-  } else if (state?.livePulse?.lastOutcome?.failure) {
-    setStatus(livePulseOutcomeMessage(state.livePulse.lastOutcome), "error");
+  } else if (isLocalPromotionPage && pageContext?.localPromotionPulseFailureCode === "IDENTITY_UNAVAILABLE") {
+    setStatus("当前本地推页面缺少可信广告身份；API 持续采集保持关闭，也不会改用 DOM 快照。", "error");
+  } else if (currentPagePulse?.lastOutcome?.failure) {
+    setStatus(livePulseOutcomeMessage(currentPagePulse.lastOutcome), "error");
   } else {
     setStatus("插件、账号和任务均正常，可以开始采集", "ready");
   }
@@ -245,16 +272,27 @@ async function render() {
 let livePulseStatusRefreshInFlight = false;
 
 async function refreshLivePulseStatus() {
-  if (document.visibilityState !== "visible" || livePulseStatusRefreshInFlight) return;
+  if (document.visibilityState !== "visible" || livePulseStatusRefreshInFlight || livePulseActionInFlight) return;
+  const refreshGeneration = popupRenderGeneration;
   livePulseStatusRefreshInFlight = true;
   try {
-    const state = await runtimeMessage({ type: MESSAGE.GET_STATE });
-    const internalApiEnabled = state?.context?.liveScreenInternalApi?.enabled === true;
-    els.livePulseStatus.textContent = livePulseStatusText(state?.livePulse, internalApiEnabled);
-    renderLivePulseData(state?.livePulse);
-    syncLivePulseButton(state);
-    if (state?.livePulse?.lastOutcome?.failure) {
-      setStatus(livePulseOutcomeMessage(state.livePulse.lastOutcome), "error");
+    const [state, tab] = await Promise.all([runtimeMessage({ type: MESSAGE.GET_STATE }), activeTab()]);
+    if (livePulseActionInFlight || refreshGeneration !== popupRenderGeneration) return;
+    const routeKey = pulseRouteForUrl(tab?.url || "");
+    if (routeKey !== currentPagePulseRoute) {
+      await render();
+      return;
+    }
+    currentPagePulse = pulseForCurrentPage(state?.livePulse, tab?.id, routeKey, state?.livePulses);
+    livePulseActive = currentPagePulse?.active === true;
+    const internalApiEnabled = routeKey === "LOCAL_PROMOTION_DASHBOARD"
+      ? state?.context?.localPromotionInternalApi?.enabled === true
+      : state?.context?.liveScreenInternalApi?.enabled === true;
+    els.livePulseStatus.textContent = livePulseStatusText(currentPagePulse, internalApiEnabled);
+    renderLivePulseData(currentPagePulse, routeKey);
+    syncLivePulseButton(currentPagePulse, internalApiEnabled);
+    if (currentPagePulse?.lastOutcome?.failure) {
+      setStatus(livePulseOutcomeMessage(currentPagePulse.lastOutcome), "error");
     }
   } catch {
     // The main render path provides the actionable recovery message. Polling is best-effort only.
@@ -263,14 +301,13 @@ async function refreshLivePulseStatus() {
   }
 }
 
-function syncLivePulseButton(state: PopupState | null) {
+function syncLivePulseButton(livePulse: PopupState["livePulse"], internalApiEnabled: boolean) {
   const pairingVerified = livePulsePairingVerified
-    && state?.hasToken === true
-    && Boolean(state.config?.collectionTaskId);
+    && Boolean(livePulseTarget || livePulse?.active);
   const buttonState = livePulseButtonState(
-    state?.livePulse,
+    livePulse,
     pairingVerified,
-    state?.context?.liveScreenInternalApi?.enabled === true
+    internalApiEnabled
   );
   els.livePulseBtn.textContent = buttonState.text;
   // Starting also requires the exact page context to contain a trusted room ID.
@@ -278,17 +315,24 @@ function syncLivePulseButton(state: PopupState | null) {
   els.livePulseBtn.disabled = buttonState.disabled || (!livePulseActive && !livePulseTarget);
 }
 
-function renderLivePulseData(livePulse: PopupState["livePulse"]) {
+function renderLivePulseData(livePulse: PopupState["livePulse"], routeKey?: string | null) {
   toggle(els.livePulseData, livePulse?.active === true || Boolean(livePulse?.lastSuccessAt || livePulse?.lastFailureReason || livePulse?.lastOutcome?.failure));
   els.livePulseUpdatedAt.textContent = livePulse?.lastSuccessAt
     ? `最近 ${new Date(livePulse.lastSuccessAt).toLocaleTimeString("zh-CN", { hour12: false })} · 累计 ${livePulse.successCount || 0} 次`
     : "等待首次上传";
-  const coverage = livePulseMetricCoverage(livePulse?.lastMetricKeys);
+  const coverage = routeKey === "LOCAL_PROMOTION_DASHBOARD"
+    ? localPromotionPulseMetricCoverage(livePulse?.lastMetricKeys)
+    : livePulseMetricCoverage(livePulse?.lastMetricKeys);
   els.livePulseCoverage.textContent = `核心指标 ${coverage.count}/${coverage.total}`;
+  const hasObservation = Boolean(livePulse?.lastSuccessAt || livePulse?.lastFailureReason || livePulse?.lastOutcome?.failure);
+  els.livePulseCollected.textContent = coverage.presentLabels.length
+    ? `已采到：${coverage.presentLabels.join("、")}（平台 API）`
+    : "本轮未采到可信指标";
+  toggle(els.livePulseCollected, hasObservation && coverage.presentLabels.length > 0);
   els.livePulseMissing.textContent = coverage.missingLabels.length
-    ? `缺少：${coverage.missingLabels.join("、")}`
-    : "7 项核心指标已齐全";
-  toggle(els.livePulseMissing, Boolean(livePulse?.lastSuccessAt));
+    ? `${livePulse?.lastSuccessAt ? "缺少" : "本轮未采到"}：${coverage.missingLabels.join("、")}`
+    : `${coverage.total} 项核心指标已齐全`;
+  toggle(els.livePulseMissing, hasObservation);
   const lastError = livePulse?.lastFailureReason
     ? livePulseReasonText(livePulse.lastFailureReason)
     : livePulse?.lastOutcome?.failure
@@ -298,80 +342,144 @@ function renderLivePulseData(livePulse: PopupState["livePulse"]) {
   toggle(els.livePulseErrorRow, lastError !== "-");
 }
 
+function formatRecentCollectionLogs(logs: PopupState["logs"]) {
+  const entries = (logs || [])
+    .filter((entry) => typeof entry.action === "string" && /^(?:live_pulse|local_promotion_pulse)\./.test(entry.action))
+    .slice(0, 10)
+    .map((entry) => {
+      const timestamp = typeof entry.createdAt === "string" ? new Date(entry.createdAt).toLocaleTimeString("zh-CN", { hour12: false }) : "--:--:--";
+      const action = String(entry.action);
+      const detail = formatSafeLogDetail(entry.detail);
+      return `${timestamp} ${action}${detail ? ` · ${detail}` : ""}`;
+    });
+  return entries.length ? entries.join("\n") : "暂无采集日志";
+}
+
+async function copyRecentCollectionLogs() {
+  const text = els.logs.textContent || "暂无采集日志";
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("采集日志已复制，可直接粘贴给我", "ready");
+  } catch {
+    setStatus("复制失败，请直接截图高级设置中的采集日志", "warning");
+  }
+}
+
+function formatSafeLogDetail(detail: unknown) {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return "";
+  const record = detail as Record<string, unknown>;
+  const allowedKeys = ["endpoint", "reason", "lastFailureReason", "consecutiveFailures", "metricCount", "status", "ok"];
+  const scalarParts = allowedKeys
+    .filter((key) => typeof record[key] === "string" || typeof record[key] === "number" || typeof record[key] === "boolean")
+    .map((key) => {
+      const value = String(record[key]);
+      const display = key === "reason" || key === "lastFailureReason"
+        ? formatCollectionReason(value)
+        : value;
+      return `${key}=${display}`;
+    })
+  const missing = Array.isArray(record.missingMetricKeys)
+    ? record.missingMetricKeys.filter((key): key is string => typeof key === "string").slice(0, 8)
+    : [];
+  if (missing.length) scalarParts.push(`missing=${missing.join(",")}`);
+  const fallback = record.statQueryFallback;
+  if (fallback && typeof fallback === "object" && !Array.isArray(fallback)) {
+    const fallbackRecord = fallback as Record<string, unknown>;
+    const succeeded = fallbackRecord.succeeded === true ? "success" : "failed";
+    const failureReason = typeof fallbackRecord.failureReason === "string"
+      ? `/${formatCollectionReason(fallbackRecord.failureReason)}`
+      : "";
+    scalarParts.push(`v3=${succeeded}${failureReason}`);
+  }
+  const groups = Array.isArray(record.metadataGroups)
+    ? record.metadataGroups
+      .filter((group): group is { groupKey?: unknown; labels?: unknown } => Boolean(group) && typeof group === "object")
+      .slice(0, 6)
+      .map((group) => {
+        const groupKey = typeof group.groupKey === "string" ? group.groupKey : "?";
+        const labels = Array.isArray(group.labels)
+          ? group.labels.filter((label): label is string => typeof label === "string").slice(0, 12)
+          : [];
+        return `${groupKey}[${labels.join("|")}]`;
+      })
+    : [];
+  if (groups.length) scalarParts.push(`labels=${groups.join(" ")}`);
+  const endpoints = Array.isArray(record.endpointStatuses)
+    ? record.endpointStatuses
+      .filter((item): item is { endpoint?: unknown; status?: unknown; reason?: unknown } => Boolean(item) && typeof item === "object")
+      .slice(0, 3)
+      .map((item) => {
+        const endpoint = typeof item.endpoint === "string" ? item.endpoint : "?";
+        const status = typeof item.status === "string" ? item.status : "?";
+        const reason = typeof item.reason === "string" ? `/${formatCollectionReason(item.reason)}` : "";
+        return `${endpoint}=${status}${reason}`;
+      })
+    : [];
+  if (endpoints.length) scalarParts.push(`endpoints=${endpoints.join(",")}`);
+  return scalarParts.join(" ");
+}
+
+function formatCollectionReason(reason: string) {
+  if (reason === "V3_FALLBACK") return "已切换备用 v3 接口（V3_FALLBACK）";
+  if (reason === "PARTIAL_METRICS") return "部分可信指标成功（PARTIAL_METRICS）";
+  return livePulseReasonText(reason);
+}
+
 async function toggleLivePulse() {
+  if (livePulseActionInFlight) return;
   const target = livePulseTarget;
   const active = livePulseActive;
   if (!active && !target) {
-    setStatus("实时脉冲仅支持当前直播数据大屏页面", "error");
+    setStatus("实时脉冲仅支持当前直播数据大屏或本地推数据总览精确页面", "error");
     return;
   }
+  livePulseActionInFlight = true;
+  // Invalidate any render that started before this click. Its eventual
+  // response is stale even if it finishes after the start/stop request.
+  popupRenderGeneration += 1;
   els.livePulseBtn.disabled = true;
   let actionMessage = "";
   let actionTone: "ready" | "error" = "ready";
   try {
+    const routeKey = target?.routeKey || currentPagePulseRoute;
+    if (!routeKey) {
+      actionMessage = "当前页面不是可持续采集的路线";
+      actionTone = "error";
+      return;
+    }
+    const localPromotion = routeKey === "LOCAL_PROMOTION_DASHBOARD";
     const response = await runtimeMessage({
-      type: active ? MESSAGE.STOP_LIVE_PULSE : MESSAGE.START_LIVE_PULSE,
-      payload: active ? {} : target
+      type: active
+        ? localPromotion ? MESSAGE.STOP_LOCAL_PROMOTION_PULSE : MESSAGE.STOP_LIVE_PULSE
+        : localPromotion ? MESSAGE.START_LOCAL_PROMOTION_PULSE : MESSAGE.START_LIVE_PULSE,
+      payload: active ? { tabId: currentPagePulse?.tabId || target?.tabId } : target
     });
     actionMessage = response?.ok
       ? active
           ? "API 持续采集已停止"
-          : "API 持续采集已开启；插件会在后台持续上传，关闭弹窗不会停止，网页端实时数据栏会持续更新"
+          : localPromotion
+            ? `本地推 API 持续采集已开启；为避免平台限流，每 ${localPromotionPulseCadenceMs / 1_000} 秒采集一次，关闭弹窗不会停止。`
+            : "API 持续采集已开启；插件会在后台持续上传，关闭弹窗不会停止，网页端实时数据栏会持续更新"
       : chineseError(response?.error, "API 持续采集状态更新失败");
     actionTone = response?.ok ? "ready" : "error";
   } catch {
     actionMessage = "API 持续采集通信中断，请重新加载插件";
     actionTone = "error";
   } finally {
-    await render();
-    setStatus(actionMessage, actionTone);
-  }
-}
-
-async function captureAndUpload() {
-  const tab = await activeTab().catch(() => undefined);
-  if (!tab?.id || !isCollectable(tab.url || "")) {
-    setStatus("当前页面不在允许采集的域名白名单中", "error");
-    return;
-  }
-  els.captureBtn.disabled = true;
-  els.captureBtn.textContent = "正在采集并上传...";
-  hideCaptureResult();
-  try {
-    const response = await runtimeMessage({
-      type: MESSAGE.CAPTURE_AND_UPLOAD,
-      payload: {
-        tabId: tab.id,
-        currentUrl: tab.url || ""
+    try {
+      await render();
+      // A start request returns before the content script finishes its first
+      // pulse. If that first pulse has already stopped the session, retain its
+      // fixed endpoint/reason instead of overwriting it with a success toast.
+      if (currentPagePulse?.lastOutcome?.failure) {
+        setStatus(livePulseOutcomeMessage(currentPagePulse.lastOutcome), "error");
+      } else if (actionMessage) {
+        setStatus(actionMessage, actionTone);
       }
-    });
-    if (!response?.ok) {
-      setStatus(chineseError(response?.error, "采集或上传失败，请稍后重试"), "error");
-      showCaptureResult(chineseError(response?.error, "采集或上传失败，请稍后重试"), false);
-      return;
+    } finally {
+      livePulseActionInFlight = false;
     }
-    const skippedMessage = response.skipped ? "数据未变化，已保留上次上传" : "快照已上传";
-    const recognizedMetricCount = response.recognizedMetricCount ?? response.metricCount ?? 0;
-    const missingMetricCount = response.missingMetricCount ?? Math.max(0, recognizedMetricCount - (response.metricCount || 0));
-    setStatus("采集完成，网页任务页会自动更新", "ready");
-    showCaptureResult(
-      `${skippedMessage}；${captureSourceLabel(response.captureSource, response.apiEndpointSuccessCount)}；识别 ${recognizedMetricCount} 个字段，其中 ${response.metricCount || 0} 个有原值、${missingMetricCount} 个缺失；覆盖率 ${formatPercent(response.coverageRatio)}。`,
-      true
-    );
-  } catch {
-    setStatus("插件通信中断，请重新加载插件和目标页面", "error");
-    showCaptureResult("插件通信中断，请重新加载插件和目标页面。", false);
-  } finally {
-    els.captureBtn.textContent = "采集并上传数据总览";
-    await render();
   }
-}
-
-function captureSourceLabel(source: PopupRuntimeResponse["captureSource"], apiEndpointSuccessCount = 0) {
-  if (source === "API") return `API 采集（${apiEndpointSuccessCount} 个端点成功）`;
-  if (source === "API_AND_DOM") return `API 优先并保留 DOM 对账（${apiEndpointSuccessCount} 个端点成功）`;
-  if (source === "API_FAILED_DOM_FALLBACK") return "API 已尝试但没有可用端点，已明确回退 DOM";
-  return "DOM 采集（当前路线无可用 API 证据）";
 }
 
 async function pairExtension() {
@@ -444,7 +552,6 @@ async function selectTask() {
 async function clearPairing() {
   const response = await runtimeMessage({ type: MESSAGE.CLEAR_PAIRING });
   setStatus(response?.ok ? "已解除本地绑定；服务端授权可在账号档案中撤销" : chineseError(response?.error, "解除绑定失败"), response?.ok ? "warning" : "error");
-  hideCaptureResult();
   await render();
 }
 
@@ -474,7 +581,6 @@ async function openSidePanel() {
 async function clearSnapshot() {
   await runtimeMessage({ type: MESSAGE.CLEAR_SNAPSHOT });
   setStatus("本地快照已清空", "warning");
-  hideCaptureResult();
   await render();
 }
 
@@ -487,24 +593,37 @@ function toggle(element: HTMLElement, visible: boolean) {
   element.classList.toggle("hidden", !visible);
 }
 
-function showCaptureResult(message: string, success: boolean) {
-  els.captureResult.textContent = message;
-  els.captureResult.className = `panel ${success ? "success" : "error-box"}`;
-}
-
-function hideCaptureResult() {
-  els.captureResult.className = "panel success hidden";
-  els.captureResult.textContent = "";
-}
-
 function isCollectable(url: string) {
   return isSupportedExtensionCollectionUrl(url);
 }
 
-function inferPageTypeFromUrl(url: string) {
+function pulseRouteForUrl(url: string): "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD" | null {
   if (/^https:\/\/eos\.douyin\.com\/dp\/liveScreen(?:[/?#]|$)/.test(url)) return "LIVE_DATA_SCREEN";
   if (/^https:\/\/localads\.chengzijianzhan\.cn\/lamp\/pc\/liveboard2(?:[/?#]|$)/.test(url)) return "LOCAL_PROMOTION_DASHBOARD";
-  return "UNKNOWN";
+  return null;
+}
+
+function pulseForCurrentPage(
+  livePulse: PopupState["livePulse"],
+  tabId: number | undefined,
+  routeKey: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD" | null,
+  livePulses: PopupState["livePulses"] = []
+) {
+  if (!routeKey || !Number.isInteger(tabId)) return { active: false };
+  const pagePulse = livePulses.find((candidate) => (
+    candidate?.routeKey === routeKey
+    && candidate.tabId === tabId
+  ));
+  if (pagePulse) return pagePulse;
+  const belongsToCurrentPage = livePulse?.routeKey === routeKey && livePulse.tabId === tabId;
+  const outcomeBelongsToCurrentPage = livePulse?.lastOutcome?.routeKey === routeKey && livePulse.lastOutcome.tabId === tabId;
+  return belongsToCurrentPage || outcomeBelongsToCurrentPage
+    ? livePulse
+    : { active: false };
+}
+
+function inferPageTypeFromUrl(url: string) {
+  return pulseRouteForUrl(url) || "UNKNOWN";
 }
 
 function pageTypeLabel(value: string) {
@@ -519,30 +638,6 @@ function pageTypeLabel(value: string) {
 
 function routeLabel(routeKey: CollectionRouteKey) {
   return collectionRouteLabels[routeKey] || (routeKey === "UNKNOWN" ? "尚未识别" : routeKey);
-}
-
-function nextPendingRouteLabel(state: PopupState | null | undefined) {
-  const task = currentTask(state);
-  const routes = formalSnapshotRoutes(task);
-  if (!task || !routes.length) return "等待任务信息";
-  const route = routes[0]!;
-  return Number(state?.routeUploadState?.[route.routeKey]?.lastUploadAt || 0) > 0
-    ? "已有成功记录，可重新采集"
-    : "尚未采集";
-}
-
-function formalSnapshotRoutes(task: ExtensionTask | null | undefined) {
-  return (task?.routeSources || []).filter((route) => {
-    const routeKey = normalizeCollectionRouteKey(route.routeKey);
-    return routeKey === "LOCAL_PROMOTION_DASHBOARD";
-  });
-}
-
-function currentTask(state: PopupState | null | undefined) {
-  const taskId = state?.config?.collectionTaskId;
-  return state?.context?.account?.projects
-    ?.flatMap((project) => project.tasks)
-    .find((item) => item.id === taskId) || null;
 }
 
 function runtimeMessage(message: unknown, timeoutMs = 5_000): Promise<PopupRuntimeResponse> {
@@ -563,10 +658,6 @@ function contentMessage(tabId: number, message: unknown, timeoutMs = 5_000): Pro
       (error) => { window.clearTimeout(timer); reject(error); }
     );
   });
-}
-
-function formatPercent(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "待确认";
 }
 
 function chineseError(value: unknown, fallback: string) {

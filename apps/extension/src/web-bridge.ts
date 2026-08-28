@@ -13,9 +13,13 @@ const markerAttribute = "data-pxxis-extension-version";
 const protocolAttribute = "data-pxxis-extension-protocol";
 const buildAttribute = "data-pxxis-extension-build";
 const responseTimeoutMs = 5_000;
+// Capture manifest metadata while the extension context is valid. Chrome keeps
+// an already-injected content script alive after an unpacked extension reload,
+// but further chrome.runtime calls then throw "Extension context invalidated".
+const extensionVersion = chrome.runtime.getManifest().version;
 
 function announce() {
-  document.documentElement.setAttribute(markerAttribute, chrome.runtime.getManifest().version);
+  document.documentElement.setAttribute(markerAttribute, extensionVersion);
   document.documentElement.setAttribute(protocolAttribute, String(extensionBridgeProtocolVersion));
   document.documentElement.setAttribute(buildAttribute, __PXXIS_EXTENSION_BUILD__);
   window.postMessage(serializeBridgeWindowMessage("READY"), window.location.origin);
@@ -44,7 +48,7 @@ async function handleBridgeRequest(rawRequest: unknown) {
     if (!/^\d{6}$/.test(code) || !isAllowedBridgeApiBaseUrl(apiBaseUrl)) {
       dispatchResponse(sanitizeBridgeResponse({
         requestId: request.requestId,
-        extensionVersion: chrome.runtime.getManifest().version,
+        extensionVersion,
         buildFingerprint: __PXXIS_EXTENSION_BUILD__,
         fallbackErrorCode: "INVALID_PAIRING_REQUEST",
         fallbackMessage: "配对码或服务器地址不符合安全要求"
@@ -55,28 +59,38 @@ async function handleBridgeRequest(rawRequest: unknown) {
 
   try {
     const runtimeResult = await withTimeout(chrome.runtime.sendMessage({
-        type: request.type === "GET_STATUS" ? MESSAGE.GET_BRIDGE_STATUS : MESSAGE.REQUEST_PAIRING_CONFIRMATION,
+      type: request.type === "GET_STATUS"
+          ? MESSAGE.GET_BRIDGE_STATUS
+          : request.type === "SYNC_CURRENT_TASK"
+            ? MESSAGE.SYNC_CURRENT_TASK
+            : MESSAGE.PAIR_TASK_FROM_WEB,
       payload: request.type === "PAIR_TASK" ? {
         code: request.payload?.code,
-        apiBaseUrl: request.payload?.apiBaseUrl,
-        label: "网页任务一键配对"
+        apiBaseUrl: request.payload?.apiBaseUrl
       } : undefined
     }), responseTimeoutMs);
     dispatchResponse(sanitizeBridgeResponse({
       requestId: request.requestId,
       runtimeResult,
-      extensionVersion: chrome.runtime.getManifest().version,
+      extensionVersion,
       buildFingerprint: __PXXIS_EXTENSION_BUILD__
     }));
-  } catch {
+  } catch (error) {
+    const contextInvalidated = isExtensionContextInvalidated(error);
     dispatchResponse(sanitizeBridgeResponse({
       requestId: request.requestId,
-      extensionVersion: chrome.runtime.getManifest().version,
+      extensionVersion,
       buildFingerprint: __PXXIS_EXTENSION_BUILD__,
-      fallbackErrorCode: "BACKGROUND_UNRESPONSIVE",
-      fallbackMessage: "插件后台未响应，请在扩展管理页重新加载插件"
+      fallbackErrorCode: contextInvalidated ? "EXTENSION_CONTEXT_INVALIDATED" : "BACKGROUND_UNRESPONSIVE",
+      fallbackMessage: contextInvalidated
+        ? "插件已重新加载，当前页面仍在使用旧脚本，请刷新当前页面"
+        : "插件后台未响应，请在扩展管理页重新加载插件"
     }));
   }
+}
+
+function isExtensionContextInvalidated(error: unknown) {
+  return error instanceof Error && /extension context invalidated/i.test(error.message);
 }
 
 function dispatchResponse(detail: ReturnType<typeof sanitizeBridgeResponse>) {

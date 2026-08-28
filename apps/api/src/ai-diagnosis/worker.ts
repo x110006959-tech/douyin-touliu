@@ -13,6 +13,7 @@ import { getTaskForDecision } from "../ownership.js";
 import { prisma } from "../prisma.js";
 import { prepareActionProposals, proposalExpiresAfterMs, proposalLifecyclePolicy } from "../proposal-lifecycle.js";
 import { sanitizeDerivedPersistedJson } from "../persisted-input.js";
+import { latestRealtimeMetricFrames } from "../realtime-signals.js";
 import { aiDiagnosisEnabled, aiDiagnosisTimeoutMs, createConfiguredDiagnosisTransport } from "./config.js";
 import {
   DiagnosisOrchestrationError,
@@ -105,7 +106,8 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
     const task = await getTaskForDecision(run.collectionTaskId);
     if (!task) throw new DiagnosisWorkerError("TASK_NOT_FOUND", "诊断任务已不存在");
     if (decisionEvidenceFingerprint(task) !== run.evidenceFingerprint) throw new DecisionEvidenceChangedError();
-    const decisionInput: DecisionEngineInput = storedDecisionInput(run) || buildDecisionInput(task);
+    const decisionInput: DecisionEngineInput = storedDecisionInput(run)
+      || buildDecisionInput(task, { realtimeFrames: latestRealtimeMetricFrames(task.id) });
     const readiness = evaluateDecisionReadiness(task, decisionInput);
     if (!readiness.ready) throw new DiagnosisWorkerError("DECISION_NOT_READY", readiness.blockingReasons.join("；"));
     const transport = configuredTransport || createConfiguredDiagnosisTransport();
@@ -295,7 +297,7 @@ function toJson(value: unknown): Prisma.InputJsonValue {
 
 function storedDecisionInput(run: DecisionRun): DecisionEngineInput | null {
   const parsed = decisionEngineInputSchema.safeParse(run.inputJson);
-  if (!parsed.success || !isStoredLiveOverviewRealtimeInput(parsed.data)) return null;
+  if (!parsed.success || !isStoredRealtimeInput(parsed.data)) return null;
   return {
     ...parsed.data,
     latestAnalysis: isAnalyzeOutput(parsed.data.latestAnalysis) ? parsed.data.latestAnalysis : null,
@@ -309,13 +311,20 @@ function storedDecisionInput(run: DecisionRun): DecisionEngineInput | null {
   };
 }
 
-function isStoredLiveOverviewRealtimeInput(input: ReturnType<typeof decisionEngineInputSchema.parse>) {
-  const evidence = input.realtimeEvidence;
-  return input.metricLayer === "REALTIME_API"
-    && evidence?.source === "LIVE_SCREEN_INTERNAL_API"
-    && evidence.routeKey === "LIVE_DATA_SCREEN"
-    && evidence.pageType === "LIVE_DATA_SCREEN"
-    && evidence.metricCount > 0;
+function isStoredRealtimeInput(input: ReturnType<typeof decisionEngineInputSchema.parse>) {
+  const evidenceItems = input.realtimeEvidenceItems?.length
+    ? input.realtimeEvidenceItems
+    : input.realtimeEvidence
+      ? [input.realtimeEvidence]
+      : [];
+  return (input.metricLayer === "REALTIME_API" || input.metricLayer === "REVIEWED_METRIC")
+    && evidenceItems.some((evidence) => evidence.metricCount > 0 && (
+      evidence.routeKey === "LIVE_DATA_SCREEN"
+        ? evidence.pageType === "LIVE_DATA_SCREEN" && evidence.source === "LIVE_SCREEN_INTERNAL_API"
+        : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD"
+          ? evidence.pageType === "LOCAL_PROMOTION_DASHBOARD" && evidence.source === "LOCAL_PROMOTION_INTERNAL_API"
+          : false
+    ));
 }
 
 function isAnalyzeOutput(value: unknown): value is AnalyzeOutput {

@@ -9,11 +9,12 @@ import {
   getExtensionBridgeStatus,
   onExtensionBridgeReady,
   readExtensionBridgeMarker,
+  syncExtensionCurrentTask,
   type WebExtensionBridgeResponse
 } from "@/lib/extension-bridge";
 
 export type WebBridgeUiState = {
-  state: "CHECKING" | "NOT_ACTIVE" | "BACKGROUND_UNRESPONSIVE" | "VERSION_OUTDATED" | "READY";
+  state: "CHECKING" | "NOT_ACTIVE" | "BACKGROUND_UNRESPONSIVE" | "VERSION_OUTDATED" | "SYNC_FAILED" | "READY";
   response: WebExtensionBridgeResponse | null;
   message: string;
 };
@@ -25,10 +26,16 @@ type UseExtensionTaskStatusOptions = {
   onCaptureCompleted?: () => void;
 };
 
+type RefreshBridgeStatusOptions = {
+  syncCurrentTask?: boolean;
+  forceTaskSync?: boolean;
+};
+
 export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCompleted }: UseExtensionTaskStatusOptions) {
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatusDTO | null>(null);
   const [captureSummary, setCaptureSummary] = useState<CaptureSummaryDTO | null>(null);
   const [extensionDetected, setExtensionDetected] = useState(false);
+  const [connectionStatusLoading, setConnectionStatusLoading] = useState(true);
   const [webBridge, setWebBridge] = useState<WebBridgeUiState>({
     state: "CHECKING",
     response: null,
@@ -36,8 +43,52 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
   });
   const latestCaptureAt = useRef<string | null>(null);
   const hasObservedCaptureStatus = useRef(false);
+  const bridgeStatusReadInFlight = useRef<Promise<WebExtensionBridgeResponse> | null>(null);
+  const bridgeSyncInFlight = useRef<Promise<WebExtensionBridgeResponse> | null>(null);
+  const lastSyncFailure = useRef<WebExtensionBridgeResponse | null>(null);
+  const automaticallySyncedTaskId = useRef<string | null>(null);
+  const connectionRefreshGeneration = useRef(0);
 
-  const refreshBridgeStatus = useCallback(async () => {
+  const readBridgeStatus = useCallback(async () => {
+    if (bridgeStatusReadInFlight.current) return bridgeStatusReadInFlight.current;
+    const pending = getExtensionBridgeStatus();
+    bridgeStatusReadInFlight.current = pending;
+    try {
+      return await pending;
+    } finally {
+      if (bridgeStatusReadInFlight.current === pending) bridgeStatusReadInFlight.current = null;
+    }
+  }, []);
+
+  const synchronizeCurrentTask = useCallback(async () => {
+    if (bridgeSyncInFlight.current) return bridgeSyncInFlight.current;
+    const pending = syncExtensionCurrentTask();
+    bridgeSyncInFlight.current = pending;
+    try {
+      return await pending;
+    } finally {
+      if (bridgeSyncInFlight.current === pending) bridgeSyncInFlight.current = null;
+    }
+  }, []);
+
+  const beginPairingAttempt = useCallback(() => {
+    // A pairing attempt establishes a new credential/binding candidate. An
+    // earlier automatic-sync failure must not overwrite its result or the
+    // read-only recovery state when the bridge response is lost.
+    connectionRefreshGeneration.current += 1;
+    lastSyncFailure.current = null;
+  }, []);
+
+  const acceptPairingResponse = useCallback((response: WebExtensionBridgeResponse) => {
+    connectionRefreshGeneration.current += 1;
+    lastSyncFailure.current = null;
+    automaticallySyncedTaskId.current = taskId;
+    setExtensionDetected(true);
+    setWebBridge({ state: "READY", response, message: response.message });
+  }, [taskId]);
+
+  const refreshBridgeStatus = useCallback(async ({ syncCurrentTask = false, forceTaskSync = false }: RefreshBridgeStatusOptions = {}) => {
+    const refreshGeneration = connectionRefreshGeneration.current;
     const marker = readExtensionBridgeMarker();
     if (!marker.active) {
       setExtensionDetected(false);
@@ -58,14 +109,38 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
       return;
     }
     try {
-      const response = await getExtensionBridgeStatus();
+      const status = await readBridgeStatus();
+      if (connectionRefreshGeneration.current !== refreshGeneration) return;
+      let response = status;
+      const shouldSynchronize = status.ok
+        && status.paired
+        && syncCurrentTask
+        && (forceTaskSync || automaticallySyncedTaskId.current !== taskId);
+      if (shouldSynchronize) {
+        response = await synchronizeCurrentTask();
+        if (connectionRefreshGeneration.current !== refreshGeneration) return;
+        automaticallySyncedTaskId.current = taskId;
+        lastSyncFailure.current = response.ok ? null : response;
+      } else if (status.ok && !status.paired) {
+        lastSyncFailure.current = null;
+      } else if (status.ok && lastSyncFailure.current) {
+        response = lastSyncFailure.current;
+      }
       setExtensionDetected(true);
+      const protocolExpired = ["PROTOCOL_MISMATCH", "SERVICE_UPDATE_REQUIRED", "EXTENSION_UPDATE_REQUIRED"].includes(response.errorCode || "");
       setWebBridge({
-        state: response.ok ? "READY" : response.errorCode === "BACKGROUND_UNRESPONSIVE" ? "BACKGROUND_UNRESPONSIVE" : "VERSION_OUTDATED",
+        state: response.ok
+          ? "READY"
+          : ["BACKGROUND_UNRESPONSIVE", "EXTENSION_CONTEXT_INVALIDATED"].includes(response.errorCode || "")
+            ? "BACKGROUND_UNRESPONSIVE"
+            : protocolExpired
+              ? "VERSION_OUTDATED"
+              : "SYNC_FAILED",
         response,
         message: response.message
       });
     } catch (error) {
+      if (connectionRefreshGeneration.current !== refreshGeneration) return;
       const code = error instanceof ExtensionBridgeError ? error.code : "BACKGROUND_UNRESPONSIVE";
       setWebBridge({
         state: code === "PROTOCOL_MISMATCH" ? "VERSION_OUTDATED" : code === "BRIDGE_NOT_ACTIVE" ? "NOT_ACTIVE" : "BACKGROUND_UNRESPONSIVE",
@@ -73,14 +148,16 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
         message: error instanceof Error ? error.message : "插件后台未响应，请重新加载插件。"
       });
     }
-  }, []);
+  }, [readBridgeStatus, synchronizeCurrentTask, taskId]);
 
   const refreshCaptureStatus = useCallback(async () => {
     if (!token) return;
+    const refreshGeneration = connectionRefreshGeneration.current;
     const [nextStatus, nextSummary] = await Promise.all([
       apiFetch<ExtensionStatusDTO>(`/collection-tasks/${taskId}/extension-status`, token),
       apiFetch<CaptureSummaryDTO>(`/collection-tasks/${taskId}/capture-summary`, token)
     ]);
+    if (connectionRefreshGeneration.current !== refreshGeneration) return;
     setExtensionStatus({ ...nextStatus, installedDetectedByWeb: extensionDetected });
     setCaptureSummary(nextSummary);
     const captureJustCompleted = hasObservedCaptureStatus.current
@@ -94,11 +171,15 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
     }
   }, [extensionDetected, onCaptureCompleted, reloadTask, taskId, token]);
 
-  const refreshConnectionStatus = useCallback(async () => {
-    // The bridge request can restore a saved binding by reporting a task-page
-    // heartbeat. Read server state only after that acknowledgement arrives.
-    await refreshBridgeStatus();
-    await refreshCaptureStatus();
+  const refreshConnectionStatus = useCallback(async ({ syncCurrentTask = true, forceTaskSync = true }: RefreshBridgeStatusOptions = {}) => {
+    const refreshGeneration = connectionRefreshGeneration.current;
+    try {
+      await refreshBridgeStatus({ syncCurrentTask, forceTaskSync });
+      if (connectionRefreshGeneration.current !== refreshGeneration) return;
+      await refreshCaptureStatus();
+    } finally {
+      if (connectionRefreshGeneration.current === refreshGeneration) setConnectionStatusLoading(false);
+    }
   }, [refreshBridgeStatus, refreshCaptureStatus]);
 
   useEffect(() => {
@@ -127,7 +208,7 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
         }
         return;
       }
-      await refreshBridgeStatus();
+      await refreshBridgeStatus({ syncCurrentTask: true });
     };
 
     const removeReadyListener = onExtensionBridgeReady(() => void detectBridge());
@@ -144,11 +225,11 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
     if (!token) return;
     let stopped = false;
     let refreshing = false;
-    const refresh = async () => {
+    const refresh = async (syncCurrentTask: boolean) => {
       if (refreshing) return;
       refreshing = true;
       try {
-        await refreshConnectionStatus();
+        await refreshConnectionStatus({ syncCurrentTask, forceTaskSync: false });
       } catch {
         if (!stopped && token) {
           setExtensionStatus((current) => current
@@ -159,8 +240,8 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
         refreshing = false;
       }
     };
-    void refresh();
-    const timer = window.setInterval(refresh, 5_000);
+    void refresh(true);
+    const timer = window.setInterval(() => void refresh(false), 5_000);
     return () => {
       stopped = true;
       window.clearInterval(timer);
@@ -168,13 +249,14 @@ export function useExtensionTaskStatus({ taskId, token, reloadTask, onCaptureCom
   }, [refreshConnectionStatus, token]);
 
   return {
+    acceptPairingResponse,
+    beginPairingAttempt,
     captureSummary,
+    connectionStatusLoading,
     extensionDetected,
     extensionStatus,
     refreshConnectionStatus,
     refreshCaptureStatus,
-    setExtensionDetected,
-    setWebBridge,
     webBridge
   };
 }

@@ -6,6 +6,9 @@ import {
   defaultCollectionRouteTemplates,
   extensionBridgeProtocolVersion,
   extensionCollectionProtocolVersion,
+  localPromotionInternalApiAdapterVersion,
+  localPromotionInternalApiContractVersion,
+  localPromotionInternalApiEndpointContracts,
   liveScreenInternalApiContracts,
   liveScreenInternalApiAdapterVersion,
   liveScreenInternalApiContractVersion,
@@ -19,6 +22,7 @@ import { processNextDecisionRun } from "./ai-diagnosis/worker.js";
 import { createSyntheticDiagnosisTransport } from "./ai-diagnosis/synthetic-evaluation.js";
 import { syntheticDiagnosisCases } from "@douyin-local-life/diagnosis-skills";
 import { liveScreenInternalApiEnabled } from "./live-screen-internal-api-config.js";
+import { localPromotionInternalApiEnabled } from "./local-promotion-internal-api-config.js";
 
 type ApiEnvelope<T> =
   | { success: true; data: T; error: null }
@@ -51,7 +55,7 @@ describe("V0.1 API smoke flow", () => {
   it("reports database readiness", async () => {
     await expect(api<{ ok: boolean; database: string }>("/ready", null)).resolves.toEqual({ ok: true, database: "ready" });
     await expect(api<{ productVersion: string; gitSha: string }>("/version", null)).resolves.toMatchObject({
-      productVersion: "0.2.4",
+      productVersion: "0.2.5",
       gitSha: expect.any(String)
     });
     expect((await api<{ gitSha: string }>("/version", null)).gitSha).not.toBe("unknown");
@@ -1038,6 +1042,7 @@ describe("V0.1 API smoke flow", () => {
 
     const dashboard = await api<{
       summary: { tables: Array<{ snapshotId: string; rows: string[][]; routeDetectionConfidence: number | null; bindingStatus: string }> };
+      overviewCards: Array<{ displayKey: string; status: string; candidates: unknown[] }>;
       tableReviewCoverage: { totalCount: number; pendingCount: number };
     }>(`/collection-tasks/${task.id}/collection-dashboard`, token);
     expect(dashboard.summary.tables).toMatchObject([{
@@ -1046,6 +1051,10 @@ describe("V0.1 API smoke flow", () => {
       bindingStatus: "REQUIRES_REVIEW",
       rows: [["投流单元", "消耗", "订单"], ["计划 A", "100", "2"]]
     }]);
+    expect(dashboard.overviewCards).toEqual(expect.arrayContaining([
+      expect.objectContaining({ displayKey: "live_gmv" }),
+      expect.objectContaining({ displayKey: "local_full_domain_gmv" })
+    ]));
     expect(dashboard.tableReviewCoverage).toMatchObject({ totalCount: 6, pendingCount: 6 });
 
     const otherUser = await api<{ token: string }>("/auth/register", null, {
@@ -1407,6 +1416,16 @@ describe("V0.1 API smoke flow", () => {
       }
     });
 
+    const confirmedMetrics = await api<Array<{ id: string; reviewStatus: string }>>(
+      `/collection-tasks/${task.id}/review-metrics/confirm-all`,
+      token,
+      {
+        method: "POST",
+        body: { snapshotVersions: await currentReviewSnapshotVersions(task.id, token) }
+      }
+    );
+    expect(confirmedMetrics.some((metric) => metric.reviewStatus === "PENDING")).toBe(false);
+
     const beforeConfirmAll = await api<{
       summary: { tables: Array<{ snapshotId: string; snapshotUpdatedAt: string }> };
     }>(`/collection-tasks/${task.id}/collection-dashboard`, token);
@@ -1456,6 +1475,108 @@ describe("V0.1 API smoke flow", () => {
     expect(await prisma.auditLog.count({
       where: { taskId: task.id, action: "TABLE_CELL_REVIEWS_CONFIRM_ALL" }
     })).toBe(0);
+  });
+
+  it("confirms uncalibrated table cells at task level and keeps formal diagnosis conservative", async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const registered = await api<{ token: string }>("/auth/register", null, {
+      method: "POST",
+      body: { email: `table-uncalibrated-confirm-${suffix}@example.com`, password: "password123", name: "Table Uncalibrated Confirm" }
+    });
+    const token = registered.token;
+    const accountId = `table-uncalibrated-account-${suffix}`;
+    const account = await api<{ id: string }>("/account-profiles", token, {
+      method: "POST",
+      body: { accountName: "未校准表格确认账号", platformAccountId: accountId }
+    });
+    const project = await api<{ id: string }>("/projects", token, {
+      method: "POST",
+      body: {
+        accountProfileId: account.id,
+        name: "未校准表格确认项目",
+        subjectType: "SERVICE_PROVIDER",
+        operatorType: "SERVICE_PROVIDER_LIVE",
+        cooperationType: "SERVICE_PROVIDER_CONTRACT",
+        subjectConfidence: 1,
+        serviceProviderName: "未校准表格确认服务商"
+      }
+    });
+    const task = await api<{ id: string }>("/collection-tasks", token, {
+      method: "POST",
+      body: { projectId: project.id, sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${accountId}&mode=main` }
+    });
+    const run = await api<{ id: string }>(`/collection-tasks/${task.id}/collection-runs`, token, {
+      method: "POST",
+      body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
+    });
+    const snapshot = await api<{ id: string }>(`/collection-tasks/${task.id}/snapshots`, token, {
+      method: "POST",
+      body: {
+        pageType: "LIVE_DATA_SCREEN",
+        routeKey: "LIVE_DATA_SCREEN",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?advertiser_id=${accountId}&mode=main`,
+        pageTitle: "未校准表格确认直播概览",
+        rawDomText: "消耗 100 成交订单数 2",
+        rawNetworkJson: [],
+        rawTableData: [["投流单元", "消耗", "订单"], ["计划 A", "100", "2"]],
+        visibleMetricsJson: [metric("spend", "消耗", 100), metric("orders", "成交订单数", 2)],
+        localCollectedAt: new Date().toISOString(),
+        collectionRunId: run.id,
+        detectedAccountId: accountId,
+        accountMatchEvidence: { idSource: "URL:advertiser_id", nameSource: null },
+        captureMeta: {
+          ...captureMeta("LIVE_DATA_SCREEN", ["spend", "orders"]),
+          tableBindings: [{
+            tableIndex: 0,
+            headers: ["投流单元", "消耗", "订单"],
+            identityColumn: "投流单元",
+            identityColumnIndex: 0,
+            timeRange: "今日",
+            timeRangeLocation: "section:0>table:0",
+            componentPath: "section:0>table:0",
+            bindingSignature: "投流单元|消耗|订单",
+            validationStatus: "REQUIRES_REVIEW",
+            validationReasons: []
+          }],
+          routeDetection: {
+            routeKey: "LIVE_DATA_SCREEN",
+            source: "URL",
+            confidence: 0.98,
+            manuallyConfirmed: false,
+            evidence: ["fixture URL"]
+          }
+        }
+      }
+    });
+
+    const beforeConfirmAll = await api<{
+      summary: { tables: Array<{ snapshotId: string; snapshotUpdatedAt: string }> };
+    }>(`/collection-tasks/${task.id}/collection-dashboard`, token);
+    const confirmed = await api<{ confirmedCount: number; totalCount: number; tableCount: number }>(
+      `/collection-tasks/${task.id}/table-cell-reviews/confirm-all`,
+      token,
+      {
+        method: "POST",
+        body: {
+          snapshotVersions: beforeConfirmAll.summary.tables.map((table) => ({
+            snapshotId: table.snapshotId,
+            expectedSnapshotUpdatedAt: table.snapshotUpdatedAt
+          }))
+        }
+      }
+    );
+    expect(confirmed).toEqual({ confirmedCount: 6, totalCount: 6, tableCount: 1 });
+    expect(await prisma.tableCellReview.count({
+      where: { snapshotId: snapshot.id, reviewStatus: "CONFIRMED" }
+    })).toBe(6);
+
+    const preview = await api<{ mode: string; input: { dataReviewStatus: string } }>(
+      `/collection-tasks/${task.id}/decision-preview`,
+      token,
+      { method: "POST", body: {} }
+    );
+    expect(preview.mode).toBe("CONSERVATIVE_ONLY");
+    expect(preview.input.dataReviewStatus).toBe("UNREVIEWED");
   });
 
   it("reuses account profiles while task ownership remains server-scoped", async () => {
@@ -1699,12 +1820,25 @@ describe("V0.1 API smoke flow", () => {
     expect(taskA.routeSources.every((route) => route.sourceUrl === null)).toBe(true);
 
     await apiError("/extension/pairing-codes/exchange", null, { method: "POST", body: { code: "000000" } }, "PAIRING_CODE_INVALID");
+    await apiError("/extension/pairing-codes", token, {
+      method: "POST",
+      body: { accountProfileId: accountA.id, collectionTaskId: taskB.id }
+    }, "EXTENSION_TASK_ACCOUNT_MISMATCH");
     const pairing = await api<{ code: string; expiresAt: string; task: { id: string } | null }>("/extension/pairing-codes", token, {
       method: "POST",
       body: { accountProfileId: accountA.id, collectionTaskId: taskA.id }
     });
     expect(pairing.code).toMatch(/^\d{6}$/);
     expect(pairing.task?.id).toBe(taskA.id);
+    const preview = await api<{ account: { id: string }; task: { id: string } | null }>("/extension/pairing-codes/preview", null, {
+      method: "POST",
+      body: { code: pairing.code }
+    });
+    expect(preview).toMatchObject({ account: { id: accountA.id }, task: { id: taskA.id } });
+    expect(await prisma.extensionPairingCode.findUniqueOrThrow({
+      where: { codeHash: hashForTest(pairing.code) },
+      select: { consumedAt: true }
+    })).toEqual({ consumedAt: null });
     const exchanged = await api<{ token: string; account: { id: string }; scopes: string[]; suggestedTask: { id: string } | null }>("/extension/pairing-codes/exchange", null, {
       method: "POST",
       body: { code: pairing.code, label: "验收浏览器" }
@@ -1721,6 +1855,7 @@ describe("V0.1 API smoke flow", () => {
       credential: { scopes: string[] };
       collectionProtocolVersion: number;
       liveScreenInternalApi: { enabled: boolean; contractVersion: string; adapterVersion: string };
+      localPromotionInternalApi: { enabled: boolean; contractVersion: string; adapterVersion: string };
     }>("/extension/context", exchanged.token, {
       headers: { "x-pxxis-collection-protocol": String(extensionCollectionProtocolVersion) }
     });
@@ -1731,6 +1866,11 @@ describe("V0.1 API smoke flow", () => {
       enabled: liveScreenInternalApiEnabled(),
       contractVersion: liveScreenInternalApiContractVersion,
       adapterVersion: liveScreenInternalApiAdapterVersion
+    });
+    expect(context.localPromotionInternalApi).toEqual({
+      enabled: localPromotionInternalApiEnabled(),
+      contractVersion: localPromotionInternalApiContractVersion,
+      adapterVersion: localPromotionInternalApiAdapterVersion
     });
     await api(`/collection-tasks/${taskA.id}`, exchanged.token);
     await apiError(`/collection-tasks/${taskB.id}`, exchanged.token, {}, "EXTENSION_ACCOUNT_MISMATCH");
@@ -1751,6 +1891,51 @@ describe("V0.1 API smoke flow", () => {
         captureMeta: captureMeta("LIVE_DATA_SCREEN", ["spend"])
       }
     })).resolves.toMatchObject({ pulseCount: 1 });
+    const previousLocalPromotionApiEnabled = process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED;
+    process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED = "true";
+    try {
+      const advertisingId = String(Date.now());
+      const field = localPromotionInternalApiEndpointContracts.statQuery.fields[0]!;
+      await expect(api<{ pulseCount: number }>(`/collection-tasks/${taskA.id}/metric-pulses`, exchanged.token, {
+        method: "POST",
+        body: {
+          routeKey: "LOCAL_PROMOTION_DASHBOARD",
+          pageType: "LOCAL_PROMOTION_DASHBOARD",
+          localCapturedAt: new Date().toISOString(),
+          tabState: "VISIBLE",
+          sourceUrl: `https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?selected_advid=${advertisingId}`,
+          captureProtocolVersion: extensionCollectionProtocolVersion,
+          metrics: [localPromotionPulseMetric(field, 100.2, "100.20")],
+          captureMeta: {
+            ...captureMeta("LOCAL_PROMOTION_DASHBOARD", [field.metricKey]),
+            localPromotionInternalApi: {
+              enabled: true,
+              contractVersion: localPromotionInternalApiContractVersion,
+              adapterVersion: localPromotionInternalApiAdapterVersion,
+              identity: {
+                advid: null,
+                roomId: null,
+                selectedAdvid: advertisingId,
+                selectedAwemeId: null,
+                source: "URL",
+                evidence: {
+                  url: { advid: [], roomId: [], selectedAdvid: [advertisingId], selectedAwemeId: [] },
+                  dom: { advid: [], roomId: [], selectedAdvid: [], selectedAwemeId: [] }
+                }
+              },
+              endpointStatuses: [
+                { endpoint: "pageMetrics", status: "SUCCESS", acceptedBytes: 100 },
+                { endpoint: "statQuery", status: "SUCCESS", acceptedBytes: 100 }
+              ],
+              evidencePurpose: "PULSE_ONLY"
+            }
+          }
+        }
+      })).resolves.toMatchObject({ pulseCount: 2 });
+    } finally {
+      if (previousLocalPromotionApiEnabled === undefined) delete process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED;
+      else process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED = previousLocalPromotionApiEnabled;
+    }
     expect(await prisma.dataSnapshot.count({ where: { taskId: taskA.id } })).toBe(snapshotCountBeforePulse);
     await apiError(`/collection-tasks/${taskA.id}/snapshots`, exchanged.token, {
       method: "POST",
@@ -2013,7 +2198,7 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: {
         collectionTaskId: taskA.id,
-        extensionVersion: "0.2.4",
+        extensionVersion: "0.2.5",
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: "integration-build",
         currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2",
@@ -2030,7 +2215,7 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: {
         collectionTaskId: taskB.id,
-        extensionVersion: "0.2.4",
+        extensionVersion: "0.2.5",
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: "integration-build",
         currentUrl: "https://localads.chengzijianzhan.cn/",
@@ -2385,6 +2570,55 @@ function internalApiPulseMetric(
       apiAdapterVersion: liveScreenInternalApiAdapterVersion,
       endpointKey: "key_index",
       evidencePurpose: field.purpose
+    }
+  };
+}
+
+function localPromotionPulseMetric(
+  field: (typeof localPromotionInternalApiEndpointContracts.statQuery.fields)[number],
+  value: number,
+  displayValue: string
+): VisibleMetric {
+  return {
+    key: field.metricKey,
+    name: field.metricName,
+    value: displayValue,
+    unit: field.unit,
+    source: "network",
+    metricSource: "XHR_JSON",
+    confidence: 0.8,
+    rawEvidence: {
+      sourceType: "INTERNAL_API",
+      bindingKind: "CARD",
+      fieldLabel: field.fieldLabel,
+      displayValue,
+      normalizedValue: String(value),
+      displayPrecision: field.displayPrecision,
+      unitSource: field.unit ? "DEFAULT" : "NONE",
+      timeRange: "实时",
+      timeRangeSource: "COMPONENT",
+      timeRangeLocation: "local-promotion-internal-api-contract",
+      componentPath: field.fieldPath,
+      calibrationSignature: `${field.metricKey}|实时|${field.semanticScope}|${field.fieldPath}`,
+      validationStatus: "REQUIRES_REVIEW",
+      validationReasons: [],
+      sourceStatus: "INTERNAL_API",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      apiCandidate: {
+        value: String(value),
+        displayValue,
+        unit: field.unit,
+        timeRange: "实时",
+        displayPrecision: field.displayPrecision,
+        fieldPath: field.fieldPath,
+        fieldLabel: field.fieldLabel
+      },
+      selectionReason: "仅 API 字段有效",
+      semanticScope: field.semanticScope,
+      apiContractVersion: localPromotionInternalApiContractVersion,
+      apiAdapterVersion: localPromotionInternalApiAdapterVersion,
+      endpointKey: "statQuery",
+      evidencePurpose: "PULSE_ONLY"
     }
   };
 }

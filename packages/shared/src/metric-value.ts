@@ -49,6 +49,7 @@ export type MetricRawEvidence = {
   apiAdapterVersion?: string;
   endpointKey?: string;
   evidencePurpose?: "PULSE_ONLY" | "SNAPSHOT_EVIDENCE" | "SNAPSHOT_DISPLAY_ONLY";
+  routeKey?: import("./collection-routes.js").CollectionRouteKey;
 };
 
 export type MetricSourceCandidate = {
@@ -61,9 +62,20 @@ export type MetricSourceCandidate = {
   fieldLabel: string;
 };
 
+export type VisibleMetric = {
+  key: string;
+  name: string;
+  value: number | string | null;
+  unit?: string | null;
+  source: "dom" | "table" | "network" | "manual";
+  metricSource?: "XHR_JSON" | "TABLE" | "DOM_TEXT" | "SCREENSHOT" | "MANUAL_INPUT" | "UNKNOWN";
+  confidence?: number;
+  rawEvidence?: MetricRawEvidence | null;
+};
+
 const currencyMetricKeys = new Set([
   "spend", "daily_budget", "remaining_budget", "recent_30m_spend", "cpa", "target_cpa",
-  "gmv", "gpm", "shelf_gmv", "search_gmv", "gross_profit", "merchant_subsidy",
+  "gmv", "full_domain_gmv", "gpm", "shelf_gmv", "search_gmv", "gross_profit", "merchant_subsidy",
   "service_fee", "platform_subsidy", "ad_coupon", "rebate_coupon"
 ]);
 

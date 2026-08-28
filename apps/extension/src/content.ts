@@ -13,6 +13,7 @@ import { liveScreenMetricsForMode } from "./live-screen-metric-merge";
 import { resolveLiveScreenRoomId } from "./live-screen-room-id";
 import { isExactLiveScreenPage, livePulsePageContext, livePulseRouteDetection } from "./live-screen-pulse-page";
 import { nextLivePulseAfter } from "./live-pulse-schedule";
+import { isExactLocalPromotionInternalApiPage, localPromotionIdentityKey, resolveLocalPromotionIdentity } from "@douyin-local-life/shared";
 
 let pageActivityTimer: number | null = null;
 let activePulseController: AbortController | null = null;
@@ -21,8 +22,12 @@ let livePulseLoopGeneration = 0;
 
 type LivePulseLoop = {
   generation: number;
+  loopId: string;
   collectionRunId: string | null;
   liveScreenInternalApiEnabled: boolean;
+  submitMessage: string;
+  collectInWorker: boolean;
+  transportFailures: number;
   timer: number | null;
   running: boolean;
 };
@@ -43,8 +48,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === MESSAGE.BEGIN_LIVE_PULSE_LOOP) {
     startLivePulseLoop({
+      loopId: typeof message.payload?.loopId === "string" ? message.payload.loopId : "",
       collectionRunId: typeof message.payload?.collectionRunId === "string" ? message.payload.collectionRunId : null,
-      liveScreenInternalApiEnabled: message.payload?.liveScreenInternalApiEnabled === true
+      liveScreenInternalApiEnabled: message.payload?.liveScreenInternalApiEnabled === true,
+      submitMessage: MESSAGE.SUBMIT_LIVE_PULSE,
+      collectInWorker: false
+    });
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (message?.type === MESSAGE.BEGIN_LOCAL_PROMOTION_PULSE_LOOP) {
+    startLivePulseLoop({
+      loopId: typeof message.payload?.loopId === "string" ? message.payload.loopId : "",
+      collectionRunId: typeof message.payload?.collectionRunId === "string" ? message.payload.collectionRunId : null,
+      liveScreenInternalApiEnabled: false,
+      submitMessage: MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE,
+      collectInWorker: true
     });
     sendResponse({ ok: true });
     return false;
@@ -54,8 +73,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
+  if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
+    stopActiveLivePulseLoop();
+    sendResponse({ ok: true });
+    return false;
+  }
   if (message?.type === MESSAGE.GET_PAGE_CONTEXT) {
-    sendResponse({ ok: true, ...collectPageContext(), tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN" });
+    sendResponse({
+      ok: true,
+      ...collectPageContext(),
+      tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
+      buildFingerprint: __PXXIS_EXTENSION_BUILD__
+    });
     return true;
   }
   return false;
@@ -71,12 +100,16 @@ function startContentRuntime() {
   });
 }
 
-function startLivePulseLoop(input: { collectionRunId: string | null; liveScreenInternalApiEnabled: boolean }) {
+function startLivePulseLoop(input: { loopId: string; collectionRunId: string | null; liveScreenInternalApiEnabled: boolean; submitMessage: string; collectInWorker: boolean }) {
   stopActiveLivePulseLoop();
   const loop: LivePulseLoop = {
     generation: ++livePulseLoopGeneration,
+    loopId: input.loopId,
     collectionRunId: input.collectionRunId,
     liveScreenInternalApiEnabled: input.liveScreenInternalApiEnabled,
+    submitMessage: input.submitMessage,
+    collectInWorker: input.collectInWorker,
+    transportFailures: 0,
     timer: null,
     running: false
   };
@@ -96,19 +129,23 @@ async function runLivePulseLoop(loop: LivePulseLoop) {
   if (activeLivePulseLoop !== loop || loop.running) return;
   loop.running = true;
   const pulseStartedAt = Date.now();
-  let payload: { snapshot?: CollectionSnapshotPayload; error?: string; pulseStartedAt: number };
+  let payload: { loopId: string; snapshot?: CollectionSnapshotPayload; error?: string; pulseStartedAt: number };
   try {
-    payload = {
-      pulseStartedAt,
-      snapshot: await collectSnapshot(
-        loop.collectionRunId,
-        null,
-        loop.liveScreenInternalApiEnabled,
-        "PULSE"
-      )
-    };
+    payload = loop.collectInWorker
+      ? { loopId: loop.loopId, pulseStartedAt }
+      : {
+          loopId: loop.loopId,
+          pulseStartedAt,
+          snapshot: await collectSnapshot(
+            loop.collectionRunId,
+            null,
+            loop.liveScreenInternalApiEnabled,
+            "PULSE"
+          )
+        };
   } catch (error) {
     payload = {
+      loopId: loop.loopId,
       pulseStartedAt,
       error: error instanceof Error ? error.message : "PULSE_CAPTURE_FAILED"
     };
@@ -118,10 +155,14 @@ async function runLivePulseLoop(loop: LivePulseLoop) {
   if (activeLivePulseLoop !== loop) return;
   try {
     const response = await chrome.runtime.sendMessage({
-      type: MESSAGE.SUBMIT_LIVE_PULSE,
+      type: loop.submitMessage,
       payload
     }) as { ok?: boolean; stop?: boolean; nextDelayMs?: number } | undefined;
-    if (activeLivePulseLoop !== loop || response?.stop) {
+    loop.transportFailures = 0;
+    // A response from an older loop may arrive after a new loop has already
+    // started on this page. It must not stop the newer loop.
+    if (activeLivePulseLoop !== loop) return;
+    if (response?.stop) {
       stopActiveLivePulseLoop();
       return;
     }
@@ -130,7 +171,17 @@ async function runLivePulseLoop(loop: LivePulseLoop) {
       : Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now()) - Date.now());
     loop.timer = window.setTimeout(() => void runLivePulseLoop(loop), nextDelayMs);
   } catch {
-    stopActiveLivePulseLoop();
+    if (activeLivePulseLoop !== loop) return;
+    loop.transportFailures += 1;
+    if (loop.transportFailures >= 3) {
+      await chrome.runtime.sendMessage({
+        type: loop.submitMessage,
+        payload: { loopId: loop.loopId, pulseStartedAt, error: "PULSE_TRANSPORT_UNAVAILABLE" }
+      }).catch(() => undefined);
+      stopActiveLivePulseLoop();
+      return;
+    }
+    loop.timer = window.setTimeout(() => void runLivePulseLoop(loop), 1_000 * loop.transportFailures);
   }
 }
 
@@ -171,7 +222,9 @@ async function collectSnapshot(
     internalApiEligible
   });
   const domMetrics = capturePlan.collectDom ? adapter.extractMetrics(adapterInput) : [];
-  const pulseController = collectionMode === "PULSE" && capturePlan.collectInternalApi ? new AbortController() : null;
+  const pulseController = collectionMode === "PULSE" && capturePlan.collectInternalApi
+    ? new AbortController()
+    : null;
   if (pulseController) activePulseController = pulseController;
   const api = isLiveScreen
     ? await collectLiveScreenInternalApi({
@@ -202,6 +255,15 @@ async function collectSnapshot(
     routeKey: routeDetection.routeKey,
     captureMeta: { ...captureMeta, routeDetection, ...(api ? { liveScreenInternalApi: api.captureMeta } : {}) }
   }) as CollectionSnapshotPayload;
+}
+
+function readLocalPromotionDomIdentity() {
+  return {
+    advid: [...document.querySelectorAll<HTMLElement>("[data-advid]")].map((element) => element.dataset.advid || ""),
+    roomId: [...document.querySelectorAll<HTMLElement>("[data-room-id]")].map((element) => element.dataset.roomId || ""),
+    selectedAdvid: [...document.querySelectorAll<HTMLElement>("[data-selected-advid]")].map((element) => element.dataset.selectedAdvid || ""),
+    selectedAwemeId: [...document.querySelectorAll<HTMLElement>("[data-selected-aweme-id]")].map((element) => element.dataset.selectedAwemeId || "")
+  };
 }
 
 function readRoomId() {
@@ -251,6 +313,22 @@ function collectPageContext() {
       })
     };
   }
+  if (isExactLocalPromotionInternalApiPage(window.location.href)) {
+    const identity = resolveLocalPromotionIdentity({
+      url: window.location.href,
+      dom: readLocalPromotionDomIdentity()
+    });
+    const identityReady = identity.source !== "MISMATCH" && Boolean(identity.advid || identity.selectedAdvid);
+    return {
+      currentUrl: window.location.href,
+      pageType: "LOCAL_PROMOTION_DASHBOARD" as const,
+      routeKey: "LOCAL_PROMOTION_DASHBOARD" as const,
+      routeDetection: { routeKey: "LOCAL_PROMOTION_DASHBOARD" as const, source: "PAGE_TYPE" as const, confidence: 0.98, manuallyConfirmed: false, evidence: ["实时 API 脉冲：精确本地推数据总览 URL"] },
+      localPromotionPulseEligible: identityReady,
+      localPromotionPulseIdentityKey: identityReady ? localPromotionIdentityKey(identity) : null,
+      localPromotionPulseFailureCode: identityReady ? null : "IDENTITY_UNAVAILABLE"
+    };
+  }
   const baseAdapter = selectPageAdapter(baseInput);
   const adapter = selectPageAdapter({ ...baseInput, routeKey: routeDetection.routeKey });
   return {
@@ -260,7 +338,10 @@ function collectPageContext() {
     routeDetection,
     livePulseEligible: false,
     livePulseRoomId: null,
-    livePulseFailureCode: null
+    livePulseFailureCode: null,
+    localPromotionPulseEligible: false,
+    localPromotionPulseIdentityKey: null,
+    localPromotionPulseFailureCode: null
   };
 }
 

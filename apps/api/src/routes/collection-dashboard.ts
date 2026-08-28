@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   bulkTableCellReviewInputSchema,
+  buildDashboardOverviewCards,
   confirmTableBindingInputSchema,
   confirmAllReviewMetricsInputSchema,
   type CollectionDashboardDTO
@@ -12,10 +13,11 @@ import { getOwnedTask } from "../ownership.js";
 import { readSafeOptionalText } from "../persisted-input.js";
 import { sendError, sendSuccess } from "../response.js";
 import { currentReviewedMetrics, reviewCoverage } from "../review-metrics.js";
+import { latestRealtimeMetricFrames } from "../realtime-signals.js";
 import { currentUser } from "../server-utils.js";
 import { getTableCellValue, projectSnapshotTables, toTableCellReviewDTO } from "../table-cell-reviews.js";
 import { isSerializableConflict, runSerializableTransaction } from "../transactions.js";
-import { calibrateFullyReviewedTables, confirmTableBindingCalibration, hasTrustedTableBinding, hasTrustedTableBindings } from "../metric-validation.js";
+import { calibrateFullyReviewedTables, confirmTableBindingCalibration, hasTrustedTableBinding } from "../metric-validation.js";
 
 export function createCollectionDashboardRouter() {
   const router = Router();
@@ -38,6 +40,7 @@ export function createCollectionDashboardRouter() {
         ...summary,
         tables: summary.tables
       },
+      overviewCards: buildDashboardOverviewCards(summary.metrics, latestRealtimeMetricFrames(task.id)),
       reviewCoverage: reviewCoverage(currentReviewedMetrics(task)),
       tableReviewCoverage: tableReviewCoverageForSummary(summary)
     };
@@ -282,13 +285,6 @@ export function createCollectionDashboardRouter() {
         if (tableSnapshots.some(({ snapshot }) => snapshot.routeVerificationStatus !== "VERIFIED")) {
           return { error: "SNAPSHOT_UNVERIFIED" as const };
         }
-        const allTrusted = await Promise.all(tableSnapshots.map(({ snapshot }) => hasTrustedTableBindings(tx, {
-          workspaceId: task.project.workspaceId,
-          routeKey: snapshot.routeKey,
-          captureMetaJson: snapshot.captureMetaJson
-        })));
-        if (allTrusted.some((trusted) => !trusted)) return { error: "TABLE_BINDING_REQUIRES_REVIEW" as const };
-
         const now = new Date();
         let confirmedCount = 0;
         let totalCount = 0;
@@ -366,9 +362,6 @@ export function createCollectionDashboardRouter() {
         }
         if (result.error === "SNAPSHOT_UNVERIFIED") {
           return sendError(res, 409, result.error, "账号和路线确认后才能批量确认表格");
-        }
-        if (result.error === "TABLE_BINDING_REQUIRES_REVIEW") {
-          return sendError(res, 409, result.error, "新表头或行列结构需要逐项核对，不能批量确认");
         }
         return sendError(res, 409, "SNAPSHOT_NOT_CURRENT", "表格数据已变化，请刷新后重新确认");
       }

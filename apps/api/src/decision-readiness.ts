@@ -26,9 +26,17 @@ export function evaluateDecisionReadiness(task: DecisionTask, input: DecisionEng
     routeKey,
     label: collectionRouteTemplates.find((route) => route.routeKey === routeKey)?.label || routeKey
   });
+  const realtimeEvidenceItems = input.realtimeEvidenceItems?.length
+    ? input.realtimeEvidenceItems
+    : input.realtimeEvidence
+      ? [input.realtimeEvidence]
+      : [];
   const realtimeCoveredRoutes = new Set(requiredRoutes
     .map((route) => normalizeCollectionRouteKey(route.routeKey))
-    .filter((routeKey) => hasUsableLiveOverviewRealtimeEvidence(input, routeKey, now)));
+    .filter((routeKey) => realtimeEvidenceItems.some((evidence) => (
+      evidence.routeKey === routeKey
+      && hasUsableLiveOverviewRealtimeEvidence({ realtimeEvidence: evidence }, routeKey, now)
+    ))));
   const missingRequiredRoutes = requiredRoutes.filter((route) => {
     const routeKey = normalizeCollectionRouteKey(route.routeKey);
     return !realtimeCoveredRoutes.has(routeKey) && !latestByRoute.has(routeKey);

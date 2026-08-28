@@ -61,10 +61,10 @@ export async function checkExtensionPairingRateLimit(input: { ip?: string | null
 }
 
 export async function checkMetricPulseRateLimit(
-  input: { credentialOrSessionId: string; taskId: string },
+  input: { credentialOrSessionId: string; taskId: string; routeKey: string },
   now = new Date()
 ) {
-  return checkRateLimit("collection:pulse", `${input.credentialOrSessionId}:${input.taskId}`, metricPulseRule, now);
+  return checkRateLimit("collection:pulse", `${input.credentialOrSessionId}:${input.taskId}:${input.routeKey}`, metricPulseRule, now);
 }
 
 export async function checkSnapshotRateLimit(input: { credentialOrSessionId: string; taskId: string }) {

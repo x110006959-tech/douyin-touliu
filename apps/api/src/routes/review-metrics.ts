@@ -21,7 +21,7 @@ import {
 } from "../review-metrics.js";
 import { currentUser, toJson } from "../server-utils.js";
 import { isSerializableConflict, runSerializableTransaction } from "../transactions.js";
-import { canAutoConfirmMetric, recordMetricBindingCalibration } from "../metric-validation.js";
+import { recordMetricBindingCalibration } from "../metric-validation.js";
 
 export function createReviewMetricRouter() {
   const router = Router();
@@ -253,7 +253,7 @@ export function createReviewMetricRouter() {
           if (!snapshotCheck.ok) return snapshotCheck;
         }
 
-        const pending = initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING" && canAutoConfirmMetric(metric));
+        const pending = initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING");
         const now = new Date();
         const updates = await Promise.all(pending.map((metric) => tx.reviewedMetric.updateMany({
           where: { id: metric.id, reviewStatus: "PENDING" },

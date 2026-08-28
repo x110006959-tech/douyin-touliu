@@ -8,8 +8,8 @@ describe("metric pulse upload", () => {
     vi.useRealTimers();
   });
 
-  it("keeps the local upload timeout below the five-second pulse cadence", () => {
-    expect(metricPulseUploadTimeoutMs).toBeLessThan(5_000);
+  it("keeps the local upload timeout below the thirty-second pulse cadence", () => {
+    expect(metricPulseUploadTimeoutMs).toBeLessThan(30_000);
   });
 
   it("aborts an in-flight upload when pulse execution stops", async () => {
@@ -40,6 +40,17 @@ describe("metric pulse upload", () => {
 
     await expect(uploadMetricPulseRequest({ url: "http://127.0.0.1/pulse", token: "test-token", pulse: pulse() }))
       .resolves.toEqual({ ok: false, status: 429, error: "RATE_LIMITED", retryAfterMs: 3_000 });
+  });
+
+  it("maps non-rate-limit upload failures to the HTTP code only", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "token=private" } }), {
+      status: 500,
+      headers: { "content-type": "application/json" }
+    })));
+
+    const result = await uploadMetricPulseRequest({ url: "http://127.0.0.1/pulse", token: "test-token", pulse: pulse() });
+    expect(result).toEqual({ ok: false, status: 500, error: "HTTP_500" });
+    expect(JSON.stringify(result)).not.toContain("private");
   });
 
   it("treats any HTTP 2xx response as upload success and ignores analysis fields", async () => {

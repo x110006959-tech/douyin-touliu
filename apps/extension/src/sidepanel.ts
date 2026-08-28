@@ -1,5 +1,5 @@
 import { MESSAGE, STORAGE } from "./messages";
-import { livePulseMetricCoverage, livePulseOutcomeMessage, livePulseReasonText, livePulseStatusText, type LivePulseDisplayState } from "./live-pulse-status";
+import { livePulseMetricCoverage, livePulseOutcomeMessage, livePulseReasonText, livePulseStatusText, localPromotionPulseMetricCoverage, type LivePulseDisplayState } from "./live-pulse-status";
 
 const elements = {
   status: document.getElementById("status")!,
@@ -31,7 +31,7 @@ async function render() {
 
 async function renderLivePulse() {
   const state = await runtimeMessage({ type: MESSAGE.GET_STATE }).catch(() => null) as {
-    livePulse?: LivePulseDisplayState & { lastSuccessAt?: string | null };
+    livePulse?: LivePulseDisplayState & { lastSuccessAt?: string | null; routeKey?: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD" };
     context?: { liveScreenInternalApi?: { enabled?: boolean } };
   } | null;
   const livePulse = state?.livePulse;
@@ -43,7 +43,9 @@ async function renderLivePulse() {
     ? new Date(livePulse.lastSuccessAt).toLocaleTimeString("zh-CN", { hour12: false })
     : livePulse?.active ? "等待第一轮" : "尚未启动";
   elements.liveSuccessCount.textContent = String(livePulse?.successCount || 0);
-  const coverage = livePulseMetricCoverage(livePulse?.lastMetricKeys);
+  const coverage = livePulse?.routeKey === "LOCAL_PROMOTION_DASHBOARD"
+    ? localPromotionPulseMetricCoverage(livePulse.lastMetricKeys)
+    : livePulseMetricCoverage(livePulse?.lastMetricKeys);
   elements.liveMetricCount.textContent = `${coverage.count}/${coverage.total}`;
   elements.liveLastError.textContent = livePulse?.lastFailureReason
     ? livePulseReasonText(livePulse.lastFailureReason)

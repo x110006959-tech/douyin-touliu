@@ -17,7 +17,7 @@ afterAll(async () => {
 
 describe("metric pulse rate limit", () => {
   it("allows the next scheduled five-second pulse despite receive-time jitter", async () => {
-    const subject = { credentialOrSessionId: "extension-credential", taskId: "task-1" };
+    const subject = { credentialOrSessionId: "extension-credential", taskId: "task-1", routeKey: "LIVE_DATA_SCREEN" };
     const firstReceivedAt = new Date("2026-08-12T13:00:00.900Z");
     const nextScheduledPulse = new Date(firstReceivedAt.getTime() + 4_100);
 
@@ -27,7 +27,7 @@ describe("metric pulse rate limit", () => {
   });
 
   it("still rejects duplicate uploads inside the scheduling margin", async () => {
-    const subject = { credentialOrSessionId: "extension-credential", taskId: "task-2" };
+    const subject = { credentialOrSessionId: "extension-credential", taskId: "task-2", routeKey: "LIVE_DATA_SCREEN" };
     const firstReceivedAt = new Date("2026-08-12T13:00:00.000Z");
 
     await expect(checkMetricPulseRateLimit(subject, firstReceivedAt)).resolves.toEqual({ allowed: true });
@@ -35,5 +35,13 @@ describe("metric pulse rate limit", () => {
       subject,
       new Date(firstReceivedAt.getTime() + metricPulseRateLimitWindowMs - 1)
     )).resolves.toMatchObject({ allowed: false });
+  });
+
+  it("keeps live and local-promotion pulse budgets independent", async () => {
+    const now = new Date("2026-08-12T13:00:00.000Z");
+    const base = { credentialOrSessionId: "extension-credential", taskId: "task-routes" };
+
+    await expect(checkMetricPulseRateLimit({ ...base, routeKey: "LIVE_DATA_SCREEN" }, now)).resolves.toEqual({ allowed: true });
+    await expect(checkMetricPulseRateLimit({ ...base, routeKey: "LOCAL_PROMOTION_DASHBOARD" }, now)).resolves.toEqual({ allowed: true });
   });
 });

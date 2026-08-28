@@ -14,8 +14,16 @@ const dashboardSource = readFileSync(
   fileURLToPath(new URL("../app/dashboard/page.tsx", import.meta.url)),
   "utf8"
 );
+const authPageStateSource = readFileSync(
+  fileURLToPath(new URL("../components/auth-page-state.tsx", import.meta.url)),
+  "utf8"
+);
 const collectionDashboardSource = readFileSync(
   fileURLToPath(new URL("../app/tasks/[id]/collection-dashboard/page.tsx", import.meta.url)),
+  "utf8"
+);
+const overviewPanelSource = readFileSync(
+  fileURLToPath(new URL("../app/tasks/[id]/collection-dashboard/overview-panel.tsx", import.meta.url)),
   "utf8"
 );
 const collectionRouteFlowSource = readFileSync(
@@ -49,6 +57,11 @@ describe("task page acceptance guard", () => {
   it("keeps task data summarized and routes calibration through the dedicated dashboard", () => {
     expect(taskPageSource).toContain('href={`/tasks/${task.id}/collection-dashboard`}');
     expect(taskPageSource).toContain("进入校准大屏");
+    expect(taskPageSource).toContain("下一步：进入经营数据大屏");
+    expect(taskPageSource).toContain("collectionDashboardPendingRouteLabels");
+    expect(taskPageSource).toContain("请先完成：");
+    expect(taskPageSource).toContain("两条路线均有完整实时指标或正式采集结果后，按钮将可用。");
+    expect(taskPageSource).toContain('disabled type="button"');
     expect(taskPageSource).not.toContain("查看完整指标明细");
     expect(taskPageSource).not.toContain("一键确认可信字段");
     expect(collectionDashboardSource).toContain("经营数据大屏");
@@ -59,9 +72,6 @@ describe("task page acceptance guard", () => {
     expect(collectionDashboardSource).toContain("确认当前页单元格");
     expect(collectionDashboardSource).toContain("后台字段标签");
     expect(collectionDashboardSource).toContain("metric.fieldLabel");
-    expect(collectionDashboardSource).toContain("formatOverviewMetricValue");
-    expect(collectionDashboardSource).toContain("metric.originalValue?.trim()");
-    expect(collectionDashboardSource).toContain("原始采集值 · 待复核");
     expect(collectionDashboardSource).toContain("（比例）");
     expect(collectionDashboardSource).toContain("统计周期");
     expect(collectionDashboardSource).toContain("metricPeriodDrafts");
@@ -69,12 +79,26 @@ describe("task page acceptance guard", () => {
     expect(collectionDashboardSource).not.toContain("确认表头与行列关系");
     expect(collectionDashboardSource).not.toContain("/table-bindings/confirm");
     expect(collectionDashboardSource).toContain("系统不会生成模拟趋势或虚构表格");
-    expect(collectionDashboardSource).toContain("经营数据总览");
+    expect(collectionDashboardSource).toContain("buildDashboardOverviewCards");
+    expect(collectionDashboardSource).toContain("<OverviewPanel");
+    expect(overviewPanelSource).toContain('data-testid="unified-overview-board"');
+    expect(overviewPanelSource).toContain("经营数据总览");
+    expect(overviewPanelSource).toContain('byKey.get("live_gmv")');
+    expect(overviewPanelSource).toContain("查看来源详情");
+    expect(overviewPanelSource).toContain("来源值不一致，系统未进行相加、平均或换算");
+    expect(overviewPanelSource).toContain("投放经营 / 全域数据");
+    expect(overviewPanelSource).toContain("同名指标已按统一口径合并");
+    expect(overviewPanelSource).toContain("实时 API 约每 30 秒更新一次");
+    expect(overviewPanelSource).toContain('hasFrame ? "约每 30 秒更新" : "已连接，等待采集"');
+    expect(overviewPanelSource).not.toContain("directRouteCards");
+    expect(overviewPanelSource).not.toContain("小时趋势");
+    expect(collectionDashboardSource).not.toContain("hourlyRows=");
+    expect(overviewPanelSource).toContain("暂无数据");
     expect(collectionDashboardSource).toContain("采集线路");
     expect(collectionRouteFlowSource).toContain("已退出当前采集");
     expect(collectionRouteFlowSource).toContain("不计入线路进度，也无需再次采集");
     expect(collectionDashboardSource).not.toContain("API 实时数据");
-    expect(collectionDashboardSource).toContain("dashboard.summary.metrics.filter");
+    expect(collectionDashboardSource).toContain("metrics.filter");
     expect(collectionDashboardSource).toContain("详细指标与原始表格");
     expect(collectionDashboardSource).toContain("确认可信数据并生成诊断");
     expect(collectionDashboardSource).toContain("table-cell-reviews/confirm-all");
@@ -91,9 +115,11 @@ describe("task page acceptance guard", () => {
     expect(diagnosisComparisonSource).toContain("AI 诊断尚未就绪");
   });
 
-  it("opens the station dashboard only after this view observes a new completed capture", () => {
-    expect(taskPageSource).toContain("onCaptureCompleted: openCollectionDashboardAfterCapture");
-    expect(taskPageSource).toContain("router.push(`/tasks/${params.id}/collection-dashboard`)");
+  it("opens the station dashboard only after both primary routes become ready", () => {
+    expect(taskPageSource).toContain("previousCollectionDashboardReady");
+    expect(taskPageSource).toContain("previousReadiness === false && collectionDashboardReady");
+    expect(taskPageSource).toContain("hasRequiredRealtimeMetricKeys");
+    expect(taskPageSource).toContain("router.push(`/tasks/${task.id}/collection-dashboard`)");
     expect(extensionTaskStatusSource).toContain("hasObservedCaptureStatus");
     expect(extensionTaskStatusSource).toContain("captureJustCompleted");
     expect(extensionTaskStatusSource).toContain("onCaptureCompleted?.()");
@@ -102,22 +128,92 @@ describe("task page acceptance guard", () => {
   it("refreshes the bridge state after Popup pairing confirmation", () => {
     expect(extensionTaskStatusSource).toContain("const refreshBridgeStatus = useCallback");
     expect(extensionTaskStatusSource).toContain("const refreshConnectionStatus = useCallback");
-    expect(extensionTaskStatusSource).toContain("await refreshBridgeStatus();");
+    expect(extensionTaskStatusSource).toContain("await refreshBridgeStatus({ syncCurrentTask, forceTaskSync });");
     expect(extensionTaskStatusSource).toContain("await refreshCaptureStatus();");
     expect(extensionTaskStatusSource).not.toContain("Promise.all([refreshBridgeStatus(), refreshCaptureStatus()])");
   });
 
-  it("uses a fixed five-second bridge refresh so a saved task binding reconnects automatically", () => {
-    expect(extensionTaskStatusSource).toContain("window.setInterval(refresh, 5_000)");
+  it("automatically opens the collection dashboard after web pairing completes", () => {
+    expect(taskPageSource).toContain("await refreshConnectionStatus({ syncCurrentTask: false, forceTaskSync: false });");
+    expect(taskPageSource).toContain("beginPairingAttempt();");
+    expect(taskPageSource).toContain("acceptPairingResponse(paired);");
+    expect(extensionTaskStatusSource).toContain("lastSyncFailure.current = null;");
+    expect(extensionTaskStatusSource).toContain("automaticallySyncedTaskId.current = taskId;");
+    expect(extensionTaskStatusSource).toContain("connectionRefreshGeneration.current += 1;");
+    expect(extensionTaskStatusSource).toContain("connectionRefreshGeneration.current !== refreshGeneration");
+    expect(taskPageSource).toContain("插件已自动连接当前任务，正在打开采集看板。");
+    expect(taskPageSource).toContain("router.push(`/tasks/${task.id}/collection-dashboard`)");
+    expect(taskPageSource).not.toContain("请打开插件 Popup，核对目标服务器、账号和任务后点击");
+  });
+
+  it("redirects pairing recovery only after local binding and the current task heartbeat agree", () => {
+    const readinessSource = taskPageSource.slice(
+      taskPageSource.indexOf("const connectionReadyForTask"),
+      taskPageSource.indexOf("useEffect(() =>", taskPageSource.indexOf("const connectionReadyForTask"))
+    );
+    expect(readinessSource).toContain("webBridge.response?.ok");
+    expect(readinessSource).toContain("webBridge.response.boundTaskId === task.id");
+    expect(readinessSource).toContain("extensionStatus?.paired");
+    expect(readinessSource).toContain("extensionStatus.boundTaskId === task.id");
+    expect(readinessSource).toContain("extensionStatus.lastHeartbeatAt");
+
+    const pairingSource = taskPageSource.slice(
+      taskPageSource.indexOf("async function createTaskPairingCode"),
+      taskPageSource.indexOf("async function refreshExtensionConnection")
+    );
+    expect(pairingSource).toContain('err.code === "BACKGROUND_UNRESPONSIVE"');
+    expect(pairingSource).toContain("pairingRecoveryPending.current = true");
+  });
+
+  it("synchronizes a paired plugin once on entry and allows a forced manual retry", () => {
+    expect(extensionTaskStatusSource).toContain("syncExtensionCurrentTask");
+    expect(extensionTaskStatusSource).toContain("automaticallySyncedTaskId.current !== taskId");
+    expect(extensionTaskStatusSource).toContain("automaticallySyncedTaskId.current = taskId");
+    expect(extensionTaskStatusSource).toContain("forceTaskSync = true");
+    expect(extensionTaskStatusSource).toContain("await synchronizeCurrentTask()");
+    expect(extensionTaskStatusSource).toContain('"SERVICE_UPDATE_REQUIRED", "EXTENSION_UPDATE_REQUIRED"');
+  });
+
+  it("uses a read-only five-second status refresh after the one-time automatic sync", () => {
+    expect(extensionTaskStatusSource).toContain("void refresh(true)");
+    expect(extensionTaskStatusSource).toContain("window.setInterval(() => void refresh(false), 5_000)");
+    expect(extensionTaskStatusSource).toContain("forceTaskSync: false");
   });
 
   it("keeps recovery controls and an explicit historical-data warning when the plugin is offline", () => {
-    expect(taskPageSource).toContain("{!extensionConnected ? (");
+    expect(taskPageSource).toContain("{extensionConnectionNeedsAttention ? (");
     expect(taskPageSource).toContain("恢复采集插件连接");
     expect(taskPageSource).toContain("重新检测插件");
-    expect(taskPageSource).toContain("历史快照不会代替当前配对");
+    expect(extensionTaskStatusSource).toContain("EXTENSION_CONTEXT_INVALIDATED");
+    expect(taskPageSource).toContain("bridgePageRefreshRequired");
+    expect(taskPageSource).toContain("刷新当前页面");
+    expect(taskPageSource).toContain("window.location.reload()");
+    expect(taskPageSource).toContain("同账号任务不需要重新配对");
     expect(taskPageSource).toContain("当前插件未连接，历史数据仅供复核");
-    expect(taskPageSource).not.toContain("{!extensionConnected && !hasCapture ? (");
+    expect(taskPageSource).toContain("connectionStatusLoading");
+    expect(taskPageSource).toContain("needsPairingAction ? <Button");
+    expect(taskPageSource).toContain("webBridgeSupportsPairing");
+    expect(taskPageSource).toContain("pairingRetryErrorCodes");
+    expect(taskPageSource).toContain('"PAIRING_API_TIMEOUT"');
+    expect(taskPageSource).toContain('"HEARTBEAT_FAILED"');
+    expect(taskPageSource).toContain("!manualOnly && webBridgeSupportsPairing");
+    expect(taskPageSource).toContain("ACTIVE_PULSE_STOP_REQUIRED");
+    expect(taskPageSource).toContain("系统不会自动中断持续采集");
+    expect(taskPageSource).toContain("bridgeNeedsReload");
+    expect(taskPageSource).toContain("showPluginInstallInstructions");
+  });
+
+  it("does not generate another pairing code for transient context or heartbeat failures", () => {
+    const retryCodes = taskPageSource.slice(
+      taskPageSource.indexOf("const pairingRetryErrorCodes"),
+      taskPageSource.indexOf("]);", taskPageSource.indexOf("const pairingRetryErrorCodes"))
+    );
+    expect(retryCodes).not.toContain("HEARTBEAT_FAILED");
+    expect(retryCodes).not.toContain("HEARTBEAT_TIMEOUT");
+    expect(retryCodes).not.toContain("CONTEXT_TIMEOUT");
+    expect(retryCodes).not.toContain("CONTEXT_REFRESH_FAILED");
+    expect(retryCodes).toContain("PAIRING_REQUIRED");
+    expect(taskPageSource).toContain("重新检测插件");
   });
 
   it("returns an expired task session to the same task for pairing recovery", () => {
@@ -162,6 +258,12 @@ describe("task page acceptance guard", () => {
     expect(dashboardSource).toContain("采集健康");
     expect(dashboardSource).toContain("COLLECTOR_STALLED");
     expect(dashboardSource).toContain("未验证");
+    expect(dashboardSource).toContain('err instanceof ApiError && err.code === "UNAUTHORIZED"');
+    expect(dashboardSource).toContain('href={createLoginHref("/dashboard")}');
+    expect(dashboardSource).toContain("window.location.replace(createLoginHref(\"/dashboard\"))");
+    expect(dashboardSource).toContain("返回登录");
+    expect(authPageStateSource).toContain("inline-flex h-10 items-center justify-center");
+    expect(authPageStateSource).toContain("返回登录");
   });
 
   it("inherits route templates without requiring per-task URLs while preserving legacy links", () => {

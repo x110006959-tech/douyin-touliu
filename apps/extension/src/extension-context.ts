@@ -31,6 +31,11 @@ export type ExtensionContext = {
     contractVersion: string;
     adapterVersion: string;
   };
+  localPromotionInternalApi: {
+    enabled: boolean;
+    contractVersion: string;
+    adapterVersion: string;
+  };
 };
 
 export type ExtensionContextProtocolCheck =
@@ -60,7 +65,9 @@ export function parseExtensionContext(value: unknown): ExtensionContext | null {
   const accountName = optionalString(account.accountName);
   const collectionProtocolVersion = value.collectionProtocolVersion;
   const liveScreenInternalApi = value.liveScreenInternalApi;
+  const localPromotionInternalApi = value.localPromotionInternalApi;
   if (!id || !accountName || !Array.isArray(account.projects) || typeof collectionProtocolVersion !== "number" || !Number.isInteger(collectionProtocolVersion) || collectionProtocolVersion < 1 || !isRecord(liveScreenInternalApi) || typeof liveScreenInternalApi.enabled !== "boolean" || !optionalString(liveScreenInternalApi.contractVersion) || !optionalString(liveScreenInternalApi.adapterVersion)) return null;
+  if (localPromotionInternalApi !== undefined && (!isRecord(localPromotionInternalApi) || typeof localPromotionInternalApi.enabled !== "boolean" || !optionalString(localPromotionInternalApi.contractVersion) || !optionalString(localPromotionInternalApi.adapterVersion))) return null;
 
   const projects: ExtensionProject[] = [];
   for (const item of account.projects) {
@@ -95,6 +102,11 @@ export function parseExtensionContext(value: unknown): ExtensionContext | null {
       enabled: liveScreenInternalApi.enabled,
       contractVersion: optionalString(liveScreenInternalApi.contractVersion)!,
       adapterVersion: optionalString(liveScreenInternalApi.adapterVersion)!
+    },
+    localPromotionInternalApi: {
+      enabled: isRecord(localPromotionInternalApi) ? localPromotionInternalApi.enabled === true : false,
+      contractVersion: isRecord(localPromotionInternalApi) ? optionalString(localPromotionInternalApi.contractVersion)! : "unsupported",
+      adapterVersion: isRecord(localPromotionInternalApi) ? optionalString(localPromotionInternalApi.adapterVersion)! : "unsupported"
     }
   };
 }

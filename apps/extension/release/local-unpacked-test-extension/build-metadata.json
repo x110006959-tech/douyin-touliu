@@ -1,10 +1,10 @@
 {
-  "productVersion": "0.2.4",
-  "gitSha": "a0cef5b788b6",
-  "buildTime": "2026-08-14T19:57:29.639Z",
+  "productVersion": "0.2.5",
+  "gitSha": "4ffdf9d3a639",
+  "buildTime": "2026-08-28T13:58:56.853Z",
   "schemaVersion": "20260731_v035_ai_skill_diagnosis",
-  "extensionVersion": "0.2.4",
-  "sourceFingerprint": "1a4bc20a9d72",
+  "extensionVersion": "0.2.5",
+  "sourceFingerprint": "e078d8fdfcdf",
   "buildTarget": "local",
   "localTestOnly": true
 }

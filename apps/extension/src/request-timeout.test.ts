@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bridgeRecoveryRequestTimeoutMs, fetchWithTimeout } from "./request-timeout";
+import serviceWorkerSource from "./service-worker.ts?raw";
+
+function functionSource(name: string, nextName: string) {
+  const start = serviceWorkerSource.indexOf(`async function ${name}`);
+  const end = serviceWorkerSource.indexOf(`\nasync function ${nextName}`, start + 1);
+  return serviceWorkerSource.slice(start, end === -1 ? undefined : end);
+}
 
 describe("extension request timeout", () => {
   afterEach(() => {
@@ -9,6 +16,29 @@ describe("extension request timeout", () => {
 
   it("keeps both recovery requests inside the five-second web bridge budget", () => {
     expect(bridgeRecoveryRequestTimeoutMs * 2).toBeLessThan(5_000);
+  });
+
+  it("passes the caller timeout budget to context refresh and heartbeat requests", () => {
+    expect(functionSource("refreshBoundContext", "apiContext")).toContain("}, timeoutMs);");
+    expect(functionSource("reportExtensionHeartbeat", "enqueueSnapshotUpload")).toContain("}, timeoutMs);");
+  });
+
+  it("keeps status polling read-only and reports sync heartbeat failures", () => {
+    expect(functionSource("getBridgeStatus", "syncCurrentTaskFromBridge")).not.toContain("fetchWithTimeout");
+    const syncSource = functionSource("syncCurrentTaskFromBridge", "isPopupSender");
+    expect(syncSource).toContain('errorCode: "HEARTBEAT_FAILED"');
+    expect(syncSource).toContain("contextRefreshErrorCode(response.status)");
+    expect(syncSource).not.toContain('stopLivePulse("TASK_CHANGED")');
+  });
+
+  it("confirms the target task heartbeat before persisting an automatic task switch", () => {
+    const syncSource = functionSource("syncCurrentTaskFromBridge", "isPopupSender");
+    const heartbeatIndex = syncSource.indexOf("reportExtensionHeartbeatForCredentials({");
+    const persistIndex = syncSource.indexOf("await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig");
+
+    expect(heartbeatIndex).toBeGreaterThan(-1);
+    expect(syncSource.slice(heartbeatIndex, persistIndex)).toContain("collectionTaskId: task.id");
+    expect(persistIndex).toBeGreaterThan(heartbeatIndex);
   });
 
   it("aborts a hanging request within the configured timeout", async () => {

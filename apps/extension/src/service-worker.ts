@@ -3,13 +3,21 @@ import type {
   CollectionRouteKey,
   CollectionSnapshotPayload,
   MetricPulse,
-  LiveScreenInternalApiEndpointKey
 } from "@douyin-local-life/shared";
 import {
   extensionBridgeProtocolVersion,
   extensionCollectionProtocolVersion,
   liveScreenInternalApiEndpointKeys,
   liveScreenPulseCoreMetricKeys
+} from "@douyin-local-life/shared";
+import {
+  isExactLocalPromotionInternalApiPage,
+  localPromotionInternalApiAdapterVersion,
+  localPromotionInternalApiContractVersion,
+  localPromotionIdentityKey,
+  localPromotionApiMetricKeys,
+  localPromotionInternalApiEndpointKeys,
+  localPromotionPulseMetricKeys,
 } from "@douyin-local-life/shared";
 import { collectionRouteLabels, defaultRequiredCollectionRoutes, normalizeCollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
 import { apiBaseUrlGuidance, defaultApiBaseUrl } from "./build-target";
@@ -23,15 +31,28 @@ import {
   type ExtensionContext
 } from "./extension-context";
 import { createKeyedSingleFlight } from "./single-flight";
-import { nextLivePulseAfter, nextLivePulseAfterRateLimit } from "./live-pulse-schedule";
-import { advanceLivePulseFailure } from "./live-pulse-failure";
+import {
+  localPromotionPulseCadenceMs,
+  localPromotionRateLimitCooldownRemaining,
+  nextLivePulseAfter
+} from "./live-pulse-schedule";
+import { advanceLivePulseFailure, fatalLivePulseFailureReason } from "./live-pulse-failure";
 import { bridgeRecoveryRequestTimeoutMs, extensionRequestTimeoutMs, fetchWithTimeout, isRequestTimeout } from "./request-timeout";
 import { uploadMetricPulseRequest, type MetricPulseUploadResult } from "./metric-pulse-upload";
-import { restoreBoundTaskPageConnection, restoreTaskPageConnection } from "./task-page-bridge-recovery";
+import {
+  contextRefreshErrorCode,
+  createTaskPageConnectionActivity,
+  resolveTaskPageBinding,
+  shouldBlockTaskSwitchForActivePulse,
+  taskIdFromBridgePageUrl
+} from "./task-page-bridge-recovery";
 import { normalizeLivePulseMetricKeys, parseLivePulseOutcome, type LivePulseOutcome } from "./live-pulse-status";
 import { isLivePulseActivityReporter, livePulseActivityForTab, type LivePulseActivity } from "./live-pulse-activity";
 import { isExactLiveScreenPage } from "./live-screen-pulse-page";
 import { resolveLiveScreenRoomId } from "./live-screen-room-id";
+import { canKeepLivePulseForUrlUpdate } from "./live-pulse-tab-update";
+import { collectLocalPromotionInternalApi } from "./local-promotion-internal-api";
+import { createLocalPromotionPulseSnapshot } from "./local-promotion-pulse-snapshot";
 
 type CollectionSessionState = {
   taskId: string;
@@ -60,11 +81,13 @@ type PendingPairingConfirmation = {
   expiresAt: string;
   requestedAt: string;
 };
-type LivePulseState = {
+type PairingExchangeInput = Pick<PendingPairingConfirmation, "apiBaseUrl" | "code" | "label">;
+type PulseState = {
   loopId: string;
   tabId: number;
   taskId: string;
-  roomId: string;
+  identityKey: string;
+  routeKey: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD";
   currentUrl: string;
   collectionRunId: string | null;
   startedAt: string;
@@ -74,17 +97,25 @@ type LivePulseState = {
   lastMetricCount: number;
   lastMetricKeys: string[];
   lastFailureReason: string | null;
-  lastFailureEndpoint: LiveScreenInternalApiEndpointKey | null;
+  lastFailureEndpoint: string | null;
   rateLimitedUntil: string | null;
   uploadController: AbortController | null;
 };
-type StoredLivePulseState = Omit<LivePulseState, "uploadController"> & {
+type StoredPulseState = Omit<PulseState, "uploadController"> & {
   buildFingerprint: string;
   collectionProtocolVersion: number;
 };
+type StoredPulseStateMap = Record<string, StoredPulseState>;
+type StoredPulseActivityMap = Record<string, LivePulseActivity>;
+type StoredPulseOutcomeMap = Record<string, LivePulseOutcome>;
 let uploadQueue: Promise<unknown> = Promise.resolve();
 const captureSingleFlight = createKeyedSingleFlight();
-let livePulseState: LivePulseState | null = null;
+const livePulseStates = new Map<number, PulseState>();
+const livePulseActivities = new Map<number, LivePulseActivity>();
+const latestLivePulseOutcomes = new Map<number, LivePulseOutcome>();
+let livePulseStorageHydrated = false;
+let livePulseStorageHydration: Promise<void> | null = null;
+let livePulseStorageWriteQueue: Promise<void> = Promise.resolve();
 let latestLivePulseOutcome: LivePulseOutcome | null = null;
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -122,20 +153,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void startLivePulse(message.payload || {}).then(sendResponse);
     return true;
   }
+  if (message?.type === MESSAGE.START_LOCAL_PROMOTION_PULSE) {
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中开启。" });
+      return false;
+    }
+    void startLocalPromotionPulse(message.payload || {}).then(sendResponse);
+    return true;
+  }
   if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
     if (!isPopupSender(sender)) {
       sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中停止。" });
       return false;
     }
-    void stopLivePulse("USER_STOPPED").then(() => sendResponse({ ok: true }));
+    void stopLivePulse("USER_STOPPED", undefined, undefined, undefined, message.payload?.tabId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
+    if (!isPopupSender(sender)) {
+      sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中停止。" });
+      return false;
+    }
+    void stopLivePulse("USER_STOPPED", undefined, undefined, undefined, message.payload?.tabId).then(() => sendResponse({ ok: true }));
     return true;
   }
   if (message?.type === MESSAGE.SUBMIT_LIVE_PULSE) {
     void submitLivePulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
     return true;
   }
+  if (message?.type === MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE) {
+    void submitLocalPromotionPulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
+    return true;
+  }
   if (message?.type === MESSAGE.GET_STATE) {
-    void getState().then(sendResponse);
+    void getState(Number.isInteger(message.payload?.tabId) ? Number(message.payload.tabId) : undefined).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.VERIFY_BOUND_CONTEXT) {
@@ -147,7 +198,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
-    void getBridgeStatus(sender).then(sendResponse);
+    void getBridgeStatus().then(sendResponse);
+    return true;
+  }
+  if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
+    void syncCurrentTaskFromBridge(sender).then(sendResponse);
+    return true;
+  }
+  if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
+    void pairTaskFromWeb(message.payload || {}, sender).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
@@ -159,7 +218,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: "配对确认只能在插件 Popup 中完成。" });
       return false;
     }
-    void confirmPairing().then(sendResponse);
+    void confirmPairing(sender).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.CANCEL_PAIRING) {
@@ -225,7 +284,7 @@ async function requestPairingConfirmation(payload: { apiBaseUrl?: string; code?:
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code })
     });
-    const body = await response.json();
+    const body = await response.json().catch(() => null);
     if (!response.ok) return { ok: false, error: body?.error?.message || "配对码无效，请在任务页重新生成。" };
     const preview = body?.data as Omit<PendingPairingConfirmation, "apiBaseUrl" | "code" | "label" | "requestedAt"> | undefined;
     if (!preview?.account || !preview.expiresAt) return { ok: false, error: "服务器未返回可核对的配对信息。" };
@@ -265,7 +324,60 @@ async function requestPairingConfirmation(payload: { apiBaseUrl?: string; code?:
   }
 }
 
-async function confirmPairing() {
+async function pairTaskFromWeb(
+  payload: { apiBaseUrl?: string; code?: string },
+  sender: chrome.runtime.MessageSender
+) {
+  // Only a content-script sender with a real browser tab may authorize the
+  // direct web pairing flow; never trust a caller-supplied URL.
+  const taskPageUrl = sender.tab?.url;
+  const taskId = taskIdFromBridgePageUrl(taskPageUrl);
+  if (!taskPageUrl || !taskId) {
+    return { ok: false, errorCode: "TASK_PAGE_REQUIRED", error: "只能在当前采集任务页面自动连接插件。" };
+  }
+  const apiBaseUrl = normalizeApiBaseUrl(payload.apiBaseUrl || defaultApiBaseUrl);
+  const code = String(payload.code || "").trim();
+  if (!apiBaseUrl) return { ok: false, errorCode: "INVALID_PAIRING_REQUEST", error: apiBaseUrlGuidance };
+  if (!/^\d{6}$/.test(code)) return { ok: false, errorCode: "INVALID_PAIRING_REQUEST", error: "网页配对码无效，请重新生成。" };
+  const protocol = await checkPairingServiceProtocol(apiBaseUrl);
+  if (!protocol.ok) return protocol;
+  try {
+    const previewResponse = await fetchWithTimeout(`${apiBaseUrl}/extension/pairing-codes/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code })
+    });
+    const previewBody = await previewResponse.json().catch(() => null);
+    if (!previewResponse.ok) {
+      return {
+        ok: false,
+        errorCode: previewResponse.status === 429 ? "PAIRING_RATE_LIMITED" : "PAIRING_CODE_INVALID",
+        error: previewResponse.status === 429 ? "配对请求过于频繁，请稍后重试。" : "配对码错误、已使用或已过期，请在任务页重新生成。"
+      };
+    }
+    const preview = previewBody?.data as { task?: { id?: string } | null; expiresAt?: string } | undefined;
+    if (!preview?.task?.id || preview.task.id !== taskId) {
+      return { ok: false, errorCode: "TASK_PAGE_MISMATCH", error: "配对码不属于当前任务页面，已阻止自动连接。" };
+    }
+    const pulseConflict = await pairingPulseConflict(taskId);
+    if (pulseConflict) return pulseConflict;
+    const exchangeInput: PairingExchangeInput = {
+      apiBaseUrl,
+      code,
+      label: "网页任务一键配对"
+    };
+    const result = await exchangePairingConfirmation(exchangeInput, taskId, taskPageUrl);
+    return result.ok
+      ? { ...result, autoConnected: true, taskPageUrl }
+      : result;
+  } catch (error: unknown) {
+    return isRequestTimeout(error)
+      ? { ok: false, errorCode: "PAIRING_API_TIMEOUT", error: "诊断服务响应超时，请检查本机 API 后重试。" }
+      : { ok: false, errorCode: "PAIRING_REQUEST_FAILED", error: "无法连接诊断服务，请检查网络或服务器地址。" };
+  }
+}
+
+async function confirmPairing(sender: chrome.runtime.MessageSender) {
   const stored = await chrome.storage.local.get([STORAGE.PENDING_PAIRING_CONFIRMATION]);
   const confirmation = stored[STORAGE.PENDING_PAIRING_CONFIRMATION] as PendingPairingConfirmation | undefined;
   if (!confirmation || new Date(confirmation.expiresAt).getTime() <= Date.now()) {
@@ -274,30 +386,85 @@ async function confirmPairing() {
   }
   const protocol = await checkPairingServiceProtocol(confirmation.apiBaseUrl);
   if (!protocol.ok) return protocol;
+  const taskId = confirmation.task?.id;
+  const taskPageUrl = taskId ? await currentTaskPageUrl(taskId, sender.tab?.url) : null;
+  const pulseConflict = await pairingPulseConflict(taskId);
+  if (pulseConflict) return pulseConflict;
+  return exchangePairingConfirmation(confirmation, taskId, taskPageUrl || undefined);
+}
+
+async function pairingPulseConflict(targetTaskId?: string) {
+  await hydrateLivePulseStorage();
+  if (livePulseStates.size === 0) return null;
+  const local = await chrome.storage.local.get([STORAGE.CONFIG]);
+  const config = (local[STORAGE.CONFIG] || {}) as ExtensionConfig;
+  const hasDifferentTask = [...livePulseStates.values()].some((activePulse) => (
+    !targetTaskId || activePulse.taskId !== targetTaskId || config.collectionTaskId !== targetTaskId
+  ));
+  if (!hasDifferentTask) return null;
+  return {
+    ok: false as const,
+    errorCode: "ACTIVE_PULSE_STOP_REQUIRED",
+    error: "已有其他任务正在持续采集，请先在插件 Popup 手动停止后再配对。"
+  };
+}
+
+async function currentTaskPageUrl(expectedTaskId: string, senderUrl?: string) {
+  const candidates = [senderUrl];
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    candidates.push(tabs[0]?.url);
+  } catch {
+    // A popup may be opened without a queryable focused window. Pairing can
+    // still complete, but it must not invent a task-page heartbeat URL.
+  }
+  return candidates.find((url) => taskIdFromBridgePageUrl(url) === expectedTaskId) || null;
+}
+
+async function exchangePairingConfirmation(
+  confirmation: PairingExchangeInput,
+  expectedTaskId?: string,
+  taskPageUrl?: string
+) {
   try {
     const response = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/pairing-codes/exchange`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code: confirmation.code, label: confirmation.label })
     });
-    const body = await response.json();
-    if (!response.ok) return { ok: false, error: body?.error?.message || "配对失败，请在任务页重新生成配对码。" };
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        ok: false,
+        errorCode: response.status === 429 ? "PAIRING_RATE_LIMITED" : "PAIRING_CODE_INVALID",
+        error: response.status === 429 ? "配对请求过于频繁，请稍后重试。" : "配对码错误、已使用或已过期，请在任务页重新生成。"
+      };
+    }
     const token = body?.data?.token as string | undefined;
-    if (!token) return { ok: false, error: "服务器未返回插件凭证，请重新配对。" };
+    if (!token) return { ok: false, errorCode: "PAIRING_RESPONSE_INVALID", error: "服务器未返回有效插件凭证，请重新配对。" };
     const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
       headers: extensionContextRequestHeaders(token)
     });
-    const contextBody = await contextResponse.json();
-    if (!contextResponse.ok) return { ok: false, error: contextBody?.error?.message || "无法读取绑定账号。" };
+    const contextBody = await contextResponse.json().catch(() => null);
+    if (!contextResponse.ok) {
+      return {
+        ok: false,
+        errorCode: contextResponse.status === 401 || contextResponse.status === 403 ? "PAIRING_CREDENTIAL_REJECTED" : "PAIRING_SERVICE_ERROR",
+        error: contextResponse.status === 401 || contextResponse.status === 403 ? "插件凭证未被服务端接受，请重新配对。" : "无法读取已配对账号，请检查本机 API。"
+      };
+    }
     const protocolCheck = checkExtensionContextProtocol(contextBody.data, extensionCollectionProtocolVersion);
-    if (!protocolCheck.ok) return { ok: false, error: protocolErrorMessage(protocolCheck.code) };
+    if (!protocolCheck.ok) return { ok: false, errorCode: protocolCheck.code, error: protocolErrorMessage(protocolCheck.code) };
     const context = parseExtensionContext(contextBody.data);
-    if (!context) return { ok: false, error: "服务器返回的任务上下文无效，已停止配对。" };
-    const suggestedTaskId = body?.data?.suggestedTask?.id as string | undefined;
+    if (!context) return { ok: false, errorCode: "INVALID_CONTEXT", error: "服务器返回的账号上下文无效，已停止配对。" };
+    const suggestedTaskId = expectedTaskId || body?.data?.suggestedTask?.id as string | undefined;
     const suggestedProject = suggestedTaskId
       ? context.account.projects.find((project) => project.tasks.some((task) => task.id === suggestedTaskId))
       : undefined;
     const suggestedTask = suggestedProject?.tasks.find((task) => task.id === suggestedTaskId);
+    if (expectedTaskId && (!suggestedProject || !suggestedTask)) {
+      return { ok: false, errorCode: "TASK_ACCOUNT_MISMATCH", error: "当前任务不属于已配对账号，未完成自动连接。" };
+    }
     const config: ExtensionConfig = {
       apiBaseUrl: confirmation.apiBaseUrl,
       accountProfileId: context.account.id,
@@ -310,13 +477,31 @@ async function confirmPairing() {
           }
         : {})
     };
+    const pulseConflict = await pairingPulseConflict(config.collectionTaskId);
+    if (pulseConflict) return pulseConflict;
+    const heartbeat = taskPageUrl
+      ? await reportExtensionHeartbeatForCredentials({
+          apiBaseUrl: confirmation.apiBaseUrl,
+          collectionTaskId: config.collectionTaskId,
+          token
+        }, createTaskPageConnectionActivity(taskPageUrl))
+      : { ok: true as const, skipped: true as const };
+    if (!heartbeat.ok) {
+      const heartbeatError = "error" in heartbeat && typeof heartbeat.error === "string" ? heartbeat.error : "任务页心跳未被服务端确认。";
+      return {
+        ok: false,
+        errorCode: /超时/.test(heartbeatError) ? "HEARTBEAT_TIMEOUT" : "HEARTBEAT_FAILED",
+        error: /超时/.test(heartbeatError) ? "任务页心跳响应超时，请检查本机 API 后重试。" : "任务页心跳未被服务端确认，请检查本机 API 后重试。"
+      };
+    }
     await chrome.storage.local.set({ [STORAGE.TOKEN]: token, [STORAGE.CONFIG]: config, [STORAGE.CONTEXT]: context });
     await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
     await appendLog("extension.paired", { accountProfileId: context.account.id, expiresAt: body?.data?.expiresAt });
-    await reportExtensionHeartbeatFromStoredActivity();
     return { ok: true, config, context };
-  } catch {
-    return { ok: false, error: "无法连接诊断服务，请检查网络或服务器地址。" };
+  } catch (error: unknown) {
+    return isRequestTimeout(error)
+      ? { ok: false, errorCode: "PAIRING_API_TIMEOUT", error: "诊断服务响应超时，请检查本机 API 后重试。" }
+      : { ok: false, errorCode: "PAIRING_SERVICE_ERROR", error: "无法连接诊断服务，请检查网络或服务器地址。" };
   }
 }
 
@@ -329,22 +514,35 @@ async function checkPairingServiceProtocol(apiBaseUrl: string) {
   try {
     const response = await fetchWithTimeout(`${apiBaseUrl}/version`);
     const body: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { ok: false as const, errorCode: "PAIRING_SERVICE_UNAVAILABLE", error: "无法读取本地服务版本，请确认 API 正常运行。" };
+    }
     const payload = body && typeof body === "object" && "data" in body
       ? (body as { data?: unknown }).data
       : null;
+    const serviceExtensionVersion = payload && typeof payload === "object" && "extensionVersion" in payload
+      ? (payload as { extensionVersion?: unknown }).extensionVersion
+      : undefined;
+    if (typeof serviceExtensionVersion !== "string") {
+      return { ok: false as const, errorCode: "SERVICE_UPDATE_REQUIRED", error: "本地服务版本信息不完整，请先更新并重启本地服务。" };
+    }
+    if (serviceExtensionVersion !== chrome.runtime.getManifest().version) {
+      return { ok: false as const, errorCode: "EXTENSION_UPDATE_REQUIRED", error: "采集插件版本与本地服务不一致，请重新加载当前版本插件。" };
+    }
     const collectionProtocolVersion = payload && typeof payload === "object" && "collectionProtocolVersion" in payload
       ? (payload as { collectionProtocolVersion?: unknown }).collectionProtocolVersion
       : undefined;
     const protocolCheck = checkExtensionContextProtocol({ collectionProtocolVersion }, extensionCollectionProtocolVersion);
-    if (!response.ok || !protocolCheck.ok) {
+    if (!protocolCheck.ok) {
       return {
         ok: false as const,
+        errorCode: protocolCheck.ok ? "PAIRING_SERVICE_UNAVAILABLE" : protocolCheck.code,
         error: protocolCheck.ok ? "无法读取本地服务版本，请确认 API 正常运行。" : protocolErrorMessage(protocolCheck.code)
       };
     }
     return { ok: true as const };
   } catch {
-    return { ok: false as const, error: "无法读取本地服务版本，请确认 API 正常运行。" };
+    return { ok: false as const, errorCode: "PAIRING_SERVICE_UNAVAILABLE", error: "无法读取本地服务版本，请确认 API 正常运行。" };
   }
 }
 
@@ -358,11 +556,18 @@ async function selectTask(payload: { collectionTaskId?: string }) {
   const project = context.account.projects.find((item) => item.tasks.some((task) => task.id === taskId));
   const task = project?.tasks.find((item) => item.id === taskId);
   if (!project || !task) return { ok: false, error: "所选任务不属于当前绑定账号，已阻止切换。" };
-  await stopLivePulse("TASK_CHANGED");
+  await hydrateLivePulseStorage();
+  if (shouldBlockTaskSwitchForActivePulse({
+    boundTaskId: config.collectionTaskId,
+    targetTaskId: task.id,
+    hasActivePulse: livePulseStates.size > 0
+  })) {
+    return { ok: false, error: "另一任务正在持续采集，请先在插件 Popup 手动停止后再切换任务。" };
+  }
   const nextConfig: ExtensionConfig = { ...config, collectionTaskId: task.id, projectId: project.id, projectName: project.name };
   await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig });
   await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
-  latestLivePulseOutcome = null;
+  resetLivePulseStorage();
   await appendLog("task.selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
   await reportExtensionHeartbeatFromStoredActivity();
   return { ok: true, config: nextConfig };
@@ -371,12 +576,12 @@ async function selectTask(payload: { collectionTaskId?: string }) {
 async function clearPairing() {
   await stopLivePulse("UNPAIRED");
   await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
-  latestLivePulseOutcome = null;
+  resetLivePulseStorage();
   await appendLog("extension.unpaired");
   return { ok: true };
 }
 
-async function getState() {
+async function getState(tabId?: number) {
   const local = await chrome.storage.local.get([
     STORAGE.CONFIG,
     STORAGE.LATEST_SNAPSHOT,
@@ -391,20 +596,35 @@ async function getState() {
     STORAGE.LIVE_PULSE_ACTIVITY,
     STORAGE.LIVE_PULSE_STATE
   ]);
-  const activeLivePulseState = await hydrateLivePulseState();
-  const rawLivePulseOutcome = local[STORAGE.LIVE_PULSE_LAST_OUTCOME];
-  const parsedLivePulseOutcome = parseLivePulseOutcome(rawLivePulseOutcome, {
-    buildFingerprint: __PXXIS_EXTENSION_BUILD__,
-    collectionProtocolVersion: extensionCollectionProtocolVersion,
-    endpointKeys: liveScreenInternalApiEndpointKeys
-  });
-  if (rawLivePulseOutcome && !parsedLivePulseOutcome) {
-    await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME).catch(() => undefined);
-  }
-  const storedLivePulseOutcome = latestLivePulseOutcome || parsedLivePulseOutcome;
-  const lastLivePulseOutcome = storedLivePulseOutcome?.taskId === local[STORAGE.CONFIG]?.collectionTaskId
-    ? storedLivePulseOutcome
+  await hydrateLivePulseStorage();
+  const config = (local[STORAGE.CONFIG] || {}) as ExtensionConfig;
+  const selectedTabId = Number.isInteger(tabId) && Number(tabId) > 0
+    ? Number(tabId)
+    : await activeBrowserTabId();
+  const currentTaskId = typeof config.collectionTaskId === "string" ? config.collectionTaskId : null;
+  const selectedState = selectedTabId ? livePulseStates.get(selectedTabId) || null : null;
+  const activeLivePulseState = selectedState && (!currentTaskId || selectedState.taskId === currentTaskId)
+    ? selectedState
     : null;
+  const pulseDisplays = new Map<number, Record<string, unknown>>();
+  for (const state of livePulseStates.values()) {
+    if (currentTaskId && state.taskId !== currentTaskId) continue;
+    pulseDisplays.set(state.tabId, livePulseDisplayForState(state));
+  }
+  for (const outcome of latestLivePulseOutcomes.values()) {
+    if (currentTaskId && outcome.taskId !== currentTaskId) continue;
+    if (!pulseDisplays.has(outcome.tabId || -1) && Number.isInteger(outcome.tabId)) {
+      pulseDisplays.set(Number(outcome.tabId), livePulseDisplayForOutcome(outcome));
+    }
+  }
+  const livePulses = [...pulseDisplays.values()];
+  const selectedOutcome = selectedTabId ? latestLivePulseOutcomes.get(selectedTabId) || null : latestLivePulseOutcome;
+  const lastLivePulseOutcome = selectedOutcome && (!currentTaskId || selectedOutcome.taskId === currentTaskId)
+    ? selectedOutcome
+    : null;
+  const selectedLivePulse = activeLivePulseState
+    ? livePulseDisplayForState(activeLivePulseState)
+    : livePulseDisplayForOutcome(lastLivePulseOutcome);
   const pending = local[STORAGE.PENDING_PAIRING_CONFIRMATION] as PendingPairingConfirmation | undefined;
   if (pending && new Date(pending.expiresAt).getTime() <= Date.now()) {
     await chrome.storage.local.remove(STORAGE.PENDING_PAIRING_CONFIRMATION);
@@ -416,27 +636,26 @@ async function getState() {
     logs: local[STORAGE.LOGS] || [],
     routeUploadState: local[STORAGE.ROUTE_UPLOAD_STATE] || {},
     pageActivity: local[STORAGE.PAGE_ACTIVITY] || null,
-    livePulseActivity: local[STORAGE.LIVE_PULSE_ACTIVITY] || null,
+    livePulseActivity: selectedTabId ? livePulseActivities.get(selectedTabId) || null : null,
     activeCollectionSession: local[STORAGE.ACTIVE_COLLECTION_SESSION] || null,
-    livePulse: activeLivePulseState ? {
-      active: true,
-      tabId: activeLivePulseState.tabId,
-      startedAt: activeLivePulseState.startedAt,
-      successCount: activeLivePulseState.successCount,
-      lastSuccessAt: activeLivePulseState.lastSuccessAt,
-      lastMetricCount: activeLivePulseState.lastMetricCount,
-      lastMetricKeys: activeLivePulseState.lastMetricKeys,
-      lastFailureReason: activeLivePulseState.lastFailureReason,
-      lastFailureEndpoint: activeLivePulseState.lastFailureEndpoint,
-      rateLimitedUntil: activeLivePulseState.rateLimitedUntil,
-      lastOutcome: null
-    } : { active: false, lastOutcome: lastLivePulseOutcome },
+    livePulse: selectedLivePulse,
+    livePulses,
     context: local[STORAGE.CONTEXT] || null,
     hasToken: Boolean(local[STORAGE.TOKEN]),
     pendingPairingConfirmation: pending && new Date(pending.expiresAt).getTime() > Date.now()
       ? { apiBaseUrl: pending.apiBaseUrl, account: pending.account, task: pending.task, expiresAt: pending.expiresAt }
       : null
   };
+}
+
+async function activeBrowserTabId() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const id = tab?.id;
+    return Number.isInteger(id) && Number(id) > 0 ? Number(id) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function verifyBoundContext() {
@@ -453,31 +672,10 @@ async function verifyBoundContext() {
   return { ok: true, state, verifiedAt: new Date().toISOString() };
 }
 
-async function getBridgeStatus(sender: chrome.runtime.MessageSender) {
+async function getBridgeStatus() {
   const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN, STORAGE.PENDING_PAIRING_CONFIRMATION]);
   const config = (local[STORAGE.CONFIG] || {}) as ExtensionConfig;
   const paired = Boolean(local[STORAGE.TOKEN]);
-  const recovery = await restoreBoundTaskPageConnection({
-    paired,
-    boundTaskId: config.collectionTaskId,
-    sender,
-    restore: (taskPageUrl) => restoreTaskPageConnection({
-      taskPageUrl,
-      timeoutMs: bridgeRecoveryRequestTimeoutMs,
-      refreshContext: refreshBoundContext,
-      reportHeartbeat: reportExtensionHeartbeat,
-      appendLog
-    })
-  });
-  if (recovery.attempted && !recovery.result.ok) {
-      await appendLog("extension.connection_restore_failed", { error: recovery.result.error });
-      return {
-        ok: false,
-        paired,
-        boundTaskId: config.collectionTaskId,
-        error: recovery.result.error
-      };
-  }
   return {
     ok: true,
     paired,
@@ -490,6 +688,106 @@ async function getBridgeStatus(sender: chrome.runtime.MessageSender) {
       ? config.collectionTaskId ? "插件已配对并绑定当前任务" : "插件已配对，尚未选择采集任务"
       : "插件运行正常，尚未配对"
   };
+}
+
+async function syncCurrentTaskFromBridge(sender: chrome.runtime.MessageSender) {
+  const taskPageUrl = sender.tab?.url || sender.url;
+  const taskId = taskIdFromBridgePageUrl(taskPageUrl);
+  if (!taskPageUrl || !taskId) {
+    return { ok: false, errorCode: "TASK_PAGE_REQUIRED", error: "只能在当前采集任务页面自动连接插件。" };
+  }
+
+  const local = await chrome.storage.local.get([STORAGE.CONFIG, STORAGE.TOKEN]);
+  const config = (local[STORAGE.CONFIG] || {}) as ExtensionConfig;
+  const token = local[STORAGE.TOKEN] as string | undefined;
+  const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl || "");
+  if (!token || !apiBaseUrl) {
+    return { ok: false, errorCode: "PAIRING_REQUIRED", error: "当前浏览器尚未连接采集插件，请完成一次账号配对。" };
+  }
+
+  try {
+    const response = await fetchWithTimeout(`${apiBaseUrl}/extension/context`, {
+      headers: extensionContextRequestHeaders(token)
+    }, bridgeRecoveryRequestTimeoutMs);
+    const body: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const errorCode = contextRefreshErrorCode(response.status);
+      return {
+        ok: false,
+        errorCode,
+        error: errorCode === "PAIRING_REQUIRED"
+          ? "插件凭证已失效，请重新连接采集账号。"
+          : "无法验证已配对账号，请检查本机 API。"
+      };
+    }
+    const payload = body && typeof body === "object" && "data" in body
+      ? (body as { data?: unknown }).data
+      : null;
+    const protocolCheck = checkExtensionContextProtocol(payload, extensionCollectionProtocolVersion);
+    if (!protocolCheck.ok) {
+      return { ok: false, errorCode: protocolCheck.code, error: protocolErrorMessage(protocolCheck.code) };
+    }
+    const context = parseExtensionContext(payload);
+    if (!context) return { ok: false, errorCode: "INVALID_CONTEXT", error: "服务器返回的账号上下文无效，未切换任务。" };
+    const binding = resolveTaskPageBinding(context, taskId);
+    if (!binding) {
+      return { ok: false, errorCode: "TASK_ACCOUNT_MISMATCH", error: "当前任务不属于已配对账号，未切换插件。" };
+    }
+
+    const { project, task } = binding;
+    const changed = config.collectionTaskId !== task.id;
+    await hydrateLivePulseStorage();
+    if (shouldBlockTaskSwitchForActivePulse({
+      boundTaskId: config.collectionTaskId,
+      targetTaskId: task.id,
+      hasActivePulse: livePulseStates.size > 0
+    })) {
+      return { ok: false, errorCode: "ACTIVE_PULSE_STOP_REQUIRED", error: "另一任务正在持续采集，请先在插件 Popup 手动停止后再切换任务。" };
+    }
+    const nextConfig: ExtensionConfig = {
+      ...config,
+      apiBaseUrl,
+      accountProfileId: context.account.id,
+      accountName: context.account.accountName,
+      collectionTaskId: task.id,
+      projectId: project.id,
+      projectName: project.name
+    };
+    const heartbeat = await reportExtensionHeartbeatForCredentials({
+      apiBaseUrl,
+      collectionTaskId: task.id,
+      token
+    }, createTaskPageConnectionActivity(taskPageUrl), bridgeRecoveryRequestTimeoutMs);
+    if (!heartbeat.ok) {
+      return { ok: false, errorCode: "HEARTBEAT_FAILED", error: heartbeat.error || "当前任务心跳未被服务端确认，未切换插件任务。" };
+    }
+    await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig, [STORAGE.CONTEXT]: context });
+    if (changed) {
+      await chrome.storage.local.remove([
+        STORAGE.ACTIVE_COLLECTION_SESSION,
+        STORAGE.ROUTE_UPLOAD_STATE,
+        STORAGE.LATEST_SNAPSHOT,
+        STORAGE.LIVE_PULSE_LAST_OUTCOME,
+        STORAGE.LIVE_PULSE_ACTIVITY,
+        STORAGE.LIVE_PULSE_STATE
+      ]);
+      resetLivePulseStorage();
+      await appendLog("task.auto_selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
+    }
+    return {
+      ok: true,
+      paired: true,
+      boundTaskId: task.id,
+      config: nextConfig,
+      message: changed ? "已自动连接当前任务。" : "插件已连接当前任务。"
+    };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      errorCode: isRequestTimeout(error) ? "CONTEXT_TIMEOUT" : "CONTEXT_REFRESH_FAILED",
+      error: isRequestTimeout(error) ? "本机 API 响应超时，请检查本地服务是否仍在运行。" : "无法验证已配对账号，请检查本机 API。"
+    };
+  }
 }
 
 function isPopupSender(sender: chrome.runtime.MessageSender) {
@@ -511,14 +809,14 @@ async function savePageActivity(activity: PageActivity, tabId?: number) {
 }
 
 async function handlePageActivity(activity: PageActivity, tabId?: number) {
-  const activeLivePulseState = livePulseState || await hydrateLivePulseState();
+  const activeLivePulseState = await hydrateLivePulseState(tabId);
   if (!isLivePulseActivityReporter(activeLivePulseState?.tabId, tabId)) return savePageActivity(activity, tabId);
-  if (shouldStopLivePulseForActivity(activity)) {
-    await stopLivePulse("PAGE_INACTIVE");
+  if (shouldStopLivePulseForActivity(activity, activeLivePulseState?.routeKey)) {
+    await stopLivePulse("PAGE_INACTIVE", undefined, undefined, activeLivePulseState || undefined);
     return savePageActivity(activity, tabId);
   }
   const liveActivity = livePulseActivityForTab(activity, tabId!);
-  if (liveActivity) await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: liveActivity });
+  if (liveActivity) await setLivePulseActivity(liveActivity);
   return savePageActivity(activity, tabId);
 }
 
@@ -529,6 +827,9 @@ async function captureAndUpload(
   const tabId = Number(payload.tabId);
   if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "无法识别当前标签页，请关闭插件弹窗后重试。" };
   if (!isSupportedExtensionCollectionUrl(payload.currentUrl || "")) return { ok: false, error: "当前页面不在已授权的精确采集路线中。" };
+  if (isExactLocalPromotionInternalApiPage(payload.currentUrl || "")) {
+    return { ok: false, error: "巨量本地推仅支持 API 持续采集，不再创建 DOM 快照。" };
+  }
   const refreshedContext = await refreshBoundContext();
   if (!refreshedContext.ok) return refreshedContext;
   const routeOverride = normalizeCollectionRouteKey(payload.routeOverride);
@@ -646,6 +947,15 @@ async function captureAndUploadSingleFlight(payload: { tabId?: number; currentUr
   return captureSingleFlight.run(key, () => captureAndUpload(payload, routeKey));
 }
 
+async function livePulseStartConflict(tabId: number, routeKey: PulseState["routeKey"]) {
+  await hydrateLivePulseStorage();
+  const active = livePulseStates.get(tabId) || null;
+  if (!active) return null;
+  return active.routeKey === routeKey
+    ? "当前页面已有 API 持续采集，请先停止后再启动。"
+    : "当前标签页已有另一条 API 持续采集，请先停止后再启动。";
+}
+
 async function startLivePulse(payload: { tabId?: number; currentUrl?: string }) {
   const tabId = Number(payload.tabId);
   if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "无法识别当前标签页，请关闭插件弹窗后重试。" };
@@ -655,9 +965,10 @@ async function startLivePulse(payload: { tabId?: number; currentUrl?: string }) 
   if (!refreshedContext.context.liveScreenInternalApi.enabled) {
     return { ok: false, error: "服务端 API 开关未开启；未启动实时脉冲，也不会静默改用 DOM。" };
   }
-  const session = await ensureCollectionSession();
-  if (!session.ok) return session;
   const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
+  if (pageContext?.buildFingerprint !== __PXXIS_EXTENSION_BUILD__) {
+    return { ok: false, error: "目标直播页仍在运行旧版插件脚本；请刷新当前直播页后再开始 API 持续采集。" };
+  }
   const initialLiveActivity = livePulseActivityForTab({
     currentUrl: pageContext?.currentUrl || "",
     pageType: pageContext?.pageType || "UNKNOWN",
@@ -677,8 +988,11 @@ async function startLivePulse(payload: { tabId?: number; currentUrl?: string }) 
   if (pageContext?.livePulseEligible !== true) {
     return { ok: false, error: "当前直播页未提供可信 room_id；未启动 API 采集，也不会改用 DOM。" };
   }
-  await stopLivePulse("REPLACED");
-  await clearLivePulseOutcome();
+  const session = await ensureCollectionSession();
+  if (!session.ok) return session;
+  const livePulseConflict = await livePulseStartConflict(tabId, "LIVE_DATA_SCREEN");
+  if (livePulseConflict) return { ok: false, error: livePulseConflict };
+  await clearLivePulseOutcome(tabId);
   const api = await apiContext();
   if (!api.ok) return api;
   const roomId = typeof pageContext?.livePulseRoomId === "string" && pageContext.livePulseRoomId.trim()
@@ -687,12 +1001,13 @@ async function startLivePulse(payload: { tabId?: number; currentUrl?: string }) 
   if (!roomId) {
     return { ok: false, error: "当前直播页未提供可信 room_id；未启动 API 采集，也不会改用 DOM。" };
   }
-  await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: initialLiveActivity });
-  livePulseState = {
+  await setLivePulseActivity(initialLiveActivity);
+  const state: PulseState = {
     loopId: `${tabId}:${Date.now()}`,
     tabId,
     taskId: api.collectionTaskId,
-    roomId,
+    identityKey: roomId,
+    routeKey: "LIVE_DATA_SCREEN" as const,
     currentUrl: pageContext.currentUrl,
     collectionRunId: session.session.collectionRunId,
     startedAt: new Date().toISOString(),
@@ -706,57 +1021,59 @@ async function startLivePulse(payload: { tabId?: number; currentUrl?: string }) 
     rateLimitedUntil: null,
     uploadController: null
   };
+  livePulseStates.set(tabId, state);
   await persistLivePulseState();
   await appendLog("live_pulse.started", { tabId, taskId: api.collectionTaskId });
   try {
     await chrome.tabs.sendMessage(tabId, {
       type: MESSAGE.BEGIN_LIVE_PULSE_LOOP,
       payload: {
-        collectionRunId: livePulseState.collectionRunId,
+        loopId: state.loopId,
+        collectionRunId: state.collectionRunId,
         liveScreenInternalApiEnabled: refreshedContext.context.liveScreenInternalApi.enabled
       }
     });
   } catch {
-    await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE");
+    await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE", undefined, undefined, state);
     return { ok: false, error: "插件尚未注入当前页面，请刷新目标网页后重试。" };
   }
   return { ok: true, nextRefreshAt: new Date().toISOString() };
 }
 
-async function submitLivePulse(payload: { pulseStartedAt?: number; snapshot?: CollectionSnapshotPayload; error?: string }, tabId?: number, senderUrl?: string) {
-  const state = await hydrateLivePulseState();
+async function submitLivePulse(payload: { loopId?: string; pulseStartedAt?: number; snapshot?: CollectionSnapshotPayload; error?: string }, tabId?: number, senderUrl?: string) {
+  const state = await hydrateLivePulseState(tabId);
   if (!state || tabId !== state.tabId) return { ok: false, stop: true, error: "LIVE_PULSE_NOT_ACTIVE" };
+  if (payload.loopId !== state.loopId) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
   const pulseStartedAt = Number.isFinite(payload.pulseStartedAt) ? Number(payload.pulseStartedAt) : Date.now();
-  const activityStore = await chrome.storage.local.get([STORAGE.LIVE_PULSE_ACTIVITY]);
-  const activity = activityStore[STORAGE.LIVE_PULSE_ACTIVITY] as LivePulseActivity | undefined;
+  const activity = await hydrateLivePulseActivity(tabId);
   if (
     !activity
     || activity.tabId !== state.tabId
     || shouldStopLivePulseForActivity(activity)
     || !isExactLiveScreenPage(senderUrl || activity.currentUrl)
   ) {
-    await stopLivePulse("PAGE_INACTIVE");
+    await stopLivePulse("PAGE_INACTIVE", undefined, undefined, state);
     return { ok: false, stop: true, error: "PAGE_INACTIVE" };
   }
   if (payload.error || !payload.snapshot) {
     const failure = await handleLivePulseFailure(state, payload.error || "PULSE_CAPTURE_FAILED", undefined, undefined, undefined, pulseStartedAt);
     return { ok: false, ...failure };
   }
-  if (livePulseState !== state) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
+  if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
   const snapshot = payload.snapshot;
-  if (!isExactLiveScreenPage(snapshot.sourceUrl || "") || livePulseRoomIdFromSnapshot(snapshot) !== state.roomId) {
-    await stopLivePulse("PAGE_NAVIGATED");
+  if (!isExactLiveScreenPage(snapshot.sourceUrl || "") || livePulseRoomIdFromSnapshot(snapshot) !== state.identityKey) {
+    await stopLivePulse("PAGE_NAVIGATED", undefined, undefined, state);
     return { ok: false, stop: true, error: "PAGE_NAVIGATED" };
   }
   const fatalEndpointStatus = snapshot.captureMeta?.liveScreenInternalApi?.endpointStatuses.find((item) => (
     ["HTTP_401", "HTTP_429", "SENSITIVE_RESPONSE", "BYTE_LIMIT", "TOTAL_BYTE_LIMIT", "SCHEMA_MISMATCH", "LIVE_ENDED"].includes(item.reason || "")
   ));
   if (fatalEndpointStatus) {
-    await stopLivePulse(fatalEndpointStatus.reason || "API_ABORTED", fatalEndpointStatus.endpoint);
+    await stopLivePulse(fatalEndpointStatus.reason || "API_ABORTED", fatalEndpointStatus.endpoint, undefined, state);
     return { ok: false, stop: true, error: fatalEndpointStatus.reason || "API_ABORTED" };
   }
   if (!snapshot.captureMeta?.liveScreenInternalApi || snapshot.visibleMetricsJson.length === 0) {
-    const endpointFailure = snapshot.captureMeta?.liveScreenInternalApi?.endpointStatuses.find((item) => item.reason);
+    const endpointFailure = [...(snapshot.captureMeta?.liveScreenInternalApi?.endpointStatuses || [])].reverse().find((item) => item.reason);
     const failure = await handleLivePulseFailure(
       state,
       endpointFailure?.reason || "PULSE_METRICS_MISSING",
@@ -769,9 +1086,9 @@ async function submitLivePulse(payload: { pulseStartedAt?: number; snapshot?: Co
   state.uploadController = uploadController;
   const result = await uploadMetricPulse(snapshot, uploadController.signal);
   if (state.uploadController === uploadController) state.uploadController = null;
-  if (livePulseState !== state) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
+  if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "LIVE_PULSE_REPLACED" };
   if (!result.ok) {
-    const failure = await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, undefined, result.retryAfterMs, pulseStartedAt);
+    const failure = await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, "metric-pulses", result.retryAfterMs, pulseStartedAt);
     return { ok: false, ...failure };
   }
   const firstSuccess = state.successCount === 0;
@@ -792,6 +1109,186 @@ async function submitLivePulse(payload: { pulseStartedAt?: number; snapshot?: Co
   }
   await persistLivePulseState();
   return { ok: true, nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now()) - Date.now()) };
+}
+
+async function startLocalPromotionPulse(payload: { tabId?: number; currentUrl?: string }) {
+  const tabId = Number(payload.tabId);
+  if (!Number.isInteger(tabId) || tabId <= 0) return { ok: false, error: "无法识别当前标签页，请关闭插件弹窗后重试。" };
+  if (!isExactLocalPromotionInternalApiPage(payload.currentUrl || "")) return { ok: false, error: "实时脉冲仅支持本地推数据总览精确页面。" };
+  const refreshedContext = await refreshBoundContext();
+  if (!refreshedContext.ok) return refreshedContext;
+  if (!refreshedContext.context.localPromotionInternalApi.enabled) {
+    return { ok: false, error: "服务端本地推 API 开关未开启；未启动实时脉冲，也不会静默改用 DOM。" };
+  }
+  const localPromotionApi = refreshedContext.context.localPromotionInternalApi;
+  if (localPromotionApi.contractVersion !== localPromotionInternalApiContractVersion
+    || localPromotionApi.adapterVersion !== localPromotionInternalApiAdapterVersion) {
+    return { ok: false, error: "本地推 API 契约或适配器版本不匹配；请更新并重启本地服务、重新加载插件后再试。" };
+  }
+  const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
+  if (pageContext?.buildFingerprint !== __PXXIS_EXTENSION_BUILD__) {
+    return { ok: false, error: "目标后台页仍在运行旧版插件脚本；请刷新当前本地推页面后再开始 API 持续采集。" };
+  }
+  if (pageContext?.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(pageContext?.currentUrl || "") || pageContext?.localPromotionPulseEligible !== true) {
+    return { ok: false, error: "当前标签页不是可用的本地推数据总览。" };
+  }
+  const session = await ensureCollectionSession();
+  if (!session.ok) return session;
+  const identityKey = typeof pageContext.localPromotionPulseIdentityKey === "string"
+    ? pageContext.localPromotionPulseIdentityKey
+    : null;
+  if (!identityKey) {
+    return { ok: false, error: "当前本地推页面缺少可信广告身份；未启动 API 采集，也不会改用 DOM。" };
+  }
+  const localPromotionPulseConflict = await livePulseStartConflict(tabId, "LOCAL_PROMOTION_DASHBOARD");
+  if (localPromotionPulseConflict) return { ok: false, error: localPromotionPulseConflict };
+  await hydrateLivePulseStorage();
+  const lastOutcome = latestLivePulseOutcomes.get(tabId);
+  const cooldownRemaining = lastOutcome?.routeKey === "LOCAL_PROMOTION_DASHBOARD" && lastOutcome.reason === "HTTP_429"
+    ? localPromotionRateLimitCooldownRemaining(new Date(lastOutcome.occurredAt).getTime())
+    : 0;
+  if (cooldownRemaining > 0) {
+    return {
+      ok: false,
+      error: `平台 API 刚返回限流，请等待 ${Math.ceil(cooldownRemaining / 1_000)} 秒后再手动开始；系统不会自动重试。`
+    };
+  }
+  await clearLivePulseOutcome(tabId);
+  const api = await apiContext();
+  if (!api.ok) return api;
+  const activity = livePulseActivityForTab({
+    currentUrl: pageContext.currentUrl,
+    pageType: "LOCAL_PROMOTION_DASHBOARD",
+    routeKey: "LOCAL_PROMOTION_DASHBOARD",
+    collectable: true,
+    tabState: pageContext.tabState === "VISIBLE" ? "VISIBLE" : "HIDDEN",
+    observedAt: new Date().toISOString()
+  }, tabId);
+  if (!activity) return { ok: false, error: "无法记录当前本地推标签页状态。" };
+  await setLivePulseActivity(activity);
+  const state: PulseState = {
+    loopId: `${tabId}:${Date.now()}`,
+    tabId,
+    taskId: api.collectionTaskId,
+    identityKey,
+    routeKey: "LOCAL_PROMOTION_DASHBOARD",
+    currentUrl: pageContext.currentUrl,
+    collectionRunId: session.session.collectionRunId,
+    startedAt: new Date().toISOString(),
+    consecutiveFailures: 0,
+    successCount: 0,
+    lastSuccessAt: null,
+    lastMetricCount: 0,
+    lastMetricKeys: [],
+    lastFailureReason: null,
+    lastFailureEndpoint: null,
+    rateLimitedUntil: null,
+    uploadController: null
+  };
+  livePulseStates.set(tabId, state);
+  await persistLivePulseState();
+  await appendLog("local_promotion_pulse.started", { tabId, taskId: api.collectionTaskId });
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: MESSAGE.BEGIN_LOCAL_PROMOTION_PULSE_LOOP,
+      payload: { loopId: state.loopId, collectionRunId: state.collectionRunId }
+    });
+  } catch {
+    await stopLivePulse("CONTENT_SCRIPT_UNAVAILABLE", undefined, undefined, state);
+    return { ok: false, error: "插件尚未注入当前页面，请刷新目标网页后重试。" };
+  }
+  return { ok: true, nextRefreshAt: new Date().toISOString() };
+}
+
+async function submitLocalPromotionPulse(payload: { loopId?: string; pulseStartedAt?: number; snapshot?: CollectionSnapshotPayload; error?: string }, tabId?: number, senderUrl?: string) {
+  const state = await hydrateLivePulseState(tabId);
+  if (!state || state.routeKey !== "LOCAL_PROMOTION_DASHBOARD" || tabId !== state.tabId) return { ok: false, stop: true, error: "LOCAL_PROMOTION_PULSE_NOT_ACTIVE" };
+  if (payload.loopId !== state.loopId) return { ok: false, stop: true, error: "PULSE_REPLACED" };
+  const pulseStartedAt = Number.isFinite(payload.pulseStartedAt) ? Number(payload.pulseStartedAt) : Date.now();
+  const activity = await hydrateLivePulseActivity(tabId);
+  if (!activity || activity.tabId !== state.tabId || activity.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(senderUrl || activity.currentUrl)) {
+    await stopLivePulse("PAGE_INACTIVE", undefined, undefined, state);
+    return { ok: false, stop: true, error: "PAGE_INACTIVE" };
+  }
+  if (payload.error) {
+    const failure = await handleLivePulseFailure(state, payload.error, undefined, undefined, undefined, pulseStartedAt);
+    return { ok: false, ...failure };
+  }
+  const sourceUrl = senderUrl || activity.currentUrl;
+  if (!isExactLocalPromotionInternalApiPage(sourceUrl)) {
+    await stopLivePulse("PAGE_NAVIGATED", undefined, undefined, state);
+    return { ok: false, stop: true, error: "PAGE_NAVIGATED" };
+  }
+  const collectionController = new AbortController();
+  state.uploadController = collectionController;
+  let collection: Awaited<ReturnType<typeof collectLocalPromotionInternalApi>>;
+  try {
+    collection = await collectLocalPromotionInternalApi({
+      enabled: true,
+      url: sourceUrl,
+      signal: collectionController.signal
+    });
+  } catch {
+    state.uploadController = null;
+    return { ok: false, ...(await handleLivePulseFailure(state, "REQUEST_FAILED", undefined, undefined, undefined, pulseStartedAt)) };
+  }
+  if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "PULSE_REPLACED" };
+  const snapshot = createLocalPromotionPulseSnapshot({
+    collection,
+    collectionRunId: state.collectionRunId,
+    sourceUrl,
+    tabState: activity.tabState,
+    collectedAt: new Date().toISOString()
+  });
+  const hasCollectionDiagnostics = collection.captureMeta.endpointStatuses.some((status) => Boolean(status.reason));
+  if (collection.diagnostics && (
+    collection.diagnostics.missingMetricKeys.length > 0
+    || collection.metrics.length === 0
+    || Boolean(collection.diagnostics.statQueryFallback)
+    || hasCollectionDiagnostics
+  )) {
+    await appendLog("local_promotion_pulse.capture_diagnostics", {
+      metricCount: collection.metrics.length,
+      matchedMetricKeys: collection.diagnostics.matchedMetricKeys,
+      missingMetricKeys: collection.diagnostics.missingMetricKeys,
+      statQueryFallback: collection.diagnostics.statQueryFallback,
+      metadataGroups: collection.diagnostics.metadataGroups,
+      endpointStatuses: collection.captureMeta.endpointStatuses.map(({ endpoint, status, reason }) => ({ endpoint, status, ...(reason ? { reason } : {}) }))
+    });
+  }
+  if (localPromotionIdentityKey(collection.captureMeta.identity) !== state.identityKey) {
+    await stopLivePulse("IDENTITY_CHANGED", undefined, undefined, state);
+    return { ok: false, stop: true, error: "IDENTITY_CHANGED" };
+  }
+  const fatal = collection.captureMeta.endpointStatuses.find((item) => ["HTTP_401", "HTTP_429", "SENSITIVE_RESPONSE", "BYTE_LIMIT", "TOTAL_BYTE_LIMIT", "SCHEMA_MISMATCH"].includes(item.reason || ""));
+  if (fatal) {
+    await stopLivePulse(fatal.reason || "API_ABORTED", fatal.endpoint, undefined, state);
+    return { ok: false, stop: true, error: fatal.reason || "API_ABORTED" };
+  }
+  if (!snapshot.visibleMetricsJson.length) {
+    state.uploadController = null;
+    const endpointFailure = [...collection.captureMeta.endpointStatuses].reverse().find((item) => item.reason);
+    const failure = await handleLivePulseFailure(state, endpointFailure?.reason || "PULSE_METRICS_MISSING", undefined, endpointFailure?.endpoint, undefined, pulseStartedAt);
+    return { ok: false, ...failure };
+  }
+  const result = await uploadMetricPulse(snapshot, collectionController.signal);
+  if (state.uploadController === collectionController) state.uploadController = null;
+  if (!isLivePulseStateActive(state)) return { ok: false, stop: true, error: "PULSE_REPLACED" };
+  if (!result.ok) return { ok: false, ...(await handleLivePulseFailure(state, result.error || "PULSE_UPLOAD_FAILED", result.status, "metric-pulses", result.retryAfterMs, pulseStartedAt)) };
+  state.consecutiveFailures = 0;
+  state.lastFailureReason = null;
+  state.lastFailureEndpoint = null;
+  state.rateLimitedUntil = null;
+  state.successCount += 1;
+  state.lastSuccessAt = new Date().toISOString();
+  state.lastMetricCount = snapshot.visibleMetricsJson.length;
+  const uploadedKeys = new Set(snapshot.visibleMetricsJson.map((metric) => String(metric.key)));
+  state.lastMetricKeys = localPromotionApiMetricKeys.filter((key) => uploadedKeys.has(key));
+  await persistLivePulseState();
+  return {
+    ok: true,
+    nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now(), localPromotionPulseCadenceMs) - Date.now())
+  };
 }
 
 async function uploadMetricPulse(snapshot: CollectionSnapshotPayload, signal: AbortSignal): Promise<MetricPulseUploadResult> {
@@ -817,30 +1314,18 @@ async function uploadMetricPulse(snapshot: CollectionSnapshotPayload, signal: Ab
 }
 
 async function handleLivePulseFailure(
-  state: LivePulseState,
+  state: PulseState,
   error: string,
   status?: number,
-  endpoint?: LiveScreenInternalApiEndpointKey,
+  endpoint?: string,
   retryAfterMs?: number,
   pulseStartedAt = Date.now()
 ) {
-  if (livePulseState !== state) return { stop: true, error: "LIVE_PULSE_REPLACED" };
-  if (status === 429 && error === "RATE_LIMITED" && retryAfterMs) {
-    const rateLimitedUntil = nextLivePulseAfterRateLimit(Date.now(), retryAfterMs);
-    state.consecutiveFailures = 0;
-    state.lastFailureReason = null;
-    state.lastFailureEndpoint = null;
-    state.rateLimitedUntil = new Date(rateLimitedUntil).toISOString();
-    await appendLog("live_pulse.rate_limited", {
-      tabId: state.tabId,
-      retryAfterMs
-    });
-    await persistLivePulseState();
-    return { nextDelayMs: Math.max(0, rateLimitedUntil - Date.now()), error: "RATE_LIMITED" };
-  }
-  if (status === 401 || status === 429 || /HTTP_401|HTTP_429|SCHEMA_MISMATCH|SENSITIVE_RESPONSE|BYTE_LIMIT|TOTAL_BYTE_LIMIT|LIVE_ENDED|PAGE_INACTIVE|LIVE_SCREEN_INTERNAL_API_(?:DISABLED|CONTRACT_MISMATCH|EVIDENCE_INVALID|PAGE_FORBIDDEN)|LIVE_SCREEN_(?:ROOM_ID_INVALID|PULSE_PURPOSE_INVALID)/.test(error)) {
-    await stopLivePulse(error);
-    return { stop: true, error };
+  if (!isLivePulseStateActive(state)) return { stop: true, error: "LIVE_PULSE_REPLACED" };
+  const fatalReason = fatalLivePulseFailureReason(error, status);
+  if (fatalReason) {
+    await stopLivePulse(fatalReason, endpoint, undefined, state);
+    return { stop: true, error: fatalReason };
   }
   const failure = advanceLivePulseFailure(state.consecutiveFailures, error, endpoint);
   state.consecutiveFailures = failure.consecutiveFailures;
@@ -856,58 +1341,138 @@ async function handleLivePulseFailure(
     await stopLivePulse(
       "THREE_CONSECUTIVE_FAILURES",
       state.lastFailureEndpoint || undefined,
-      state.lastFailureReason
+      state.lastFailureReason,
+      state
     );
     return { stop: true, error: "THREE_CONSECUTIVE_FAILURES" };
   }
   await persistLivePulseState();
-  return { nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt) - Date.now()), error: failure.lastFailureReason };
+  const cadenceMs = state.routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseCadenceMs : undefined;
+  return {
+    nextDelayMs: Math.max(0, nextLivePulseAfter(pulseStartedAt, Date.now(), cadenceMs) - Date.now()),
+    error: failure.lastFailureReason
+  };
 }
 
-async function stopLivePulse(reason: string, endpoint?: LiveScreenInternalApiEndpointKey, lastFailureReason?: string) {
-  const state = livePulseState || await hydrateLivePulseState();
-  livePulseState = null;
-  await chrome.storage.local.remove([STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]).catch(() => undefined);
-  if (!state) return;
-  state.uploadController?.abort();
-  state.uploadController = null;
-  await chrome.tabs.sendMessage(state.tabId, { type: MESSAGE.STOP_LIVE_PULSE }).catch(() => undefined);
-  await saveLivePulseOutcome({
-    taskId: state.taskId,
-    reason,
-    ...(endpoint ? { endpoint } : {}),
-    ...(lastFailureReason ? { lastFailureReason } : {}),
-    occurredAt: new Date().toISOString(),
-    failure: isLivePulseFailure(reason)
-  });
-  await appendLog("live_pulse.stopped", {
-    tabId: state.tabId,
-    reason,
-    ...(endpoint ? { endpoint } : {}),
-    ...(lastFailureReason ? { lastFailureReason } : {})
-  });
+async function stopLivePulse(reason: string, endpoint?: string, lastFailureReason?: string, expectedState?: PulseState, tabId?: unknown) {
+  await hydrateLivePulseStorage();
+  // A late page/activity/API callback from a previous loop must not clear a
+  // newer loop. Without a tabId, this function intentionally stops every
+  // session; that path is reserved for unpairing and task resets.
+  const normalizedTabId = Number.isInteger(tabId) && Number(tabId) > 0 ? Number(tabId) : null;
+  if (expectedState && !isLivePulseStateActive(expectedState)) return;
+  const states = expectedState
+    ? [expectedState]
+    : normalizedTabId
+      ? [livePulseStates.get(normalizedTabId)].filter((state): state is PulseState => Boolean(state))
+      : [...livePulseStates.values()];
+  for (const state of states) {
+    if (!isLivePulseStateActive(state)) continue;
+    livePulseStates.delete(state.tabId);
+    livePulseActivities.delete(state.tabId);
+    state.uploadController?.abort();
+    state.uploadController = null;
+    await persistLivePulseState();
+    await persistLivePulseActivities();
+    await chrome.tabs.sendMessage(state.tabId, {
+      type: state.routeKey === "LOCAL_PROMOTION_DASHBOARD"
+        ? MESSAGE.STOP_LOCAL_PROMOTION_PULSE
+        : MESSAGE.STOP_LIVE_PULSE
+    }).catch(() => undefined);
+    await saveLivePulseOutcome({
+      taskId: state.taskId,
+      routeKey: state.routeKey,
+      tabId: state.tabId,
+      reason,
+      ...(endpoint ? { endpoint } : {}),
+      ...(lastFailureReason ? { lastFailureReason } : {}),
+      occurredAt: new Date().toISOString(),
+      failure: isLivePulseFailure(reason)
+    });
+    await appendLog("live_pulse.stopped", {
+      tabId: state.tabId,
+      reason,
+      ...(endpoint ? { endpoint } : {}),
+      ...(lastFailureReason ? { lastFailureReason } : {})
+    });
+  }
 }
 
-async function clearLivePulseOutcome() {
+async function clearLivePulseOutcome(tabId?: number) {
+  await hydrateLivePulseStorage();
+  if (Number.isInteger(tabId) && Number(tabId) > 0) latestLivePulseOutcomes.delete(Number(tabId));
+  else latestLivePulseOutcomes.clear();
+  latestLivePulseOutcome = findLatestLivePulseOutcome();
+  await persistLivePulseOutcomes();
+}
+
+async function clearLivePulseActivity(tabId?: number) {
+  await hydrateLivePulseStorage();
+  if (Number.isInteger(tabId) && Number(tabId) > 0) livePulseActivities.delete(Number(tabId));
+  else livePulseActivities.clear();
+  await persistLivePulseActivities();
+}
+
+function resetLivePulseStorage() {
+  livePulseStates.clear();
+  livePulseActivities.clear();
+  latestLivePulseOutcomes.clear();
   latestLivePulseOutcome = null;
-  await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME).catch(() => undefined);
-}
-
-async function clearLivePulseActivity() {
-  await chrome.storage.local.remove([STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]).catch(() => undefined);
+  livePulseStorageHydrated = true;
+  livePulseStorageHydration = null;
 }
 
 async function persistLivePulseState() {
-  const state = livePulseState;
-  if (!state) {
-    await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE).catch(() => undefined);
-    return;
-  }
-  const stored: StoredLivePulseState = {
+  await hydrateLivePulseStorage();
+  await enqueueLivePulseStorageWrite(async () => {
+    const stored: StoredPulseStateMap = {};
+    for (const state of livePulseStates.values()) stored[String(state.tabId)] = storedPulseState(state);
+    if (Object.keys(stored).length === 0) await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE);
+    else await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_STATE]: stored });
+  });
+}
+
+async function persistLivePulseActivities() {
+  await hydrateLivePulseStorage();
+  await enqueueLivePulseStorageWrite(async () => {
+    const stored: StoredPulseActivityMap = Object.fromEntries(
+      [...livePulseActivities.entries()].map(([tabId, activity]) => [String(tabId), activity])
+    );
+    if (Object.keys(stored).length === 0) await chrome.storage.local.remove(STORAGE.LIVE_PULSE_ACTIVITY);
+    else await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_ACTIVITY]: stored });
+  });
+}
+
+async function setLivePulseActivity(activity: LivePulseActivity) {
+  await hydrateLivePulseStorage();
+  livePulseActivities.set(activity.tabId, activity);
+  await persistLivePulseActivities();
+}
+
+async function persistLivePulseOutcomes() {
+  await hydrateLivePulseStorage();
+  await enqueueLivePulseStorageWrite(async () => {
+    const stored: StoredPulseOutcomeMap = Object.fromEntries(
+      [...latestLivePulseOutcomes.entries()].map(([tabId, outcome]) => [String(tabId), outcome])
+    );
+    if (Object.keys(stored).length === 0) await chrome.storage.local.remove(STORAGE.LIVE_PULSE_LAST_OUTCOME);
+    else await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_LAST_OUTCOME]: stored });
+  });
+}
+
+function enqueueLivePulseStorageWrite(writer: () => Promise<void>) {
+  const next = livePulseStorageWriteQueue.then(writer);
+  livePulseStorageWriteQueue = next.catch(() => undefined);
+  return next;
+}
+
+function storedPulseState(state: PulseState): StoredPulseState {
+  return {
     loopId: state.loopId,
     tabId: state.tabId,
     taskId: state.taskId,
-    roomId: state.roomId,
+    identityKey: state.identityKey,
+    routeKey: state.routeKey,
     currentUrl: state.currentUrl,
     collectionRunId: state.collectionRunId,
     startedAt: state.startedAt,
@@ -922,33 +1487,143 @@ async function persistLivePulseState() {
     buildFingerprint: __PXXIS_EXTENSION_BUILD__,
     collectionProtocolVersion: extensionCollectionProtocolVersion
   };
-  await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_STATE]: stored }).catch(() => undefined);
 }
 
-async function hydrateLivePulseState() {
-  if (livePulseState) return livePulseState;
-  const local = await chrome.storage.local.get([STORAGE.LIVE_PULSE_STATE]);
-  const parsed = parseStoredLivePulseState(local[STORAGE.LIVE_PULSE_STATE]);
-  if (!parsed) {
-    await chrome.storage.local.remove(STORAGE.LIVE_PULSE_STATE).catch(() => undefined);
-    return null;
+async function hydrateLivePulseStorage() {
+  if (livePulseStorageHydrated) return;
+  if (livePulseStorageHydration) return livePulseStorageHydration;
+  livePulseStorageHydration = (async () => {
+    const local = await chrome.storage.local.get([
+      STORAGE.LIVE_PULSE_STATE,
+      STORAGE.LIVE_PULSE_ACTIVITY,
+      STORAGE.LIVE_PULSE_LAST_OUTCOME
+    ]);
+    for (const parsed of parseStoredLivePulseStates(local[STORAGE.LIVE_PULSE_STATE])) {
+      livePulseStates.set(parsed.tabId, { ...parsed, uploadController: null });
+    }
+    for (const activity of parseStoredLivePulseActivities(local[STORAGE.LIVE_PULSE_ACTIVITY])) {
+      livePulseActivities.set(activity.tabId, activity);
+    }
+    for (const outcome of parseStoredLivePulseOutcomes(local[STORAGE.LIVE_PULSE_LAST_OUTCOME])) {
+      if (!Number.isInteger(outcome.tabId) || Number(outcome.tabId) <= 0) continue;
+      latestLivePulseOutcomes.set(Number(outcome.tabId), outcome);
+      if (!latestLivePulseOutcome || new Date(outcome.occurredAt).getTime() >= new Date(latestLivePulseOutcome.occurredAt).getTime()) {
+        latestLivePulseOutcome = outcome;
+      }
+    }
+    livePulseStorageHydrated = true;
+  })();
+  try {
+    await livePulseStorageHydration;
+  } finally {
+    livePulseStorageHydration = null;
   }
-  livePulseState = { ...parsed, uploadController: null };
-  return livePulseState;
 }
 
-function parseStoredLivePulseState(value: unknown): Omit<LivePulseState, "uploadController"> | null {
+async function hydrateLivePulseState(tabId?: number) {
+  await hydrateLivePulseStorage();
+  if (Number.isInteger(tabId) && Number(tabId) > 0) return livePulseStates.get(Number(tabId)) || null;
+  return livePulseStates.values().next().value || null;
+}
+
+async function hydrateLivePulseActivity(tabId?: number) {
+  await hydrateLivePulseStorage();
+  if (Number.isInteger(tabId) && Number(tabId) > 0) return livePulseActivities.get(Number(tabId)) || null;
+  return livePulseActivities.values().next().value || null;
+}
+
+function isLivePulseStateActive(state: PulseState) {
+  return livePulseStates.get(state.tabId) === state;
+}
+
+function parseStoredLivePulseStates(value: unknown) {
+  return storageValueCandidates(value)
+    .map((candidate) => parseStoredLivePulseState(candidate))
+    .filter((state): state is Omit<PulseState, "uploadController"> => Boolean(state));
+}
+
+function parseStoredLivePulseActivities(value: unknown) {
+  return storageValueCandidates(value)
+    .map((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+      const record = candidate as Record<string, unknown>;
+      const pageType = record.pageType === "LIVE_DATA_SCREEN" || record.pageType === "LOCAL_PROMOTION_DASHBOARD"
+        ? record.pageType
+        : null;
+      const routeKey = record.routeKey === "LIVE_DATA_SCREEN" || record.routeKey === "LOCAL_PROMOTION_DASHBOARD"
+        ? record.routeKey
+        : undefined;
+      const tabState = ["VISIBLE", "HIDDEN", "FROZEN", "DISCARDED", "UNKNOWN"].includes(String(record.tabState))
+        ? record.tabState
+        : null;
+      if (
+        !Number.isInteger(record.tabId)
+        || Number(record.tabId) <= 0
+        || typeof record.currentUrl !== "string"
+        || !record.currentUrl
+        || !pageType
+        || !tabState
+        || typeof record.collectable !== "boolean"
+      ) return null;
+      return {
+        ...record,
+        tabId: Number(record.tabId),
+        pageType,
+        ...(routeKey ? { routeKey } : {}),
+        tabState
+      } as LivePulseActivity;
+    })
+    .filter((activity): activity is LivePulseActivity => Boolean(activity));
+}
+
+function parseStoredLivePulseOutcomes(value: unknown) {
+  const context = {
+    buildFingerprint: __PXXIS_EXTENSION_BUILD__,
+    collectionProtocolVersion: extensionCollectionProtocolVersion,
+    endpointKeys: [
+      ...liveScreenInternalApiEndpointKeys,
+      ...localPromotionInternalApiEndpointKeys,
+      "metric-pulses"
+    ]
+  } as const;
+  return storageValueCandidates(value)
+    .map((candidate) => parseLivePulseOutcome(candidate, context))
+    .filter((outcome): outcome is LivePulseOutcome => Boolean(outcome));
+}
+
+function storageValueCandidates(value: unknown) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  return "tabId" in record || "loopId" in record || "routeKey" in record
+    ? [value]
+    : Object.values(record);
+}
+
+function findLatestLivePulseOutcome() {
+  return [...latestLivePulseOutcomes.values()]
+    .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())[0] || null;
+}
+
+function parseStoredLivePulseState(value: unknown): Omit<PulseState, "uploadController"> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
+  const routeKey = candidate.routeKey === "LOCAL_PROMOTION_DASHBOARD" || candidate.routeKey === "LIVE_DATA_SCREEN"
+    ? candidate.routeKey
+    : null;
   if (
     candidate.buildFingerprint !== __PXXIS_EXTENSION_BUILD__
     || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion
     || typeof candidate.loopId !== "string"
     || !Number.isInteger(candidate.tabId)
+    || Number(candidate.tabId) <= 0
     || typeof candidate.taskId !== "string"
-    || typeof candidate.roomId !== "string"
+    || typeof candidate.identityKey !== "string"
+    || !routeKey
     || typeof candidate.currentUrl !== "string"
-    || !isExactLiveScreenPage(candidate.currentUrl)
+    || !(routeKey === "LOCAL_PROMOTION_DASHBOARD"
+      ? isExactLocalPromotionInternalApiPage(candidate.currentUrl)
+      : isExactLiveScreenPage(candidate.currentUrl))
     || typeof candidate.startedAt !== "string"
     || !Number.isSafeInteger(candidate.successCount)
     || !Number.isSafeInteger(candidate.lastMetricCount)
@@ -956,16 +1631,28 @@ function parseStoredLivePulseState(value: unknown): Omit<LivePulseState, "upload
   ) {
     return null;
   }
-  const lastMetricKeys = normalizeLivePulseMetricKeys(candidate.lastMetricKeys);
-  if (lastMetricKeys.length !== candidate.lastMetricKeys.length) return null;
-  const endpoint = typeof candidate.lastFailureEndpoint === "string" && liveScreenInternalApiEndpointKeys.includes(candidate.lastFailureEndpoint as LiveScreenInternalApiEndpointKey)
-    ? candidate.lastFailureEndpoint as LiveScreenInternalApiEndpointKey
+  const allowedMetricKeys: readonly string[] = routeKey === "LOCAL_PROMOTION_DASHBOARD"
+    ? localPromotionPulseMetricKeys
+    : liveScreenPulseCoreMetricKeys;
+  const storedMetricKeys = Array.isArray(candidate.lastMetricKeys)
+    ? candidate.lastMetricKeys.filter((key): key is string => typeof key === "string")
+    : [];
+  const lastMetricKeys = Array.isArray(candidate.lastMetricKeys) && storedMetricKeys.length === candidate.lastMetricKeys.length
+    ? allowedMetricKeys.filter((key) => storedMetricKeys.includes(key))
+    : [];
+  if (lastMetricKeys.length !== storedMetricKeys.length) return null;
+  const endpointKeys: readonly string[] = routeKey === "LOCAL_PROMOTION_DASHBOARD"
+    ? localPromotionInternalApiEndpointKeys
+    : liveScreenInternalApiEndpointKeys;
+  const endpoint = typeof candidate.lastFailureEndpoint === "string" && endpointKeys.includes(candidate.lastFailureEndpoint)
+    ? candidate.lastFailureEndpoint
     : null;
   return {
     loopId: candidate.loopId,
     tabId: Number(candidate.tabId),
     taskId: candidate.taskId,
-    roomId: candidate.roomId,
+    identityKey: candidate.identityKey,
+    routeKey,
     currentUrl: candidate.currentUrl,
     collectionRunId: typeof candidate.collectionRunId === "string" ? candidate.collectionRunId : null,
     startedAt: candidate.startedAt,
@@ -981,32 +1668,85 @@ function parseStoredLivePulseState(value: unknown): Omit<LivePulseState, "upload
 }
 
 async function saveLivePulseOutcome(outcome: Omit<LivePulseOutcome, "buildFingerprint" | "collectionProtocolVersion">) {
+  await hydrateLivePulseStorage();
   const versionedOutcome: LivePulseOutcome = {
     ...outcome,
     buildFingerprint: __PXXIS_EXTENSION_BUILD__,
     collectionProtocolVersion: extensionCollectionProtocolVersion
   };
   latestLivePulseOutcome = versionedOutcome;
-  await chrome.storage.local.set({ [STORAGE.LIVE_PULSE_LAST_OUTCOME]: versionedOutcome }).catch(() => undefined);
+  if (Number.isInteger(versionedOutcome.tabId) && Number(versionedOutcome.tabId) > 0) {
+    latestLivePulseOutcomes.set(Number(versionedOutcome.tabId), versionedOutcome);
+  }
+  await persistLivePulseOutcomes();
+}
+
+function livePulseDisplayForState(state: PulseState) {
+  return {
+    active: true,
+    routeKey: state.routeKey,
+    tabId: state.tabId,
+    startedAt: state.startedAt,
+    successCount: state.successCount,
+    lastSuccessAt: state.lastSuccessAt,
+    lastMetricCount: state.lastMetricCount,
+    lastMetricKeys: state.lastMetricKeys,
+    lastFailureReason: state.lastFailureReason,
+    lastFailureEndpoint: state.lastFailureEndpoint,
+    rateLimitedUntil: state.rateLimitedUntil,
+    lastOutcome: null
+  };
+}
+
+function livePulseDisplayForOutcome(outcome: LivePulseOutcome | null) {
+  return {
+    active: false,
+    ...(outcome?.routeKey ? { routeKey: outcome.routeKey } : {}),
+    ...(outcome?.tabId ? { tabId: outcome.tabId } : {}),
+    lastOutcome: outcome
+  };
 }
 
 function isLivePulseFailure(reason: string) {
   return !["USER_STOPPED", "REPLACED"].includes(reason);
 }
 
-function shouldStopLivePulseForActivity(activity: PageActivity) {
+function shouldStopLivePulseForActivity(activity: PageActivity, routeKey?: PulseState["routeKey"] | null) {
+  if (routeKey === "LOCAL_PROMOTION_DASHBOARD") {
+    return !isExactLocalPromotionInternalApiPage(activity.currentUrl) || activity.pageType !== "LOCAL_PROMOTION_DASHBOARD";
+  }
   return !isExactLiveScreenPage(activity.currentUrl) || activity.pageType !== "LIVE_DATA_SCREEN";
 }
 
 async function stopLivePulseForTab(tabId: number, reason: string) {
-  const state = livePulseState || await hydrateLivePulseState();
-  if (state?.tabId === tabId) await stopLivePulse(reason);
+  const state = await hydrateLivePulseState(tabId);
+  if (state?.tabId === tabId) await stopLivePulse(reason, undefined, undefined, state);
 }
 
 async function stopLivePulseForTabUpdate(tabId: number, changeInfo: chrome.tabs.TabChangeInfo) {
-  const state = livePulseState || await hydrateLivePulseState();
+  const state = await hydrateLivePulseState(tabId);
   if (state?.tabId !== tabId) return;
-  if (changeInfo.status === "loading" || changeInfo.url) await stopLivePulse("PAGE_NAVIGATED");
+  if (changeInfo.status === "loading") {
+    await stopLivePulse("PAGE_NAVIGATED", undefined, undefined, state);
+    return;
+  }
+  if (!changeInfo.url) return;
+  if (!canKeepLivePulseForUrlUpdate(state, changeInfo.url)) {
+    await stopLivePulse("PAGE_NAVIGATED", undefined, undefined, state);
+    return;
+  }
+  if (!isLivePulseStateActive(state)) return;
+  state.currentUrl = changeInfo.url;
+  const activity = await hydrateLivePulseActivity(tabId);
+  if (!isLivePulseStateActive(state)) return;
+  if (activity?.tabId === tabId) {
+    await setLivePulseActivity({
+      ...activity,
+      currentUrl: changeInfo.url,
+      observedAt: new Date().toISOString()
+    });
+  }
+  await persistLivePulseState();
 }
 
 function roomIdFromLiveScreenUrl(value: string) {
@@ -1082,12 +1822,21 @@ async function reportExtensionHeartbeatFromStoredActivity() {
 async function reportExtensionHeartbeat(activity: PageActivity, timeoutMs = extensionRequestTimeoutMs) {
   const api = await apiContext();
   if (!api.ok) return { ok: false, skipped: true, error: api.error };
+  return reportExtensionHeartbeatForCredentials(api, activity, timeoutMs);
+}
+
+async function reportExtensionHeartbeatForCredentials(
+  credentials: { apiBaseUrl: string; collectionTaskId?: string; token: string },
+  activity: PageActivity,
+  timeoutMs = extensionRequestTimeoutMs
+) {
+  if (!credentials.collectionTaskId) return { ok: false, skipped: true, error: "请先绑定采集任务。" };
   try {
-    const response = await fetchWithTimeout(`${api.apiBaseUrl}/extension/heartbeat`, {
+    const response = await fetchWithTimeout(`${credentials.apiBaseUrl}/extension/heartbeat`, {
       method: "POST",
-      headers: { "content-type": "application/json", Authorization: `Bearer ${api.token}` },
+      headers: { "content-type": "application/json", Authorization: `Bearer ${credentials.token}` },
       body: JSON.stringify({
-        collectionTaskId: api.collectionTaskId,
+        collectionTaskId: credentials.collectionTaskId,
         extensionVersion: chrome.runtime.getManifest().version,
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: __PXXIS_EXTENSION_BUILD__,
@@ -1099,7 +1848,7 @@ async function reportExtensionHeartbeat(activity: PageActivity, timeoutMs = exte
         lastError: activity.lastError || null,
         observedAt: activity.observedAt
       })
-    });
+      }, timeoutMs);
     if (!response.ok) {
       const body = await response.json().catch(() => null);
       return { ok: false, error: body?.error?.message || `状态上报失败（${response.status}）` };
@@ -1186,7 +1935,7 @@ async function currentTaskRouteKeys(): Promise<CollectionRouteKey[]> {
     .find((item) => item.id === api.collectionTaskId);
   return [...new Set((task?.routeSources || [])
     .map((route) => normalizeCollectionRouteKey(route.routeKey))
-    .filter((route): route is CollectionRouteKey => route === "LOCAL_PROMOTION_DASHBOARD"))];
+    .filter((route): route is CollectionRouteKey => route === "LOCAL_PROMOTION_DASHBOARD" || route === "LIVE_DATA_SCREEN"))];
 }
 
 function sameRouteKeys(left: readonly CollectionRouteKey[], right: readonly CollectionRouteKey[]) {
@@ -1203,7 +1952,7 @@ async function refreshBoundContext(timeoutMs = extensionRequestTimeoutMs): Promi
   try {
     const response = await fetchWithTimeout(`${api.apiBaseUrl}/extension/context`, {
       headers: extensionContextRequestHeaders(api.token)
-    });
+    }, timeoutMs);
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const message = body && typeof body === "object" && "error" in body

@@ -7,7 +7,7 @@ import popupHtml from "../popup.html?raw";
 import sidepanelHtml from "../sidepanel.html?raw";
 
 describe("API collector-only live pulse mode", () => {
-  it("keeps the five-second loop in the live page content script", () => {
+  it("keeps the live loop in the live page content script", () => {
     expect(contentSource).toContain("BEGIN_LIVE_PULSE_LOOP");
     expect(contentSource).toContain("SUBMIT_LIVE_PULSE");
     expect(contentSource).toContain("runLivePulseLoop");
@@ -41,6 +41,17 @@ describe("API collector-only live pulse mode", () => {
     expect(loopSource).not.toContain('document.visibilityState !== "visible"');
   });
 
+  it("retries transient worker messaging failures before stopping the page loop", () => {
+    const loopSource = contentSource.slice(
+      contentSource.indexOf("async function runLivePulseLoop"),
+      contentSource.indexOf("async function collectSnapshot")
+    );
+    expect(loopSource).toContain("loop.transportFailures += 1");
+    expect(loopSource).toContain("loop.transportFailures >= 3");
+    expect(loopSource).toContain("1_000 * loop.transportFailures");
+    expect(loopSource).toContain('error: "PULSE_TRANSPORT_UNAVAILABLE"');
+  });
+
   it("removes plugin analysis coupling and diagnostic proposal requests", () => {
     expect(serviceWorkerSource).not.toContain("latestSignals");
     expect(serviceWorkerSource).not.toContain("serverPulseCount");
@@ -50,13 +61,15 @@ describe("API collector-only live pulse mode", () => {
   });
 
   it("shows only collector status in API mode", () => {
-    expect(popupHtml).toContain("核心指标 0/7");
+    expect(popupHtml).toContain("核心指标 0/13");
     expect(popupHtml).toContain("等待首次上传");
     expect(popupHtml).not.toContain("成功次数");
     expect(popupHtml).not.toContain("指标数量");
     expect(popupHtml).not.toContain("30 秒");
     expect(popupHtml).not.toContain("正式诊断建议");
     expect(sidepanelHtml).toContain("API 持续采集状态");
+    expect(sidepanelHtml).not.toContain("0/7");
+    expect(sidepanelSource).toContain("localPromotionPulseMetricCoverage");
     expect(sidepanelHtml).not.toContain("实时判断");
     expect(sidepanelHtml).not.toContain("正式诊断建议");
   });

@@ -18,7 +18,7 @@ import { ensureReviewMetricsForTask } from "../review-metrics.js";
 import { checkDecisionRateLimit } from "../rate-limit.js";
 import { currentUser, toJson } from "../server-utils.js";
 import { readSafeOptionalText } from "../persisted-input.js";
-import { latestRealtimeMetricFrame } from "../realtime-signals.js";
+import { latestRealtimeMetricFrames } from "../realtime-signals.js";
 import { runSerializableTransaction } from "../transactions.js";
 
 export function createDecisionRunRouter() {
@@ -47,8 +47,8 @@ export function createDecisionRunRouter() {
       res.setHeader("Retry-After", String(limit.retryAfterSeconds));
       return sendError(res, 429, "RATE_LIMITED", "AI 诊断运行过于频繁，请稍后再试");
     }
-    const realtimeFrame = latestRealtimeMetricFrame(task.id);
-    if (!task.snapshots[0] && !realtimeFrame) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const realtimeFrames = latestRealtimeMetricFrames(task.id);
+    if (!task.snapshots[0] && !realtimeFrames.length) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
 
     const initialized = await prisma.$transaction(async (tx) => {
       const result = await ensureReviewMetricsForTask(task, tx);
@@ -63,13 +63,13 @@ export function createDecisionRunRouter() {
       return result;
     });
     const refreshed = await getOwnedTask(currentUser(req).id, task.id);
-    const refreshedRealtimeFrame = latestRealtimeMetricFrame(task.id);
-    if (!refreshed?.snapshots[0] && !refreshedRealtimeFrame) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const refreshedRealtimeFrames = latestRealtimeMetricFrames(task.id);
+    if (!refreshed?.snapshots[0] && !refreshedRealtimeFrames.length) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
     const refreshedTask = refreshed as NonNullable<typeof refreshed>;
     const decisionInput = buildDecisionInput({
       ...refreshedTask,
       reviewedMetrics: initialized.metrics.length ? initialized.metrics : refreshedTask.reviewedMetrics
-    }, { realtimeFrame: refreshedRealtimeFrame });
+    }, { realtimeFrames: refreshedRealtimeFrames });
     decisionEngineInputSchema.parse(decisionInput);
     const readiness = evaluateDecisionReadiness(refreshedTask, decisionInput);
     if (!readiness.ready) {

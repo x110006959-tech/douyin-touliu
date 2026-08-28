@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import contentSource from "./content.ts?raw";
 import serviceWorkerSource from "./service-worker.ts?raw";
 import { isLivePulseActivityReporter, livePulseActivityForTab } from "./live-pulse-activity";
 
@@ -34,7 +35,7 @@ describe("live pulse activity isolation", () => {
       serviceWorkerSource.indexOf("async function uploadMetricPulse")
     );
 
-    expect(submitLivePulseSource).toContain("STORAGE.LIVE_PULSE_ACTIVITY");
+    expect(submitLivePulseSource).toContain("hydrateLivePulseActivity(tabId)");
     expect(submitLivePulseSource).not.toContain("STORAGE.PAGE_ACTIVITY");
   });
 
@@ -58,5 +59,56 @@ describe("live pulse activity isolation", () => {
     expect(stopPredicateSource).toContain("isExactLiveScreenPage");
     expect(stopPredicateSource).toContain('activity.pageType !== "LIVE_DATA_SCREEN"');
     expect(stopPredicateSource).not.toContain('activity.tabState !== "VISIBLE"');
+  });
+
+  it("keeps a hidden local-promotion source tab active as long as its exact URL remains valid", () => {
+    const stopPredicateSource = serviceWorkerSource.slice(
+      serviceWorkerSource.indexOf("function shouldStopLivePulseForActivity"),
+      serviceWorkerSource.indexOf("async function stopLivePulseForTab")
+    );
+
+    expect(stopPredicateSource).toContain('routeKey === "LOCAL_PROMOTION_DASHBOARD"');
+    expect(stopPredicateSource).toContain("isExactLocalPromotionInternalApiPage(activity.currentUrl)");
+    expect(stopPredicateSource).not.toContain('activity.tabState !== "VISIBLE"');
+  });
+
+  it("does not let late callbacks clear a newer pulse and tolerates same-identity history updates", () => {
+    expect(serviceWorkerSource).toContain("expectedState?: PulseState");
+    expect(serviceWorkerSource).toContain("if (expectedState && !isLivePulseStateActive(expectedState)) return;");
+    expect(serviceWorkerSource).toContain("canKeepLivePulseForUrlUpdate");
+    expect(serviceWorkerSource).toContain('if (changeInfo.status === "loading")');
+  });
+
+  it("allows one pulse per tab while keeping duplicate starts on the same tab blocked", () => {
+    expect(serviceWorkerSource).toContain("const livePulseStates = new Map<number, PulseState>()");
+    expect(serviceWorkerSource).toContain("const active = livePulseStates.get(tabId) || null;");
+    expect(serviceWorkerSource).toContain("livePulseStates.set(tabId, state)");
+    expect(serviceWorkerSource).toContain("message.payload?.tabId");
+  });
+
+  it("does not let an old content-loop response stop a newer loop", () => {
+    expect(contentSource).not.toContain("if (activeLivePulseLoop !== loop || response?.stop)");
+    expect(contentSource).toContain("if (activeLivePulseLoop !== loop) return;");
+    expect(contentSource).toContain("if (response?.stop)");
+    expect(contentSource).toContain("loopId: loop.loopId");
+    expect(serviceWorkerSource).toContain("payload.loopId !== state.loopId");
+  });
+
+  it("retains the endpoint when an upload safety failure stops immediately", () => {
+    const failureSource = serviceWorkerSource.slice(
+      serviceWorkerSource.indexOf("async function handleLivePulseFailure"),
+      serviceWorkerSource.indexOf("async function stopLivePulse")
+    );
+    expect(failureSource).toContain("await stopLivePulse(fatalReason, endpoint, undefined, state)");
+  });
+
+  it("rejects an old live-page content script before creating a collection session", () => {
+    const startSource = serviceWorkerSource.slice(
+      serviceWorkerSource.indexOf("async function startLivePulse"),
+      serviceWorkerSource.indexOf("async function submitLivePulse")
+    );
+    expect(startSource).toContain("pageContext?.buildFingerprint !== __PXXIS_EXTENSION_BUILD__");
+    expect(startSource.indexOf("pageContext?.buildFingerprint !== __PXXIS_EXTENSION_BUILD__"))
+      .toBeLessThan(startSource.indexOf("const session = await ensureCollectionSession();"));
   });
 });

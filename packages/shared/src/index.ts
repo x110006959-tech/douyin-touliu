@@ -2,9 +2,10 @@ import { z } from "zod";
 import { snapshotSafetyLimits } from "./safety.js";
 import { collectionRouteKeys } from "./collection-routes.js";
 import { decisionTableInputSchema, type DecisionTableInput } from "./decision-tables.js";
-import { metricValidationStatuses, type MetricRawEvidence } from "./metric-value.js";
+import { metricValidationStatuses, type VisibleMetric } from "./metric-value.js";
 import { collectionRouteDiagnosticSchema } from "./collection-diagnostics.js";
 import { structuredCollectionDataSchema } from "./collection-records.js";
+import { realtimeEvidenceRouteMatchesSource, realtimeEvidenceSummarySchema, type RealtimeEvidenceSummary } from "./realtime-evidence.js";
 import { metricKeys, recordableMetricKeys } from "./metric-keys.js";
 import {
   captureTabStates,
@@ -26,6 +27,9 @@ export * from "./decision-tables.js";
 export * from "./collection-dashboard.js";
 export * from "./collection-capture.js";
 export * from "./live-screen-internal-api.js";
+export * from "./local-promotion-internal-api.js";
+export * from "./realtime-evidence.js";
+export * from "./dashboard-overview.js";
 export { metricKeys } from "./metric-keys.js";
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
@@ -118,7 +122,7 @@ export const extensionConnectionStates = [
 ] as const;
 // Bump alongside a local acceptance build whenever the task page must reject
 // a previously loaded unpacked extension before it can report a fresh capture.
-export const extensionBridgeProtocolVersion = 7 as const;
+export const extensionBridgeProtocolVersion = 8 as const;
 // Bump this whenever the extension-to-API capture write contract changes.
 // Unlike the Web Bridge protocol, this protects the persisted evidence path.
 export const extensionCollectionProtocolVersion = 8 as const;
@@ -554,17 +558,6 @@ export type CollectionRouteSourceDTO = {
   lastError?: string | null;
 };
 
-export type VisibleMetric = {
-  key: MetricKey | string;
-  name: string;
-  value: number | string | null;
-  unit?: string | null;
-  source: "dom" | "table" | "network" | "manual";
-  metricSource?: MetricSource;
-  confidence?: number;
-  rawEvidence?: MetricRawEvidence | null;
-};
-
 export type ReviewCoverage = {
   confirmedCount: number;
   modifiedCount: number;
@@ -682,6 +675,29 @@ export type CaptureMeta = {
       intervalLabel: string;
       liveViews: string;
     }>;
+  };
+  localPromotionInternalApi?: {
+    contractVersion: string;
+    adapterVersion: string;
+    enabled: boolean;
+    identity: {
+      advid: string | null;
+      roomId: string | null;
+      selectedAdvid: string | null;
+      selectedAwemeId: string | null;
+      source: "URL" | "DOM" | "URL_AND_DOM" | "MISSING" | "MISMATCH";
+      evidence: {
+        url: import("./local-promotion-internal-api.js").LocalPromotionInternalApiIdentityFields;
+        dom: import("./local-promotion-internal-api.js").LocalPromotionInternalApiIdentityFields;
+      };
+    };
+    endpointStatuses: Array<{
+      endpoint: import("./local-promotion-internal-api.js").LocalPromotionInternalApiEndpointKey;
+      status: "SUCCESS" | "SKIPPED" | "FAILED" | "ABORTED";
+      acceptedBytes: number;
+      reason?: string;
+    }>;
+    evidencePurpose: "PULSE_ONLY";
   };
 };
 
@@ -814,26 +830,6 @@ export type MetricPulse = {
   captureMeta: CaptureMeta;
   sourceUrl?: string | null;
   captureProtocolVersion?: number;
-};
-
-export type RealtimeMetricFrame = {
-  collectionTaskId: string;
-  routeKey: import("./collection-routes.js").CollectionRouteKey;
-  pageType: PageType;
-  observedAt: string;
-  receivedAt: string;
-  metrics: VisibleMetric[];
-  successfulEndpoints: string[];
-};
-
-export type RealtimeEvidenceSummary = {
-  routeKey: import("./collection-routes.js").CollectionRouteKey;
-  pageType: PageType;
-  observedAt: string;
-  receivedAt: string;
-  metricCount: number;
-  successfulEndpoints: string[];
-  source: "LIVE_SCREEN_INTERNAL_API";
 };
 
 export type RealtimeSignal = {
@@ -992,6 +988,7 @@ export type DecisionEngineInput = {
   metricLayer?: MetricLayer;
   collectionQuality?: import("./collection-routes.js").CollectionQuality;
   realtimeEvidence?: RealtimeEvidenceSummary;
+  realtimeEvidenceItems?: RealtimeEvidenceSummary[];
 };
 
 export type ActionProposalDTO = {
@@ -1391,15 +1388,32 @@ export const decisionEngineInputSchema = z.object({
     staleRoutes: z.array(z.enum(collectionRouteKeys)),
     blocksStrongActions: z.boolean()
   }).optional(),
-  realtimeEvidence: z.object({
-    routeKey: z.enum(collectionRouteKeys),
-    pageType: z.enum(pageTypes),
-    observedAt: z.string().datetime(),
-    receivedAt: z.string().datetime(),
-    metricCount: z.number().int().nonnegative(),
-    successfulEndpoints: z.array(z.string().min(1)).max(20),
-    source: z.literal("LIVE_SCREEN_INTERNAL_API")
-  }).optional()
+  realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
+  realtimeEvidenceItems: z.array(realtimeEvidenceSummarySchema).max(4).optional()
+}).superRefine((input, context) => {
+  const items = input.realtimeEvidenceItems?.length
+    ? input.realtimeEvidenceItems
+    : input.realtimeEvidence
+      ? [input.realtimeEvidence]
+      : [];
+  const seenRoutes = new Set<string>();
+  items.forEach((evidence, index) => {
+    if (!realtimeEvidenceRouteMatchesSource(evidence)) {
+      context.addIssue({
+        code: "custom",
+        path: ["realtimeEvidenceItems", index],
+        message: "实时证据来源与路线不匹配"
+      });
+    }
+    if (seenRoutes.has(evidence.routeKey)) {
+      context.addIssue({
+        code: "custom",
+        path: ["realtimeEvidenceItems", index, "routeKey"],
+        message: "同一路线只能保留一份最新实时证据"
+      });
+    }
+    seenRoutes.add(evidence.routeKey);
+  });
 });
 
 export const decisionEngineOutputSchema = z.object({

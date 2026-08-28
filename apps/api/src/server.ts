@@ -78,6 +78,7 @@ import { getBuildMetadata } from "./version.js";
 import { getCaptureSummary } from "./capture-summary.js";
 import {
   latestRealtimeMetricFrame,
+  latestRealtimeMetricFrames,
   latestRealtimeSignals,
   recordMetricPulse,
   subscribeRealtimeMetricFrames,
@@ -87,7 +88,7 @@ import { metricAliasOverrideInputSchema, metricDriftStatusSchema, normalizeAlias
 import { AiCircuitOpenError, executeWithAiCircuit } from "./ai-circuit.js";
 import { isSerializableConflict, runSerializableTransaction } from "./transactions.js";
 import { getSseConnectionMetrics, registerSseConnectionCloser, reserveSseConnection } from "./sse-limits.js";
-import { createLatestSseWriter } from "./sse-writer.js";
+import { createKeyedLatestSseWriter, createLatestSseWriter } from "./sse-writer.js";
 import { observeSecurityMetricResponse, queueSecurityMetrics } from "./security-metrics.js";
 import {
   checkAiExplanationRateLimit,
@@ -98,8 +99,10 @@ import {
 } from "./rate-limit.js";
 import { ensureReviewMetricsForTask, normalizedMetricsToVisibleMetrics } from "./review-metrics.js";
 import { liveScreenInternalApiEnabled } from "./live-screen-internal-api-config.js";
+import { localPromotionInternalApiEnabled } from "./local-promotion-internal-api-config.js";
 import { structureLiveScreenMinuteTrend } from "./live-screen-minute-trend.js";
 import { validateLiveScreenInternalApiPayload } from "./live-screen-internal-api-validation.js";
+import { validateLocalPromotionInternalApiPulse } from "./local-promotion-internal-api-validation.js";
 
 export function createServer(options: { isDraining?: () => boolean } = {}) {
   ensureSecurityConfiguration();
@@ -612,31 +615,46 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     if (!requestBodyWithinLimit(req, 64 * 1024)) return sendError(res, 413, "REQUEST_BODY_TOO_LARGE", "实时脉冲负载不能超过 64 KiB");
     const task = await getOwnedTaskAccess(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const pulseLimit = await checkMetricPulseRateLimit({ credentialOrSessionId: rateLimitSubject(req), taskId: task.id });
+    const parsed = metricPulseSchema.safeParse(req.body);
+    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "实时指标参数错误");
+    const pulseLimit = await checkMetricPulseRateLimit({
+      credentialOrSessionId: rateLimitSubject(req),
+      taskId: task.id,
+      routeKey: parsed.data.routeKey
+    });
     if (!pulseLimit.allowed) {
       res.setHeader("Retry-After", String(pulseLimit.retryAfterSeconds));
       return sendError(res, 429, "RATE_LIMITED", "实时脉冲过于频繁，请稍后再试");
     }
-    const parsed = metricPulseSchema.safeParse(req.body);
-    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "实时指标参数错误");
-    const liveScreenGuard = validateLiveScreenInternalApiPayload({
-      featureEnabled: liveScreenInternalApiEnabled(),
-      authKind: currentUser(req).authKind,
-      sourceUrl: parsed.data.sourceUrl,
-      pageType: parsed.data.pageType,
-      routeKey: parsed.data.routeKey,
-      captureProtocolVersion: parsed.data.captureProtocolVersion,
-      captureMeta: parsed.data.captureMeta,
-      metrics: parsed.data.metrics,
-      mode: "PULSE"
-    });
-    if (!liveScreenGuard.ok) {
-      console.warn(`[${getRequestId(res)}] live-screen pulse rejected`, {
+    const guard = parsed.data.routeKey === "LOCAL_PROMOTION_DASHBOARD"
+      ? validateLocalPromotionInternalApiPulse({
+          featureEnabled: localPromotionInternalApiEnabled(),
+          authKind: currentUser(req).authKind,
+          sourceUrl: parsed.data.sourceUrl,
+          pageType: parsed.data.pageType,
+          routeKey: parsed.data.routeKey,
+          captureProtocolVersion: parsed.data.captureProtocolVersion,
+          captureMeta: parsed.data.captureMeta,
+          metrics: parsed.data.metrics
+        })
+      : validateLiveScreenInternalApiPayload({
+          featureEnabled: liveScreenInternalApiEnabled(),
+          authKind: currentUser(req).authKind,
+          sourceUrl: parsed.data.sourceUrl,
+          pageType: parsed.data.pageType,
+          routeKey: parsed.data.routeKey,
+          captureProtocolVersion: parsed.data.captureProtocolVersion,
+          captureMeta: parsed.data.captureMeta,
+          metrics: parsed.data.metrics,
+          mode: "PULSE"
+        });
+    if (!guard.ok) {
+      console.warn(`[${getRequestId(res)}] metric pulse rejected`, {
         taskId: task.id,
         routeKey: parsed.data.routeKey,
-        code: liveScreenGuard.code
+        code: guard.code
       });
-      return sendError(res, liveScreenGuard.status, liveScreenGuard.code, liveScreenGuard.message);
+      return sendError(res, guard.status, guard.code, guard.message);
     }
     const capturedAt = new Date(parsed.data.localCapturedAt).getTime();
     if (capturedAt > Date.now() + 60_000 || Date.now() - capturedAt > 5 * 60_000) {
@@ -647,14 +665,18 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       if (!run) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "巡检批次不存在或已停止");
     }
     const recorded = recordMetricPulse(task.id, parsed.data);
-    console.info(`[${getRequestId(res)}] live-screen pulse accepted`, {
+    console.info(`[${getRequestId(res)}] metric pulse accepted`, {
       taskId: task.id,
       routeKey: parsed.data.routeKey,
       metricCount: parsed.data.metrics.length,
       tabState: parsed.data.tabState,
       successfulEndpoints: parsed.data.captureMeta.liveScreenInternalApi?.endpointStatuses
         .filter((status) => status.status === "SUCCESS")
-        .map((status) => status.endpoint) || []
+        .map((status) => status.endpoint)
+        || parsed.data.captureMeta.localPromotionInternalApi?.endpointStatuses
+          .filter((status) => status.status === "SUCCESS")
+          .map((status) => status.endpoint)
+        || []
     });
     return sendSuccess(res, recorded, 202);
   });
@@ -675,10 +697,13 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
     const signalWriter = createLatestSseWriter(res, (signals: ReturnType<typeof latestRealtimeSignals>) => `event: signals\ndata: ${JSON.stringify(signals)}\n\n`);
-    const metricWriter = createLatestSseWriter(res, (frame: NonNullable<ReturnType<typeof latestRealtimeMetricFrame>>) => `event: pulse\ndata: ${JSON.stringify(frame)}\n\n`);
+    const metricWriter = createKeyedLatestSseWriter(
+      res,
+      (frame: NonNullable<ReturnType<typeof latestRealtimeMetricFrame>>) => `event: pulse\ndata: ${JSON.stringify(frame)}\n\n`,
+      (frame) => frame.routeKey
+    );
     signalWriter.push(latestRealtimeSignals(task.id));
-    const latestMetricFrame = latestRealtimeMetricFrame(task.id);
-    if (latestMetricFrame) metricWriter.push(latestMetricFrame);
+    for (const latestMetricFrame of latestRealtimeMetricFrames(task.id)) metricWriter.push(latestMetricFrame);
     const unsubscribeSignals = subscribeRealtimeSignals(task.id, (signals) => signalWriter.push(signals));
     const unsubscribeMetrics = subscribeRealtimeMetricFrames(task.id, (frame) => metricWriter.push(frame));
     const heartbeat = setInterval(() => {
@@ -1315,9 +1340,9 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.post("/collection-tasks/:id/decision-preview", async (req, res) => {
     const task = await getOwnedTask(currentUser(req).id, req.params.id);
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
-    const realtimeFrame = latestRealtimeMetricFrame(task.id);
-    if (!task.snapshots[0] && !realtimeFrame) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
-    const input = buildDecisionInput(task, { realtimeFrame });
+    const realtimeFrames = latestRealtimeMetricFrames(task.id);
+    if (!task.snapshots[0] && !realtimeFrames.length) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
+    const input = buildDecisionInput(task, { realtimeFrames });
     const { ruleOutput, finalOutput } = runDecisionEngine(input);
     const readiness = evaluateDecisionReadiness(task, input);
     return sendSuccess(res, {

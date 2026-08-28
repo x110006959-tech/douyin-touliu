@@ -134,4 +134,32 @@ describe("decision contracts", () => {
       steps: ["人工执行"], verifyMetrics: ["订单"], ruleBoundary: "不得自动操作平台"
     }).success).toBe(false);
   });
+
+  it("keeps multi-route realtime evidence isolated by source", () => {
+    const base = {
+      businessType: "DOUYIN_LOCAL_LIFE" as const,
+      subject,
+      metrics: [],
+      tables: [],
+      networkJsonSummary: []
+    };
+    const localEvidence = {
+      routeKey: "LOCAL_PROMOTION_DASHBOARD" as const,
+      pageType: "LOCAL_PROMOTION_DASHBOARD" as const,
+      observedAt: "2026-08-22T08:00:00.000Z",
+      receivedAt: "2026-08-22T08:00:01.000Z",
+      metricCount: 2,
+      successfulEndpoints: ["pageMetrics"],
+      source: "LOCAL_PROMOTION_INTERNAL_API" as const
+    };
+    expect(decisionEngineInputSchema.safeParse({ ...base, realtimeEvidenceItems: [localEvidence] }).success).toBe(true);
+    expect(decisionEngineInputSchema.safeParse({
+      ...base,
+      realtimeEvidenceItems: [{ ...localEvidence, routeKey: "LIVE_DATA_SCREEN", pageType: "LIVE_DATA_SCREEN" }]
+    }).success).toBe(false);
+    expect(decisionEngineInputSchema.safeParse({
+      ...base,
+      realtimeEvidenceItems: [localEvidence, localEvidence]
+    }).success).toBe(false);
+  });
 });

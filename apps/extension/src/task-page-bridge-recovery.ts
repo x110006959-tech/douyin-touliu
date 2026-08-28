@@ -1,13 +1,10 @@
 import { developmentLoopbackHostnames, localWebPort } from "./build-target";
+import type { ExtensionContext, ExtensionProject, ExtensionTask } from "./extension-context";
 
-export type TaskPageBridgeSender = {
-  tab?: { active?: boolean; url?: string };
-  url?: string;
+export type TaskPageBinding = {
+  project: ExtensionProject;
+  task: ExtensionTask;
 };
-
-export type TaskPageConnectionRecoveryResult = { ok: true } | { ok: false; error: string };
-
-export type TaskPageConnectionActivity = ReturnType<typeof createTaskPageConnectionActivity>;
 
 export function taskIdFromBridgePageUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -40,40 +37,20 @@ export function createTaskPageConnectionActivity(currentUrl: string, observedAt 
   };
 }
 
-export async function restoreTaskPageConnection(input: {
-  taskPageUrl: string;
-  timeoutMs: number;
-  observedAt?: string;
-  refreshContext: (timeoutMs: number) => Promise<{ ok: true } | { ok: false; error: string }>;
-  reportHeartbeat: (
-    activity: TaskPageConnectionActivity,
-    timeoutMs: number
-  ) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  appendLog: (action: string, detail?: unknown) => Promise<void>;
-}): Promise<TaskPageConnectionRecoveryResult> {
-  const refreshed = await input.refreshContext(input.timeoutMs);
-  if (!refreshed.ok) return refreshed;
-  const heartbeat = await input.reportHeartbeat(
-    createTaskPageConnectionActivity(input.taskPageUrl, input.observedAt),
-    input.timeoutMs
-  );
-  if (!heartbeat.ok) {
-    return { ok: false, error: heartbeat.error || "插件连接状态暂时无法同步到网页。" };
-  }
-  await input.appendLog("extension.connection_restored", { source: "task-page" });
-  return { ok: true };
+export function resolveTaskPageBinding(context: ExtensionContext, taskId: string): TaskPageBinding | null {
+  const project = context.account.projects.find((item) => item.tasks.some((task) => task.id === taskId));
+  const task = project?.tasks.find((item) => item.id === taskId);
+  return project && task ? { project, task } : null;
 }
 
-export async function restoreBoundTaskPageConnection(input: {
-  paired: boolean;
+export function shouldBlockTaskSwitchForActivePulse(input: {
   boundTaskId: string | undefined;
-  sender: TaskPageBridgeSender;
-  restore: (taskPageUrl: string) => Promise<TaskPageConnectionRecoveryResult>;
-}): Promise<{ attempted: false } | { attempted: true; result: TaskPageConnectionRecoveryResult }> {
-  const taskPageUrl = input.sender.tab?.url || input.sender.url;
-  const taskPageTaskId = taskIdFromBridgePageUrl(taskPageUrl);
-  if (!input.paired || !input.boundTaskId || !taskPageUrl || taskPageTaskId !== input.boundTaskId) {
-    return { attempted: false };
-  }
-  return { attempted: true, result: await input.restore(taskPageUrl) };
+  targetTaskId: string;
+  hasActivePulse: boolean;
+}) {
+  return input.hasActivePulse && input.boundTaskId !== input.targetTaskId;
+}
+
+export function contextRefreshErrorCode(status: number): "PAIRING_REQUIRED" | "CONTEXT_REFRESH_FAILED" {
+  return status === 401 || status === 403 ? "PAIRING_REQUIRED" : "CONTEXT_REFRESH_FAILED";
 }
