@@ -1,5 +1,11 @@
 # Deployment State
 
+## 2026-08-28 v0.2.5 GitHub 发布（非生产部署）
+
+- 已从源码基线 `4ddacd590d55` 生成生产扩展归档 `collector-v0.2.5-4ddacd590d55.zip`，发布清单标记 `buildTarget=production`、`localTestOnly=false`；SHA-256 为 `95ac90bb5bb7637d47c6586cd0db787702a201b93d2fdfdb3ef283b2b7f7b94b`。
+- GitHub Release 使用标签 `v0.2.5`：[打开 Release](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.5)。
+- 本次是源码与扩展归档上传，不是生产部署；未执行 migration、`db push`、容器替换、平台操作或业务数据清理。数据库、Prisma Schema、数据卷和采集配置不变。
+
 ## 2026-08-28 实时采集 30 秒节拍 Web 本机运行态切换（非生产部署）
 
 - 已从当前工作树构建 `pxxis-prelaunch-20260713-web:dashboard-pulse-cadence-30s-20260828`，构建时固定 `NEXT_PUBLIC_API_URL=http://127.0.0.1:4300`；经营数据总览会明确显示“实时 API 约每 30 秒更新一次”。

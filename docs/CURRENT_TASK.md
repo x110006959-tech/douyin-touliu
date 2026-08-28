@@ -1,5 +1,11 @@
 # Current Task
 
+## 2026-08-28 v0.2.5 Git/GitHub 上传新版本（已完成）
+
+- 已完成版本 `0.2.5` 的发布准备：源码基线 `4ddacd590d55`，版本检查、lint、typecheck、build、全仓测试、Prisma validate/generate 和 diff check 均通过。
+- 已生成并通过仓库发布脚本校验生产扩展包 `apps/extension/release/collector-v0.2.5-4ddacd590d55.zip`；SHA-256 为 `95ac90bb5bb7637d47c6586cd0db787702a201b93d2fdfdb3ef283b2b7f7b94b`，`localTestOnly=false`。
+- GitHub Release 使用标签 `v0.2.5`，地址为 [v0.2.5](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.5)。未执行生产部署、平台操作、migration、`db push` 或业务数据变更。
+
 ## 2026-08-28 直播与本地推采集节拍统一为 30 秒（已完成）
 
 - 按用户最新决定，直播和本地推 API 持续采集均改为每 30 秒一轮；直播仍只采集既有 `key_index` 白名单指标，本地推仍只采集既有 13 项。

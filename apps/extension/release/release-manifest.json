@@ -1,12 +1,12 @@
 {
-  "productVersion": "0.2.4",
-  "gitSha": "48b3758adf51",
-  "buildTime": "2026-08-15T17:07:56.878Z",
+  "productVersion": "0.2.5",
+  "gitSha": "4ddacd590d55",
+  "buildTime": "2026-08-28T14:01:10.521Z",
   "schemaVersion": "20260731_v035_ai_skill_diagnosis",
-  "extensionVersion": "0.2.4",
-  "sourceFingerprint": "1a4bc20a9d72",
+  "extensionVersion": "0.2.5",
+  "sourceFingerprint": "e078d8fdfcdf",
   "buildTarget": "production",
   "localTestOnly": false,
-  "artifact": "collector-v0.2.4-48b3758adf51.zip",
-  "sha256": "eb2dc55bff630b2df938253d57281bac0e6960fac3148de0bdca4b97f509dab6"
+  "artifact": "collector-v0.2.5-4ddacd590d55.zip",
+  "sha256": "95ac90bb5bb7637d47c6586cd0db787702a201b93d2fdfdb3ef283b2b7f7b94b"
 }

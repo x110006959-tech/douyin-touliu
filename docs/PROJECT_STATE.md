@@ -1,5 +1,12 @@
 # Project State
 
+## 2026-08-28 v0.2.5 Git/GitHub 发布（完成）
+
+- 当前源码版本统一为 `0.2.5`，源码发布基线为 `4ddacd590d55`；实时采集、经营大屏、本地推受限内部 API、扩展状态隔离和测试改动已完成。
+- 已通过根目录 lint、typecheck、build、test、Prisma validate/generate 与 diff check；全仓测试 493 项通过。
+- 生产扩展归档为 `apps/extension/release/collector-v0.2.5-4ddacd590d55.zip`，`localTestOnly=false`，SHA-256 为 `95ac90bb5bb7637d47c6586cd0db787702a201b93d2fdfdb3ef283b2b7f7b94b`；对应 GitHub Release 为 [v0.2.5](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.5)。
+- 本次仅发布源码与生产扩展归档，不涉及生产部署、平台操作、数据库、Prisma Schema、migration 或业务数据变更。
+
 ## 2026-08-28 本地推 API 平台限流缓解
 
 - `liveReportPromoteMeta` 返回 `HTTP_429` 时仍按安全规则立即停止，不自动重试。
