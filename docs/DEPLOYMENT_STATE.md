@@ -2,11 +2,11 @@
 
 > 当前部署/本机运行态结论以 [NOW.md](./NOW.md) 为准；本文件保留每次切换的完整历史，不得以较早镜像记录推断当前容器。
 
-## 2026-09-02 v0.2.6 发布制品（制品已生成，待上传，非生产部署）
+## 2026-09-02 v0.2.6 发布完成（非生产部署）
 
 - 源码版本已统一为 `0.2.6`，发布脚本从源码提交 `89a5de704f91` 生成 `apps/extension/release/collector-v0.2.6-89a5de704f91.zip`；`buildTarget=production`、`localTestOnly=false`。
 - 制品 SHA-256 为 `48668223d1a5dedfcae4c9ae59152ad36e20371facc95076632ba06c0d69720a`；本机 API/Web/Worker、数据库、Schema、迁移和生产环境均未因本次上传动作切换或修改。
-- GitHub 主分支、`v0.2.6` 标签与 Release 尚待本轮上传完成后补记。
+- GitHub 主分支已上传，GitHub 对应制品提交为 `0b019b827a7d`，标签 `v0.2.6` 与 [Release](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.6) 已创建并附带 ZIP 与 SHA-256 校验文件；标准 Git HTTPS 上传连接超时后改用 GitHub 标准 Git 数据接口，未强推或覆盖已有引用。
 
 ## 2026-09-02 诊断限流事务边界 v14 切换（本机，非生产）
 
