@@ -2,8 +2,8 @@ import {
   diagnosisActionTypes,
   type DiagnosisFinalResult
 } from "@douyin-local-life/shared/diagnosis";
-import { syntheticDiagnosisCases, type SyntheticDiagnosisCase } from "@douyin-local-life/diagnosis-skills";
-import type { ChatRequest, ChatResponse, ChatToolCall, ChatTransport } from "@douyin-local-life/llm";
+import { createDiagnosisSkillPlan, syntheticDiagnosisCases, type SyntheticDiagnosisCase } from "@douyin-local-life/diagnosis-skills";
+import type { ChatRequest, ChatResponse, ChatTransport } from "@douyin-local-life/llm";
 import type { DecisionEngineInput } from "@douyin-local-life/shared";
 import { aiDiagnosisTimeoutMs } from "./config.js";
 import { orchestrateDiagnosis } from "./orchestrator.js";
@@ -26,7 +26,6 @@ export function createSyntheticDiagnosisTransport(testCase: DiagnosisEvaluationC
     provider: "fake",
     model: "synthetic-diagnosis-v1",
     async chat(request) {
-      if (request.tools?.length) return toolResponse(request);
       const system = request.messages.find((message) => message.role === "system")?.content || "";
       return system.includes("核心问题裁决器")
         ? jsonResponse(buildDecisionBrief(testCase, request))
@@ -70,7 +69,7 @@ async function evaluateOneCase(testCase: DiagnosisEvaluationCase, transport: Cha
   try {
     const execution = await orchestrateDiagnosis({
       decisionInput: testCase.input,
-      similarCases: [],
+      skillPlan: createDiagnosisSkillPlan(testCase.input),
       transport,
       signal: timeout.signal,
       onSkillEvent: async (event) => {
@@ -114,22 +113,6 @@ async function evaluateOneCase(testCase: DiagnosisEvaluationCase, transport: Cha
   }
 }
 
-function toolResponse(request: ChatRequest): ChatResponse {
-  if (request.messages.some((message) => message.role === "tool")) {
-    return { message: { role: "assistant", content: "可综合" }, finishReason: "stop", usage: usage() };
-  }
-  const forcedName = typeof request.tool_choice === "object" ? request.tool_choice.function.name : null;
-  const selected = forcedName
-    ? request.tools!.filter((tool) => tool.function.name === forcedName)
-    : request.tools!;
-  const calls: ChatToolCall[] = selected.map((tool, index) => ({
-    id: `fake-tool-${tool.function.name}-${index}`,
-    type: "function",
-    function: { name: tool.function.name, arguments: "{}" }
-  }));
-  return { message: { role: "assistant", content: null, reasoning_content: "not persisted", tool_calls: calls }, finishReason: "tool_calls", usage: usage() };
-}
-
 function buildSkillOutput(request: ChatRequest) {
   const user = parseLastUser(request);
   const evidence = Array.isArray(user.evidence) ? user.evidence as Array<Record<string, unknown>> : [];
@@ -154,10 +137,19 @@ function buildSkillOutput(request: ChatRequest) {
       id: "domain-experiment",
       title: "单变量验证",
       hypothesisId: "domain-hypothesis",
-      steps: ["保持其他变量不变，由人工执行一轮小样本验证。"],
+      steps: ["保持经营设置不变，由人工记录一轮小样本观察。"],
       verifyMetrics: ["orders"],
       stopConditions: ["关键指标连续下降时停止。"],
-      evidenceIds: [firstId]
+      evidenceIds: [firstId],
+      experimentType: "OBSERVATION",
+      actionType: null,
+      singleVariable: "订单观察结果",
+      controlScope: "同一任务和同一统计口径",
+      observationWindow: "一个约定观察窗口",
+      baselineMetrics: ["orders"],
+      completionCriteria: ["完成一个约定观察窗口并取得完整数据。"],
+      abortCriteria: ["关键指标连续下降时停止。"],
+      interferenceFactors: ["活动、商品或直播时段变化"]
     }],
     candidateActions: [],
     confidence: 0.8
@@ -167,8 +159,11 @@ function buildSkillOutput(request: ChatRequest) {
 function buildDecisionBrief(testCase: DiagnosisEvaluationCase, request: ChatRequest) {
   const user = parseLastUser(request);
   const ids = Array.isArray(user.evidenceIds) ? user.evidenceIds.filter((item): item is string => typeof item === "string") : [];
+  const mainProblemTag = isMainProblemTag(user.serverMainProblemTag)
+    ? user.serverMainProblemTag
+    : testCase.expectedMainProblemTag;
   return {
-    mainProblemTag: testCase.expectedMainProblemTag,
+    mainProblemTag,
     rationale: `合成案例 ${testCase.id} 的确定性信号与领域结果支持该核心标签。`,
     evidenceIds: [ids[0] || "policy:data-review"]
   };
@@ -178,22 +173,28 @@ function buildFinalResult(testCase: DiagnosisEvaluationCase, request: ChatReques
   const user = parseLastUser(request);
   const ids = Array.isArray(user.evidenceIds) ? user.evidenceIds.filter((item): item is string => typeof item === "string") : [];
   const evidenceId = ids[0] || "policy:data-review";
-  const dimension = testCase.expectedMainProblemTag === "DATA_READINESS" ? "DATA"
-    : testCase.expectedMainProblemTag === "DELIVERY_ROI" ? "DELIVERY"
-      : testCase.expectedMainProblemTag === "HEALTHY" ? "LIVE_ROOM"
-        : testCase.expectedMainProblemTag;
+  const roiEvidenceIds = ids.filter((id) => id.includes("full_domain_pay_roi") || id.includes("pay_roi") || id.includes("target_roi"));
+  const decisionEvidenceIds = roiEvidenceIds.length >= 2 ? roiEvidenceIds : [evidenceId];
+  const decisionBrief = isRecord(user.decisionBrief) ? user.decisionBrief : {};
+  const mainProblemTag = isMainProblemTag(decisionBrief.mainProblemTag)
+    ? decisionBrief.mainProblemTag
+    : testCase.expectedMainProblemTag;
+  const dimension = mainProblemTag === "DATA_READINESS" ? "DATA"
+    : mainProblemTag === "DELIVERY_ROI" ? "DELIVERY"
+      : mainProblemTag === "HEALTHY" ? "LIVE_ROOM"
+        : mainProblemTag;
   return {
     schemaVersion: "ai-diagnosis-result-v1",
-    coreConclusion: `合成案例 ${testCase.id} 的核心问题归类为 ${testCase.expectedMainProblemTag}。`,
-    mainProblemTag: testCase.expectedMainProblemTag,
+    coreConclusion: `合成案例 ${testCase.id} 的核心问题归类为 ${mainProblemTag}。`,
+    mainProblemTag,
     confidence: 0.9,
-    factSnapshot: [{ statement: "诊断使用人工复核后的五路线结构化证据。", evidenceIds: [evidenceId] }],
+    factSnapshot: [{ statement: "诊断使用人工复核后的五路线结构化证据。", evidenceIds: decisionEvidenceIds }],
     hypotheses: [{
       id: "main-hypothesis",
       dimension: dimension as DiagnosisFinalResult["hypotheses"][number]["dimension"],
       title: "核心问题假设",
-      conclusion: `主要问题为 ${testCase.expectedMainProblemTag}。`,
-      supportingEvidenceIds: [evidenceId],
+      conclusion: `主要问题为 ${mainProblemTag}。`,
+      supportingEvidenceIds: decisionEvidenceIds,
       conflictingEvidenceIds: [],
       missingEvidence: [],
       confidence: 0.9
@@ -201,17 +202,26 @@ function buildFinalResult(testCase: DiagnosisEvaluationCase, request: ChatReques
     missingEvidence: [],
     experiments: [{
       id: "main-experiment",
-      title: "人工单变量小样本验证",
+      title: "人工单变量小样本观察",
       hypothesisId: "main-hypothesis",
-      steps: ["人工保持其他变量不变并执行小样本验证。"],
+      steps: ["人工保持经营设置不变并记录小样本观察。"],
       verifyMetrics: ["orders", "pay_roi"],
       stopConditions: ["ROI 或订单持续下降时停止。"],
-      evidenceIds: [evidenceId]
+      evidenceIds: [evidenceId],
+      experimentType: "OBSERVATION",
+      actionType: mainProblemTag === "DATA_READINESS" ? "REQUEST_MANUAL_REVIEW" : "OBSERVE",
+      singleVariable: "订单与支付 ROI 的同口径观察结果",
+      controlScope: "同一任务、同一统计范围和同一数据路线",
+      observationWindow: "一个约定观察窗口",
+      baselineMetrics: ["orders", "pay_roi"],
+      completionCriteria: ["完成观察窗口并取得执行前后同口径数据。"],
+      abortCriteria: ["ROI 或订单持续下降时停止。"],
+      interferenceFactors: ["活动、商品、时段和流量来源变化"]
     }],
     stopConditions: ["证据过期、路线变化或风险指标恶化时停止。"],
     candidateActions: [
       {
-        actionType: testCase.expectedMainProblemTag === "DATA_READINESS" ? "REQUEST_MANUAL_REVIEW" : "OBSERVE",
+        actionType: mainProblemTag === "DATA_READINESS" ? "REQUEST_MANUAL_REVIEW" : "OBSERVE",
         title: "人工验证候选动作",
         reason: "先以小样本验证假设，再由规则层裁决。",
         expectedImpact: "获得可复盘的验证结果。",
@@ -228,7 +238,7 @@ function buildFinalResult(testCase: DiagnosisEvaluationCase, request: ChatReques
         riskLevel: "LOW",
         confidence: 0.75,
         evidenceIds: [evidenceId],
-        experimentId: "main-experiment"
+        experimentId: null
       },
       {
         actionType: "CHECK_CREATIVE",
@@ -238,10 +248,27 @@ function buildFinalResult(testCase: DiagnosisEvaluationCase, request: ChatReques
         riskLevel: "LOW",
         confidence: 0.72,
         evidenceIds: [evidenceId],
-        experimentId: "main-experiment"
+        experimentId: null
       }
     ]
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isMainProblemTag(value: unknown): value is DiagnosisFinalResult["mainProblemTag"] {
+  return typeof value === "string" && [
+    "DATA_READINESS",
+    "TRAFFIC",
+    "LIVE_ROOM",
+    "PRODUCT",
+    "DELIVERY_ROI",
+    "ACTIVITY_COMPLIANCE",
+    "MULTI_FACTOR",
+    "HEALTHY"
+  ].includes(value);
 }
 
 function parseLastUser(request: ChatRequest) {
@@ -255,10 +282,11 @@ function parseLastUser(request: ChatRequest) {
 
 function dimensionFromPrompt(request: ChatRequest) {
   const prompt = request.messages.find((message) => message.role === "system")?.content || "";
-  if (prompt.includes("流量")) return "TRAFFIC";
-  if (prompt.includes("直播间")) return "LIVE_ROOM";
-  if (prompt.includes("商品")) return "PRODUCT";
-  if (prompt.includes("投流")) return "DELIVERY";
+  if (prompt.includes("直播间承接诊断")) return "LIVE_ROOM";
+  if (prompt.includes("商品结构诊断")) return "PRODUCT";
+  if (prompt.includes("投流单元诊断")) return "DELIVERY";
+  if (prompt.includes("活动权益与合规诊断")) return "ACTIVITY_COMPLIANCE";
+  if (prompt.includes("流量获取诊断")) return "TRAFFIC";
   return "ACTIVITY_COMPLIANCE";
 }
 

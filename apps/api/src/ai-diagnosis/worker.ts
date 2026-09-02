@@ -1,20 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type DecisionRun } from "@prisma/client";
 import { guardAiCandidateActions } from "@douyin-local-life/decision-engine";
-import { diagnosisSkillSetVersion } from "@douyin-local-life/diagnosis-skills";
+import { createDiagnosisSkillPlan, diagnosisSkillSetVersion } from "@douyin-local-life/diagnosis-skills";
 import { LlmTransportError, type ChatTransport } from "@douyin-local-life/llm";
 import { collectionFreshnessPolicy, decisionEngineInputSchema, type AnalyzeOutput, type DecisionEngineInput } from "@douyin-local-life/shared";
-import type { DiagnosisFinalResult } from "@douyin-local-life/shared/diagnosis";
 import { buildDecisionInput, toActionProposalCreate } from "../decision.js";
 import { DecisionEvidenceChangedError, decisionEvidenceFingerprint } from "../decision-evidence.js";
-import { findSimilarDiagnosisCases, upsertDraftDiagnosisCase } from "../diagnosis-cases.js";
+import { upsertDraftDiagnosisCase } from "../diagnosis-cases.js";
 import { evaluateDecisionReadiness } from "../decision-readiness.js";
 import { getTaskForDecision } from "../ownership.js";
 import { prisma } from "../prisma.js";
 import { prepareActionProposals, proposalExpiresAfterMs, proposalLifecyclePolicy } from "../proposal-lifecycle.js";
 import { sanitizeDerivedPersistedJson } from "../persisted-input.js";
 import { latestRealtimeMetricFrames } from "../realtime-signals.js";
-import { aiDiagnosisEnabled, aiDiagnosisTimeoutMs, createConfiguredDiagnosisTransport } from "./config.js";
+import {
+  aiDiagnosisConfigurationIssue,
+  aiDiagnosisEnabled,
+  aiDiagnosisTimeoutMs,
+  createConfiguredDiagnosisTransport
+} from "./config.js";
 import {
   DiagnosisOrchestrationError,
   diagnosisOrchestrationVersion,
@@ -30,6 +34,7 @@ export async function processNextDecisionRun(options: {
   transport?: ChatTransport;
 } = {}) {
   if (!aiDiagnosisEnabled()) return null;
+  if (!options.transport && aiDiagnosisConfigurationIssue()) return null;
   const workerId = options.workerId || `diagnosis-worker-${randomUUID()}`;
   const run = await claimDecisionRun(workerId);
   if (!run) return null;
@@ -38,6 +43,8 @@ export async function processNextDecisionRun(options: {
 }
 
 export function startDecisionWorker(options: { pollIntervalMs?: number; workerId?: string; transport?: ChatTransport } = {}) {
+  const configurationIssue = options.transport ? null : aiDiagnosisConfigurationIssue();
+  if (configurationIssue) throw new DiagnosisWorkerError(configurationIssue.code, configurationIssue.message);
   const workerId = options.workerId || `diagnosis-worker-${randomUUID()}`;
   const pollIntervalMs = options.pollIntervalMs ?? 1_000;
   let running = false;
@@ -111,11 +118,11 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
     const readiness = evaluateDecisionReadiness(task, decisionInput);
     if (!readiness.ready) throw new DiagnosisWorkerError("DECISION_NOT_READY", readiness.blockingReasons.join("；"));
     const transport = configuredTransport || createConfiguredDiagnosisTransport();
+    const skillPlan = createDiagnosisSkillPlan(decisionInput);
     await updateStage(run.id, workerId, "ORCHESTRATING_SKILLS");
     const orchestration = await orchestrateDiagnosis({
       decisionInput,
-      similarCases: [],
-      retrieveSimilarCases: (hints) => findSimilarDiagnosisCases(task.project.workspaceId, decisionInput, hints),
+      skillPlan,
       transport,
       signal: timeout.signal,
       onSkillEvent: (event) => persistSkillEvent(run.id, workerId, event)
@@ -182,7 +189,7 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
           ruleResultJson: toJson(sanitizeDerivedPersistedJson(finalResult.ruleAdjudication)),
           finalResultJson: toJson(sanitizeDerivedPersistedJson(finalResult)),
           manualCheckItemsJson: toJson(sanitizeDerivedPersistedJson(orchestration.result.missingEvidence)),
-          riskLevel: highestRisk(orchestration.result),
+          riskLevel: highestAcceptedActionRisk(prepared.accepted),
           confidence: orchestration.result.confidence,
           diagnosis: orchestration.result.coreConclusion,
           durationMs: Date.now() - startedAt,
@@ -266,9 +273,9 @@ async function persistSkillEvent(runId: string, workerId: string, event: SkillEx
   });
 }
 
-function highestRisk(result: DiagnosisFinalResult) {
-  if (result.candidateActions.some((item) => item.riskLevel === "HIGH")) return "HIGH" as const;
-  if (result.candidateActions.some((item) => item.riskLevel === "MEDIUM") || result.hypotheses.some((item) => item.confidence < 0.6)) return "MEDIUM" as const;
+function highestAcceptedActionRisk(proposals: Array<{ riskLevel: "LOW" | "MEDIUM" | "HIGH" }>) {
+  if (proposals.some((item) => item.riskLevel === "HIGH")) return "HIGH" as const;
+  if (proposals.some((item) => item.riskLevel === "MEDIUM")) return "MEDIUM" as const;
   return "LOW" as const;
 }
 

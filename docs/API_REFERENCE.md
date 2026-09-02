@@ -1,5 +1,22 @@
 # 采集校准 API
 
+> 当前接口可用性、运行版本和 AI 开关以 [NOW.md](./NOW.md) 为准。本页描述接口契约；请求成功不等于当前运行环境已开启对应能力。
+
+## 当前运行态提示（2026-08-30）
+
+- 本机 API `/version` 已核验为 `0.2.5 / local-ai-v20-20260829 / 采集协议 8`；当前工作树的未提交实时入口门禁尚未进入运行 API。
+- AI DecisionRun 接口受 `AI_DIAGNOSIS_ENABLED` 控制，当前保持关闭；不可将接口契约理解为已完成真实 AI 验收。
+- 实时采集只在受限白名单、用户显式启动和服务端开关满足时可用；正式平台操作始终由人工完成。
+
+## 实时脉冲入口
+
+- 请求：`POST /collection-tasks/:id/metric-pulses`。该接口仅供已配对 Extension 使用，网页登录会话、人工请求和其他客户端均返回 `403 METRIC_PULSE_EXTENSION_REQUIRED`。
+- 路线：只接受任务中已配置的 `LIVE_DATA_SCREEN` 或 `LOCAL_PROMOTION_DASHBOARD`，其他路线返回 `400 METRIC_PULSE_ROUTE_INVALID`；未配置路线返回 `409 COLLECTION_ROUTE_NOT_CONFIGURED`。
+- 直播脉冲：必须使用精确直播大屏页面和服务端开启的内部 API 契约，且至少包含可复核的 `PULSE_ONLY` 白名单 API 指标。纯 DOM、双来源、分钟趋势和商品/流量分栏路线不会进入实时内存。
+- 本地推脉冲：继续使用 `pageMetrics`、`getLiveReportPromoteMeta`（涉及全域指标时）和 `statQuery` 的严格固定契约，不允许静默回退 DOM。
+- 实时脉冲只写入有界内存并通过 SSE 展示，不创建 `DataSnapshot`；趋势基线按 `routeKey` 隔离。正式 `/snapshots` 仍保留 DOM 采集和人工复核兼容能力。
+- 当前源码的上述门禁已通过 API 测试，但本机 `4300` 运行实例仍是 `local-ai-v20-20260829`，尚未切换到包含本次门禁的构建。
+
 本页记录 v034 采集校准大屏的认证接口约定。除配对后的 Extension 专用接口外，均需已登录用户会话；服务端始终按当前用户校验任务归属。
 
 ## 读取任务校准大屏
@@ -7,9 +24,16 @@
 - 用途：读取某一采集任务当前路线的真实指标、结构化表格、路线状态和复核覆盖率。
 - 请求：`GET /collection-tasks/:id/collection-dashboard`，其中 `:id` 是采集任务 ID。
 - 示例：`GET /collection-tasks/ck_task/collection-dashboard`。
-- 返回：`task`（任务、账号、项目名称）、`summary`（当前路线快照、真实指标、趋势记录、表格和路线诊断）、`reviewCoverage`（标准指标复核计数）、`tableReviewCoverage`（表格单元格复核计数）。摘要指标同时返回内部精确 `metricValue` 与优先供展示的后台原样 `displayValue`；百分比不将内部比例值伪装成后台百分比。没有采集数据时，相应数组为空，不生成模拟值。
+- 返回：`task`（任务、账号、项目名称）、`summary`（当前路线快照、真实指标、趋势记录、表格和路线诊断）、`decisionTargets.targetRoi`（当前任务的人工目标 ROI）、`reviewCoverage`（标准指标复核计数）、`tableReviewCoverage`（表格单元格复核计数）。摘要指标同时返回内部精确 `metricValue` 与优先供展示的后台原样 `displayValue`；百分比不将内部比例值伪装成后台百分比。没有采集数据时，相应数组为空，不生成模拟值。
 - 成功示例：`{"success":true,"data":{"task":{"id":"ck_task","title":"7月直播","accountName":"门店账号","projectName":"夏季投流"},"summary":{"metrics":[],"tables":[],"routes":[]},"reviewCoverage":{"confirmedCount":0,"modifiedCount":0,"ignoredCount":0,"pendingCount":0,"totalCount":0},"tableReviewCoverage":{"confirmedCount":0,"modifiedCount":0,"ignoredCount":0,"pendingCount":0,"totalCount":0}},"error":null}`。
 - 常见错误：`404 TASK_NOT_FOUND` 表示任务不存在或不属于当前用户。
+
+## 保存本次目标 ROI
+
+- 用途：为当前采集任务记录人工经营目标。该输入不是平台采集数据，但以可信人工证据进入下一次正式诊断；服务端会与全域支付 ROI 对标，不能触发任何平台动作。
+- 请求：`PUT /collection-tasks/:id/decision-targets`，请求体为 `{"targetRoi":50}`；传 `{"targetRoi":null}` 可清除目标。
+- 限制：只接受大于 `0` 且不超过 `10000` 的有限数字。服务端校验当前登录用户与任务归属，并写入审计；同一任务处于 `PENDING` 或 `RUNNING` 的 AI 诊断期间返回 `409 DECISION_RUN_ACTIVE`，避免一次运行前后对标口径改变。
+- 返回：`{"targetRoi":50,"updatedAt":"2026-08-31T00:00:00.000Z"}`。写入后会更新诊断证据指纹；已创建的历史运行保持不变。
 
 ## 批量保存表格校准
 

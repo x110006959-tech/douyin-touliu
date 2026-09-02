@@ -27,6 +27,7 @@ const baseTask = {
   reviewedMetrics: [{
     id: "review-1",
     snapshotId: "snapshot-1",
+    metricKey: "pay_roi",
     reviewStatus: "CONFIRMED",
     reviewedValue: "1.2",
     updatedAt: new Date("2026-07-16T12:00:00.000Z")
@@ -52,6 +53,20 @@ describe("decisionEvidenceFingerprint", () => {
     expect(decisionEvidenceFingerprint({
       ...baseTask,
       reviewedMetrics: [{ ...baseTask.reviewedMetrics[0], reviewedValue: "1.3", updatedAt: new Date("2026-07-16T12:01:00.000Z") }]
+    })).not.toBe(baseline);
+    expect(decisionEvidenceFingerprint({
+      ...baseTask,
+      reviewedMetrics: [
+        ...baseTask.reviewedMetrics,
+        {
+          ...baseTask.reviewedMetrics[0],
+          id: "target-roi",
+          snapshotId: null,
+          metricKey: "target_roi",
+          reviewedValue: "45",
+          updatedAt: new Date("2026-07-16T12:01:00.000Z")
+        }
+      ]
     })).not.toBe(baseline);
     expect(decisionEvidenceFingerprint({
       ...baseTask,

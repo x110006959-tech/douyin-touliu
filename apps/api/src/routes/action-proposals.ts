@@ -17,6 +17,7 @@ import { prisma } from "../prisma.js";
 import { toReadableActionProposal } from "../proposal-lifecycle.js";
 import { sendError, sendSuccess } from "../response.js";
 import { actionProposalAudit, currentUser } from "../server-utils.js";
+import { buildDecisionRunDeterministicReview } from "../ai-diagnosis/orchestrator.js";
 
 const defaultManualExecutionNote = "用户确认已在平台页面或线下流程中手动执行完成，系统未执行任何平台操作。";
 
@@ -165,6 +166,7 @@ export function createActionProposalRouter() {
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
     if (rejectIfProposalExpired(res, proposal)) return;
+    if (rejectIfDecisionRunConflict(res, proposal)) return;
     if (proposal.status !== "APPROVED") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", "只有已审批动作建议可以标记人工已执行");
     }
@@ -206,6 +208,7 @@ function registerApprovalTransition(router: Router, route: "approve" | "reject" 
     const proposal = await getOwnedActionProposal(currentUser(req).id, req.params.id);
     if (!proposal) return sendError(res, 404, "ACTION_PROPOSAL_NOT_FOUND", "动作建议不存在");
     if (rejectIfProposalExpired(res, proposal)) return;
+    if (route !== "reject" && rejectIfDecisionRunConflict(res, proposal)) return;
     if (proposal.status !== "PENDING_APPROVAL") {
       return sendError(res, 409, "INVALID_ACTION_PROPOSAL_STATUS", config.invalidStatusMessage);
     }
@@ -235,5 +238,17 @@ function rejectIfProposalExpired(
 ) {
   if (!proposal.expiresAt || proposal.expiresAt > new Date()) return false;
   sendError(res, 409, "ACTION_EXPIRED", "动作建议已过期，请重新采集并生成决策");
+  return true;
+}
+
+function rejectIfDecisionRunConflict(
+  res: Response,
+  proposal: NonNullable<Awaited<ReturnType<typeof getOwnedActionProposal>>>
+) {
+  const run = proposal.decisionRun;
+  if (!run || run.mode !== "AI_SKILL_ORCHESTRATED" || run.status !== "SUCCEEDED") return false;
+  const review = buildDecisionRunDeterministicReview(run.inputJson, run.finalResultJson);
+  if (!review) return false;
+  sendError(res, 409, "DIAGNOSIS_RESULT_CONFLICT", "本轮 AI 核心结论与服务端确定性证据冲突，动作建议已暂停；可拒绝该建议，但不能审批、观察或标记执行");
   return true;
 }

@@ -105,7 +105,10 @@ function toRealtimeMetricFrame(collectionTaskId: string, pulse: StoredPulse): Re
 function deriveSignals(collectionTaskId: string, pulses: StoredPulse[], now: number): RealtimeSignal[] {
   const latest = pulses.at(-1);
   if (!latest) return [];
-  const baseline = [...pulses].reverse().find((pulse) => latest.receivedAt - pulse.receivedAt >= 30_000) || pulses[0];
+  // Live and local-promotion pulses can arrive on the same task. Trends are
+  // meaningful only within one route; never compare unlike business scopes.
+  const routePulses = pulses.filter((pulse) => pulse.routeKey === latest.routeKey);
+  const baseline = [...routePulses].reverse().find((pulse) => latest.receivedAt - pulse.receivedAt >= 30_000) || routePulses[0];
   const signals: RealtimeSignal[] = [];
   const dataAgeMs = Math.max(0, now - new Date(latest.localCapturedAt).getTime());
   const observedAt = latest.localCapturedAt;

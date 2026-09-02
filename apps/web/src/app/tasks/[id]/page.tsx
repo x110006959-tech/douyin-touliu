@@ -18,12 +18,10 @@ import {
   type ActionProposalStatus,
   type ActionType,
   type CooperationType,
-  type DecisionBusinessAnalysis,
   type ExtensionStatusDTO,
   type OperatorType,
   type RealtimeMetricFrame,
   type ReviewedMetricDTO,
-  type RiskLevel,
   type SubjectType
 } from "@douyin-local-life/shared";
 import { evaluateFormalDecisionReadiness } from "@douyin-local-life/shared/formal-decision-readiness";
@@ -37,6 +35,7 @@ import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-stat
 import { getTaskWizardProgress } from "@/lib/task-progress";
 import { subscribeRealtimeMetricStream, usableRealtimeMetrics, type RealtimeMetricStreamStatus } from "@/lib/realtime-metric-stream";
 import { DiagnosisComparison } from "./diagnosis-comparison";
+import { DiagnosisBusinessSummary } from "./diagnosis-business-summary";
 import type { DecisionPreview, DecisionRun } from "./task-types";
 import { useExtensionTaskStatus, type WebBridgeUiState } from "./use-extension-task-status";
 import { useTaskData } from "./use-task-data";
@@ -253,6 +252,9 @@ export default function TaskDetailPage() {
         body: "{}"
       });
       setDecisionRun(nextDecisionRun);
+      if (nextDecisionRun.reuseReason === "UNCHANGED_EVIDENCE") {
+        setReviewMessage("本轮可信数据、目标和诊断版本均未变化，已直接沿用现有结果，没有再次调用模型。");
+      }
       decisionIdempotencyKey.current = null;
       load();
     } catch (err) {
@@ -315,7 +317,6 @@ export default function TaskDetailPage() {
   }
 
   const latestSnapshot = task.snapshots[0];
-  const reviewState = summarizeReviewState(reviewMetrics);
   const hasCapture = Boolean(captureSummary?.snapshotCount || latestSnapshot);
   const requiredRoutesCaptured = captureSummary
     ? captureSummary.requiredRoutesCaptured
@@ -384,11 +385,6 @@ export default function TaskDetailPage() {
     : decisionPreview?.finalOutput || null;
   const businessAnalysis = diagnosticOutput?.businessAnalysis || null;
   const managedLiveGrowthMode = businessAnalysis?.mode === "MANAGED_LIVE_GROWTH" || task.project.operatorType === "SERVICE_PROVIDER_LIVE";
-  const displayedFindings = managedLiveGrowthMode ? businessAnalysis?.findings.filter((finding) => finding.dimension !== "PROFITABILITY") : businessAnalysis?.findings;
-  const displayedRecommendations = managedLiveGrowthMode ? businessAnalysis?.recommendations.filter((recommendation) => recommendation.dimension !== "PROFITABILITY") : businessAnalysis?.recommendations;
-  const displayedMetricExplanations = managedLiveGrowthMode
-    ? businessAnalysis?.metricExplanations.filter((metric) => !["服务商后毛利 ROI", "本次真实投入（服务费后）", "已核验平台补贴抵扣"].includes(metric.title))
-    : businessAnalysis?.metricExplanations;
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
@@ -409,7 +405,7 @@ export default function TaskDetailPage() {
       </header>
 
       <Card className="mb-4">
-        <div className="grid gap-2 text-sm sm:grid-cols-5">
+        <div className="grid gap-2 text-sm sm:grid-cols-4">
           {wizardProgress.steps.map(({ number, label, complete }) => (
             <div className={`rounded-md border p-3 ${complete ? "border-primary bg-blue-50" : wizardProgress.currentStep === number ? "border-primary bg-white" : "border-border bg-slate-50"}`} key={number}>
               <p className="text-xs text-muted">第 {number} 步</p>
@@ -587,22 +583,9 @@ export default function TaskDetailPage() {
               </div>
             </div>
             <p className="mb-4 text-xs text-muted">最近采集：{captureSummary.latestCapturedAt ? new Date(captureSummary.latestCapturedAt).toLocaleString("zh-CN") : "数据缺失"}。所有指标、表格单元格的确认和修改请在校准大屏完成。</p>
+            {reviewMessage ? <p className="mb-3 rounded-md border border-border bg-slate-50 px-3 py-2 text-sm">{reviewMessage}</p> : null}
             {!captureSummary.metrics.length ? <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">已收到快照，但未识别到标准指标。请确认页面已完整加载；该问题会阻断依赖相关字段的诊断。</p> : null}
             <p className="rounded-md border border-border bg-slate-50 p-3 text-sm text-muted">采集值、来源路线、置信度、表格原值和校准记录统一在任务专属大屏中查看。</p>
-          </Card>
-        </section>
-      ) : null}
-
-      {hasCapture ? (
-        <section className="mb-4">
-          <Card>
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div><p className="mb-1 text-xs font-semibold text-primary">第 4 步</p><CardTitle>人工核对</CardTitle><p className="text-sm text-muted">确认、修改或忽略采集值。完成必要复核后才能运行完整诊断。</p></div>
-              <span className={`rounded-md border px-3 py-2 text-sm ${reviewComplete ? "border-primary bg-blue-50 text-primary" : "border-amber-300 bg-amber-50"}`}>{reviewState.label}</span>
-            </div>
-            {reviewMessage ? <p className="mb-3 rounded-md border border-border bg-slate-50 px-3 py-2 text-sm">{reviewMessage}</p> : null}
-            <div className="grid gap-2 sm:grid-cols-3"><Info label="复核指标" value={`${reviewMetrics.length} 项`} /><Info label="待复核" value={`${pendingReviewCount} 项`} /><Info label="任务绑定" value="服务端已验证" /></div>
-            <div className="mt-4 flex justify-end"><Link className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white" href={`/tasks/${task.id}/collection-dashboard`}>进入校准大屏</Link></div>
           </Card>
         </section>
       ) : null}
@@ -610,7 +593,7 @@ export default function TaskDetailPage() {
       {hasCapture && (reviewComplete || decisionRun || decisionPreview) ? (
         <section className="mb-4 scroll-mt-4" id="diagnosis">
           <Card>
-            <div className="mb-4"><p className="mb-1 text-xs font-semibold text-primary">第 5 步</p><CardTitle>诊断与建议</CardTitle><p className="text-sm text-muted">{aiDisclaimer}</p></div>
+            <div className="mb-4"><p className="mb-1 text-xs font-semibold text-primary">第 4 步</p><CardTitle>诊断与建议</CardTitle><p className="text-sm text-muted">{aiDisclaimer}</p></div>
             <div className="mb-4 grid gap-3 sm:grid-cols-4"><Info label="主体类型" value={subjectTypeLabels[task.project.subjectType]} /><Info label="操盘主体" value={operatorTypeLabels[task.project.operatorType]} /><Info label="合作关系" value={cooperationTypeLabels[task.project.cooperationType]} /><Info label="当前模式" value={managedLiveGrowthMode ? "代直播增长诊断" : task.project.subjectType === "SERVICE_PROVIDER" ? "服务商经营诊断" : "主体框架诊断"} /></div>
             {managedLiveGrowthMode ? <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm"><strong>当前只做代直播增长目标：</strong>诊断流量进入、直播间承接、商品成交、平台活动权益和履约合规；不计算服务商毛利、服务费后 ROI 或平台收益。</div> : null}
             <DiagnosisComparison
@@ -619,35 +602,9 @@ export default function TaskDetailPage() {
               evidenceAdvisory={formalReady && evidenceAdvisories.length
                 ? `${evidenceAdvisories.map((route) => `${route.label}${route.state === "STALE" ? "数据已过期" : "仅部分可见"}`).join("；")}。暂停、加预算或减预算等动作仍需满足各自证据门槛。`
                 : null}
-              formalBlockingReasons={formalReadiness.blockingReasons}
-              formalContent={diagnosticOutput ? (
-                <div className="grid gap-4">
-                {!decisionRun ? <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm lg:col-span-2"><strong>当前展示保守诊断：</strong>数据不满足正式决策时效或证据门槛，本次只展示事实、缺失项和补采建议，不创建动作建议。重新采集过期路线后可运行正式诊断。</div> : null}
-                <div className="rounded-md border border-border p-4 lg:col-span-2">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div><h3 className="font-semibold">本轮结论</h3><p className="mt-2 text-base font-medium">{businessAnalysis?.headline || diagnosticOutput.diagnosis}</p></div>
-                    <div className="flex shrink-0 gap-2 text-xs">
-                      <span className={`rounded-full px-3 py-1 font-semibold ${riskTone(diagnosticOutput.riskLevel)}`}>风险 {riskLabel(diagnosticOutput.riskLevel)}</span>
-                      <span className="rounded-full bg-slate-100 px-3 py-1">置信度 {Math.round(diagnosticOutput.confidence * 100)}%</span>
-                    </div>
-                  </div>
-                  {businessAnalysis?.performanceSnapshot.length ? <div className="mt-4 flex flex-wrap gap-2">{businessAnalysis.performanceSnapshot.map((fact) => <span className="rounded-md border border-border bg-slate-50 px-2 py-1 text-xs" key={fact}>{fact}</span>)}</div> : null}
-                </div>
-
-                <div className="rounded-md border border-border p-4">
-                  <h3 className="mb-3 font-semibold">问题与风险在哪里</h3>
-                  {displayedFindings?.length ? <div className="grid gap-3">{displayedFindings.map((finding) => <div className="rounded-md border border-border p-3" key={`${finding.dimension}-${finding.title}`}><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold text-primary">{dimensionLabel(finding.dimension)}</span><span className={`rounded-full px-2 py-0.5 text-xs ${riskTone(finding.riskLevel)}`}>{riskLabel(finding.riskLevel)}</span></div><strong className="mt-1 block text-sm">{finding.title}</strong><p className="mt-1 text-sm text-muted">{finding.conclusion}</p><ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">{finding.evidence.map((item) => <li key={item}>{item}</li>)}</ul></div>)}</div> : <p className="text-sm text-muted">当前输出缺少结构化风险明细，请重新运行诊断。</p>}
-                </div>
-
-                <div className="rounded-md border border-border p-4">
-                  <h3 className="mb-3 font-semibold">怎么调整直播、商品和投流</h3>
-                  {displayedRecommendations?.length ? <div className="grid gap-3">{displayedRecommendations.map((recommendation) => <div className="rounded-md border border-border p-3" key={`${recommendation.priority}-${recommendation.title}`}><div className="flex items-center gap-2"><span className={`rounded px-2 py-0.5 text-xs font-semibold ${priorityTone(recommendation.priority)}`}>{recommendation.priority}</span><span className="text-xs text-muted">{dimensionLabel(recommendation.dimension)}</span></div><strong className="mt-2 block text-sm">{recommendation.title}</strong><p className="mt-1 text-sm text-muted">{recommendation.reason}</p>{recommendation.evidence?.length ? <div className="mt-2 rounded-md bg-slate-50 p-2 text-xs"><strong>数据依据：</strong><ul className="mt-1 list-disc space-y-1 pl-5 text-muted">{recommendation.evidence.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}<ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">{recommendation.steps.map((step) => <li key={step}>{step}</li>)}</ol><p className="mt-2 text-xs"><strong>验证：</strong>{recommendation.verifyMetrics.join("、")}</p><p className="mt-1 text-xs text-muted"><strong>规则边界：</strong>{recommendation.ruleBoundary}</p></div>)}</div> : <p className="text-sm text-muted">当前数据没有形成可执行的证据驱动方案；请按上方缺失项补采或积累样本后重新诊断。</p>}
-                </div>
-
-                {displayedMetricExplanations?.length ? <div className="rounded-md border border-border p-4 lg:col-span-2"><h3 className="mb-1 font-semibold">{managedLiveGrowthMode ? "这些直播增长指标有什么用" : "这些经营指标到底有什么用"}</h3><p className="mb-3 text-xs text-muted">{managedLiveGrowthMode ? "用于定位流量、进房、商品点击和成交承接；平台代金券等权益作为真实转化助力单独核验。" : "财务口径用于守住盈利底线，不替代直播流量、商品和内容诊断。"}</p><div className="grid gap-3 md:grid-cols-2">{displayedMetricExplanations.map((metric) => <div className="rounded-md bg-slate-50 p-3" key={metric.title}><div className="flex items-baseline justify-between gap-2"><strong>{metric.title}</strong><span className="text-lg font-semibold">{formatOptionalNumber(metric.value)}</span></div><p className="mt-2 text-sm">{metric.meaning}</p><p className="mt-1 text-xs text-muted"><strong>用途：</strong>{metric.use}</p><p className="mt-1 text-xs text-muted"><strong>注意：</strong>{metric.caveat}</p></div>)}</div></div> : null}
-
-                </div>
-              ) : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">尚未生成正式诊断。完成指标复核后运行正式诊断，系统会输出问题、证据、经营方案和验证指标。</p>}
+              formalContent={diagnosticOutput
+                ? <DiagnosisBusinessSummary conservative={!decisionRun} managedLiveGrowthMode={managedLiveGrowthMode} output={diagnosticOutput} />
+                : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">尚未生成正式诊断。完成指标确认后运行正式诊断，系统会输出问题、证据、经营方案和验证指标。</p>}
               formalReady={formalReady}
               onRunFormal={() => void runDecision()}
               token={token}
@@ -666,18 +623,6 @@ function hasRequiredRealtimeMetricKeys(metrics: Array<{ key: string }>, required
   return requiredMetricKeys.every((metricKey) => availableMetricKeys.has(metricKey));
 }
 
-function summarizeReviewState(metrics: ReviewedMetricDTO[]) {
-  if (!metrics.length) {
-    return { label: "无指标：不建议运行", tone: "text-danger" };
-  }
-  const pendingCount = metrics.filter((metric) => metric.reviewStatus === "PENDING").length;
-  const reviewedCount = metrics.filter((metric) => metric.reviewStatus === "CONFIRMED" || metric.reviewStatus === "MODIFIED").length;
-  if (pendingCount === 0 && reviewedCount > 0) {
-    return { label: "已复核：可以正常运行", tone: "text-primary" };
-  }
-  return { label: "未完全复核：暂不能运行完整诊断，预算和暂停类动作会被阻断", tone: "text-danger" };
-}
-
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border px-3 py-2">
@@ -685,39 +630,6 @@ function Info({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
-}
-
-function formatOptionalNumber(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "数据缺失";
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
-function riskLabel(riskLevel: RiskLevel) {
-  return riskLevel === "HIGH" ? "高" : riskLevel === "MEDIUM" ? "中" : "低";
-}
-
-function riskTone(riskLevel: RiskLevel) {
-  if (riskLevel === "HIGH") return "bg-red-100 text-red-700";
-  if (riskLevel === "MEDIUM") return "bg-amber-100 text-amber-800";
-  return "bg-emerald-100 text-emerald-700";
-}
-
-function priorityTone(priority: DecisionBusinessAnalysis["recommendations"][number]["priority"]) {
-  if (priority === "P0") return "bg-red-100 text-red-700";
-  if (priority === "P1") return "bg-amber-100 text-amber-800";
-  return "bg-blue-100 text-blue-700";
-}
-
-function dimensionLabel(dimension: DecisionBusinessAnalysis["findings"][number]["dimension"]) {
-  const labels: Record<typeof dimension, string> = {
-    DATA_QUALITY: "数据可信度",
-    PROFITABILITY: "真实盈利",
-    TRAFFIC: "流量获取",
-    LIVE_ROOM: "直播承接",
-    PRODUCT: "商品结构",
-    COMPLIANCE: "规则与履约"
-  };
-  return labels[dimension];
 }
 
 function extensionStatusLabel(state: ExtensionStatusDTO["state"] | undefined) {

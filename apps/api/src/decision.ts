@@ -33,6 +33,7 @@ import {
   applyLiveOverviewRealtimeRouteCoverage,
   realtimeDecisionEvidenceForFrame
 } from "./realtime-decision-evidence.js";
+import { targetRoiFromMetrics, targetRoiMetricKey, targetRoiVisibleMetric } from "./decision-targets.js";
 
 export const strategyVersion = decisionRuleVersion;
 
@@ -154,7 +155,12 @@ export function buildDecisionInput(task: {
     value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value
   })) : [];
   const realtimeMetrics = realtimeDecisionEvidences.flatMap((evidence) => evidence.metrics);
-  const decisionMetrics = mergeRealtimeDecisionMetrics(reviewedEvidenceMetrics, realtimeMetrics);
+  const taskTargetRoi = targetRoiFromMetrics(task.reviewedMetrics || []);
+  const taskTargetRoiMetric = targetRoiVisibleMetric(task.reviewedMetrics || []);
+  const mergedMetrics = mergeRealtimeDecisionMetrics(reviewedEvidenceMetrics, realtimeMetrics);
+  const decisionMetrics = taskTargetRoiMetric
+    ? [taskTargetRoiMetric, ...mergedMetrics.filter((metric) => String(metric.key) !== targetRoiMetricKey)]
+    : mergedMetrics;
   const reviewCoverageValue = mergeRealtimeReviewCoverage(
     latestReviewedMetrics.length || tableReview.totalCount
       ? mergeReviewCoverage(reviewCoverage(latestReviewedMetrics), tableReview)
@@ -196,6 +202,7 @@ export function buildDecisionInput(task: {
     }) : [],
     visibleText: "",
     networkJsonSummary: [],
+    targetRoi: taskTargetRoi,
     dataReviewStatus: useReviewedEvidence || realtimeDecisionEvidences.length ? "REVIEWED" : "UNREVIEWED",
     reviewCoverage: reviewCoverageValue,
     metricLayer: realtimeOnly ? "REALTIME_API" : "REVIEWED_METRIC",

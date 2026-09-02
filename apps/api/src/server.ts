@@ -617,6 +617,15 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const parsed = metricPulseSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "实时指标参数错误");
+    if (currentUser(req).authKind !== "EXTENSION") {
+      return sendError(res, 403, "METRIC_PULSE_EXTENSION_REQUIRED", "实时脉冲仅允许已配对插件上报");
+    }
+    if (!["LIVE_DATA_SCREEN", "LOCAL_PROMOTION_DASHBOARD"].includes(parsed.data.routeKey)) {
+      return sendError(res, 400, "METRIC_PULSE_ROUTE_INVALID", "实时脉冲仅支持直播数据大屏和本地推数据总览");
+    }
+    if (!task.routeSources.some((route) => route.routeKey === parsed.data.routeKey)) {
+      return sendError(res, 409, "COLLECTION_ROUTE_NOT_CONFIGURED", "该实时采集路线未配置在当前任务中");
+    }
     const pulseLimit = await checkMetricPulseRateLimit({
       credentialOrSessionId: rateLimitSubject(req),
       taskId: task.id,

@@ -5169,6 +5169,9 @@
   var [, ...recordableMetricKeys] = metricKeys;
 
   // ../../packages/shared/src/collection-dashboard.ts
+  var updateDecisionTargetsInputSchema = external_exports.object({
+    targetRoi: external_exports.number().finite().positive().max(1e4).nullable()
+  }).strict();
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -5478,6 +5481,24 @@
         path: ["customWindow"],
         message: "custom observationWindow requires customWindow"
       });
+    }
+    if (value.result !== "UNCLEAR") {
+      if (!value.beforeMetrics?.length || !value.afterMetrics?.length) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "\u660E\u786E\u590D\u76D8\u7ED3\u679C\u5FC5\u987B\u5305\u542B\u81F3\u5C11\u4E00\u9879\u6267\u884C\u524D\u540E\u540C\u53E3\u5F84\u6307\u6807"
+        });
+        return;
+      }
+      const beforeKeys = new Set(value.beforeMetrics.map((metric) => metric.metricKey));
+      if (!value.afterMetrics.some((metric) => beforeKeys.has(metric.metricKey))) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "\u6267\u884C\u524D\u540E\u6307\u6807\u5FC5\u987B\u81F3\u5C11\u6709\u4E00\u9879\u4F7F\u7528\u76F8\u540C metricKey"
+        });
+      }
     }
   });
   var subjectContextSchema = external_exports.object({
@@ -7442,7 +7463,7 @@
       boundTaskId: config.collectionTaskId || null,
       protocolVersion: extensionBridgeProtocolVersion,
       extensionVersion: chrome.runtime.getManifest().version,
-      buildFingerprint: "e078d8fdfcdf",
+      buildFingerprint: "f268e9840248",
       message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u914D\u5BF9\u5E76\u7ED1\u5B9A\u5F53\u524D\u4EFB\u52A1" : "\u63D2\u4EF6\u5DF2\u914D\u5BF9\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
     };
   }
@@ -7696,7 +7717,7 @@
       return { ok: false, error: "\u670D\u52A1\u7AEF API \u5F00\u5173\u672A\u5F00\u542F\uFF1B\u672A\u542F\u52A8\u5B9E\u65F6\u8109\u51B2\uFF0C\u4E5F\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM\u3002" };
     }
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
-    if (pageContext?.buildFingerprint !== "e078d8fdfcdf") {
+    if (pageContext?.buildFingerprint !== "f268e9840248") {
       return { ok: false, error: "\u76EE\u6807\u76F4\u64AD\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u76F4\u64AD\u9875\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
     }
     const initialLiveActivity = livePulseActivityForTab({
@@ -7839,7 +7860,7 @@
       return { ok: false, error: "\u672C\u5730\u63A8 API \u5951\u7EA6\u6216\u9002\u914D\u5668\u7248\u672C\u4E0D\u5339\u914D\uFF1B\u8BF7\u66F4\u65B0\u5E76\u91CD\u542F\u672C\u5730\u670D\u52A1\u3001\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u540E\u518D\u8BD5\u3002" };
     }
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
-    if (pageContext?.buildFingerprint !== "e078d8fdfcdf") {
+    if (pageContext?.buildFingerprint !== "f268e9840248") {
       return { ok: false, error: "\u76EE\u6807\u540E\u53F0\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u672C\u5730\u63A8\u9875\u9762\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
     }
     if (pageContext?.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(pageContext?.currentUrl || "") || pageContext?.localPromotionPulseEligible !== true) {
@@ -8153,7 +8174,7 @@
       lastFailureReason: state.lastFailureReason,
       lastFailureEndpoint: state.lastFailureEndpoint,
       rateLimitedUntil: state.rateLimitedUntil,
-      buildFingerprint: "e078d8fdfcdf",
+      buildFingerprint: "f268e9840248",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
   }
@@ -8222,7 +8243,7 @@
   }
   function parseStoredLivePulseOutcomes(value) {
     const context = {
-      buildFingerprint: "e078d8fdfcdf",
+      buildFingerprint: "f268e9840248",
       collectionProtocolVersion: extensionCollectionProtocolVersion,
       endpointKeys: [
         ...liveScreenInternalApiEndpointKeys,
@@ -8245,7 +8266,7 @@
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const candidate = value;
     const routeKey = candidate.routeKey === "LOCAL_PROMOTION_DASHBOARD" || candidate.routeKey === "LIVE_DATA_SCREEN" ? candidate.routeKey : null;
-    if (candidate.buildFingerprint !== "e078d8fdfcdf" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
+    if (candidate.buildFingerprint !== "f268e9840248" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
       return null;
     }
     const allowedMetricKeys = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseMetricKeys : liveScreenPulseCoreMetricKeys;
@@ -8277,7 +8298,7 @@
     await hydrateLivePulseStorage();
     const versionedOutcome = {
       ...outcome,
-      buildFingerprint: "e078d8fdfcdf",
+      buildFingerprint: "f268e9840248",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
     latestLivePulseOutcome = versionedOutcome;
@@ -8418,7 +8439,7 @@
           collectionTaskId: credentials.collectionTaskId,
           extensionVersion: chrome.runtime.getManifest().version,
           bridgeProtocolVersion: extensionBridgeProtocolVersion,
-          buildFingerprint: "e078d8fdfcdf",
+          buildFingerprint: "f268e9840248",
           currentUrl: activity.currentUrl,
           pageType: activity.pageType,
           routeKey: activity.routeKey,

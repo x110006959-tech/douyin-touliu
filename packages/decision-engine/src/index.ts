@@ -30,6 +30,7 @@ const budgetActions = new Set<ActionType>(budgetActionTypes);
 const strongActions = new Set<ActionType>(strongActionTypes);
 const safeFallbackActions = new Set<ActionType>(["OBSERVE", "REQUEST_MANUAL_REVIEW"]);
 const riskRank: Record<RiskLevel, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+const accountRoiMetricKeys: MetricKey[] = ["full_domain_pay_roi", "verify_roi", "pay_roi"];
 
 function isManagedLiveGrowth(input: DecisionEngineInput) {
   return input.subject.operatorType === "SERVICE_PROVIDER_LIVE" || input.subject.serviceMode?.trim() === "代播";
@@ -41,8 +42,8 @@ function roiLabel(input: DecisionEngineInput) {
 }
 
 function roiMetricKeys(input: DecisionEngineInput): MetricKey[] {
-  if (isManagedLiveGrowth(input)) return ["verify_roi", "pay_roi"];
-  return input.subject.subjectType === "SERVICE_PROVIDER" ? ["gross_profit_roi"] : ["verify_roi", "gross_profit_roi", "pay_roi"];
+  if (isManagedLiveGrowth(input)) return accountRoiMetricKeys;
+  return input.subject.subjectType === "SERVICE_PROVIDER" ? ["gross_profit_roi"] : [...accountRoiMetricKeys, "gross_profit_roi"];
 }
 
 export function runDecisionRules(input: DecisionEngineInput): DecisionEngineOutput {
@@ -52,13 +53,13 @@ export function runDecisionRules(input: DecisionEngineInput): DecisionEngineOutp
   const managedLiveGrowth = isManagedLiveGrowth(input);
   const serviceProviderFinanceEnabled = input.subject.subjectType === "SERVICE_PROVIDER" && !managedLiveGrowth;
   const serviceProviderFinancials = calculateServiceProviderFinancials(input, metrics);
-  const accountRoi = metrics.firstNumber(["verify_roi", "pay_roi"]);
+  const accountRoi = metrics.firstNumber(accountRoiMetricKeys);
   const roi =
     managedLiveGrowth
       ? accountRoi
       : input.subject.subjectType === "SERVICE_PROVIDER"
       ? serviceProviderFinancials.grossProfitRoi ?? metrics.number("gross_profit_roi")
-      : metrics.firstNumber(["verify_roi", "gross_profit_roi", "pay_roi"]);
+      : metrics.firstNumber([...accountRoiMetricKeys, "gross_profit_roi"]);
   const dataQuality = assessDataQuality(input, metrics, roi);
   let riskLevel: RiskLevel = dataQuality.blocksStrongActions ? "MEDIUM" : "LOW";
   const targetRoi = input.dataReviewStatus === "REVIEWED" && input.metricLayer === "REVIEWED_METRIC"
@@ -605,7 +606,14 @@ function assessActionEligibility(
   const requirements: Partial<Record<ActionType, Array<{ key: MetricKey | "roi"; label: string }>>> = {
     INCREASE_BUDGET: [{ key: "roi", label: selectedRoiLabel }, { key: "spend", label: "消耗" }, { key: "orders", label: "订单数" }, { key: "impressions", label: "曝光量" }, { key: "ctr", label: "点击率" }],
     DECREASE_BUDGET: [{ key: "roi", label: selectedRoiLabel }, { key: "spend", label: "消耗" }, { key: "orders", label: "订单数" }],
-    DECREASE_BID: [{ key: "roi", label: selectedRoiLabel }, { key: "spend", label: "消耗" }],
+    DECREASE_BID: [
+      { key: "roi", label: selectedRoiLabel },
+      { key: "target_roi", label: "目标ROI" },
+      { key: "spend", label: "消耗" },
+      { key: "impressions", label: "曝光量" },
+      { key: "clicks", label: "点击量" },
+      { key: "orders", label: "订单数" }
+    ],
     ADJUST_ROI_TARGET: [{ key: "roi", label: selectedRoiLabel }, { key: "target_roi", label: "目标ROI" }],
     PAUSE_TASK: [{ key: "roi", label: selectedRoiLabel }, { key: "spend", label: "消耗" }, { key: "orders", label: "订单数" }],
     FINE_TUNE_TARGETING: [{ key: "impressions", label: "曝光量" }, { key: "clicks", label: "点击量" }, { key: "orders", label: "订单数" }]
@@ -1231,12 +1239,12 @@ export function evaluateDecisionPolicy(input: DecisionEngineInput) {
   const metrics = metricReader(input.metrics);
   const managedLiveGrowth = isManagedLiveGrowth(input);
   const serviceProviderFinancials = calculateServiceProviderFinancials(input, metrics);
-  const accountRoi = metrics.firstNumber(["verify_roi", "pay_roi"]);
+  const accountRoi = metrics.firstNumber(accountRoiMetricKeys);
   const selectedRoi = managedLiveGrowth
     ? accountRoi
     : input.subject.subjectType === "SERVICE_PROVIDER"
       ? serviceProviderFinancials.grossProfitRoi ?? metrics.number("gross_profit_roi")
-      : metrics.firstNumber(["verify_roi", "gross_profit_roi", "pay_roi"]);
+      : metrics.firstNumber([...accountRoiMetricKeys, "gross_profit_roi"]);
   return {
     policyVersion: decisionPolicyVersion,
     dataQuality: assessDataQuality(input, metrics, selectedRoi)

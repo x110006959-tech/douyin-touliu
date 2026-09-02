@@ -4767,6 +4767,9 @@
   var [, ...recordableMetricKeys] = metricKeys;
 
   // ../../packages/shared/src/collection-dashboard.ts
+  var updateDecisionTargetsInputSchema = external_exports.object({
+    targetRoi: external_exports.number().finite().positive().max(1e4).nullable()
+  }).strict();
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -5075,6 +5078,24 @@
         path: ["customWindow"],
         message: "custom observationWindow requires customWindow"
       });
+    }
+    if (value.result !== "UNCLEAR") {
+      if (!value.beforeMetrics?.length || !value.afterMetrics?.length) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "\u660E\u786E\u590D\u76D8\u7ED3\u679C\u5FC5\u987B\u5305\u542B\u81F3\u5C11\u4E00\u9879\u6267\u884C\u524D\u540E\u540C\u53E3\u5F84\u6307\u6807"
+        });
+        return;
+      }
+      const beforeKeys = new Set(value.beforeMetrics.map((metric) => metric.metricKey));
+      if (!value.afterMetrics.some((metric) => beforeKeys.has(metric.metricKey))) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "\u6267\u884C\u524D\u540E\u6307\u6807\u5FC5\u987B\u81F3\u5C11\u6709\u4E00\u9879\u4F7F\u7528\u76F8\u540C metricKey"
+        });
+      }
     }
   });
   var subjectContextSchema = external_exports.object({
@@ -5693,7 +5714,7 @@
   function announce() {
     document.documentElement.setAttribute(markerAttribute, extensionVersion);
     document.documentElement.setAttribute(protocolAttribute, String(extensionBridgeProtocolVersion));
-    document.documentElement.setAttribute(buildAttribute, "e078d8fdfcdf");
+    document.documentElement.setAttribute(buildAttribute, "f268e9840248");
     window.postMessage(serializeBridgeWindowMessage("READY"), window.location.origin);
   }
   window.addEventListener("message", (event) => {
@@ -5719,7 +5740,7 @@
         dispatchResponse(sanitizeBridgeResponse({
           requestId: request.requestId,
           extensionVersion,
-          buildFingerprint: "e078d8fdfcdf",
+          buildFingerprint: "f268e9840248",
           fallbackErrorCode: "INVALID_PAIRING_REQUEST",
           fallbackMessage: "\u914D\u5BF9\u7801\u6216\u670D\u52A1\u5668\u5730\u5740\u4E0D\u7B26\u5408\u5B89\u5168\u8981\u6C42"
         }));
@@ -5738,14 +5759,14 @@
         requestId: request.requestId,
         runtimeResult,
         extensionVersion,
-        buildFingerprint: "e078d8fdfcdf"
+        buildFingerprint: "f268e9840248"
       }));
     } catch (error) {
       const contextInvalidated = isExtensionContextInvalidated(error);
       dispatchResponse(sanitizeBridgeResponse({
         requestId: request.requestId,
         extensionVersion,
-        buildFingerprint: "e078d8fdfcdf",
+        buildFingerprint: "f268e9840248",
         fallbackErrorCode: contextInvalidated ? "EXTENSION_CONTEXT_INVALIDATED" : "BACKGROUND_UNRESPONSIVE",
         fallbackMessage: contextInvalidated ? "\u63D2\u4EF6\u5DF2\u91CD\u65B0\u52A0\u8F7D\uFF0C\u5F53\u524D\u9875\u9762\u4ECD\u5728\u4F7F\u7528\u65E7\u811A\u672C\uFF0C\u8BF7\u5237\u65B0\u5F53\u524D\u9875\u9762" : "\u63D2\u4EF6\u540E\u53F0\u672A\u54CD\u5E94\uFF0C\u8BF7\u5728\u6269\u5C55\u7BA1\u7406\u9875\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6"
       }));

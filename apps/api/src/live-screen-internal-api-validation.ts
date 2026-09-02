@@ -29,18 +29,21 @@ export function validateLiveScreenInternalApiPayload(input: {
   const apiMeta = input.captureMeta?.liveScreenInternalApi;
   const apiMetrics = input.metrics.filter(isInternalApiMetric);
   const hasMinuteRows = Boolean(apiMeta?.minuteRows?.length);
-  if (!apiMeta && apiMetrics.length === 0) return { ok: true };
-  if (apiMeta?.enabled === false && apiMetrics.length === 0 && !hasMinuteRows) return { ok: true };
-  if (apiMetrics.length === 0 && !hasMinuteRows) return { ok: true };
+  if (input.mode === "SNAPSHOT") {
+    if (!apiMeta && apiMetrics.length === 0) return { ok: true };
+    if (apiMeta?.enabled === false && apiMetrics.length === 0 && !hasMinuteRows) return { ok: true };
+    if (apiMetrics.length === 0 && !hasMinuteRows) return { ok: true };
+  }
   if (input.authKind !== "EXTENSION") return reject(403, "LIVE_SCREEN_INTERNAL_API_EXTENSION_REQUIRED", "直播大屏内部 API 证据仅允许已配对插件上报");
   if (!input.featureEnabled) return reject(403, "LIVE_SCREEN_INTERNAL_API_DISABLED", "直播大屏内部 API 采集尚未开启，已回退为 DOM 采集");
   if (input.captureProtocolVersion !== extensionCollectionProtocolVersion) return reject(409, "EXTENSION_COLLECTION_PROTOCOL_MISMATCH", "插件与当前采集服务不兼容，请更新后重试");
+  if (input.mode === "PULSE" && (!apiMeta || apiMetrics.length === 0)) {
+    return reject(400, "LIVE_SCREEN_PULSE_API_EVIDENCE_REQUIRED", "直播实时脉冲必须包含可复核的内部 API 指标证据");
+  }
   if (!apiMeta || apiMeta.enabled !== true || apiMeta.contractVersion !== liveScreenInternalApiContractVersion || apiMeta.adapterVersion !== liveScreenInternalApiAdapterVersion) {
     return reject(409, "LIVE_SCREEN_INTERNAL_API_CONTRACT_MISMATCH", "直播大屏 API 契约或适配器版本不匹配");
   }
-  const allowedRouteKeys = input.mode === "PULSE"
-    ? ["LIVE_DATA_SCREEN", "LIVE_PRODUCT_TAB", "LIVE_TRAFFIC_TAB", "UNKNOWN"]
-    : ["LIVE_DATA_SCREEN", "UNKNOWN"];
+  const allowedRouteKeys = input.mode === "PULSE" ? ["LIVE_DATA_SCREEN"] : ["LIVE_DATA_SCREEN", "UNKNOWN"];
   if (!input.sourceUrl || !isExactLiveScreenUrl(input.sourceUrl) || input.pageType !== "LIVE_DATA_SCREEN" || !allowedRouteKeys.includes(input.routeKey)) {
     return reject(
       403,

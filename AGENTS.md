@@ -2,7 +2,7 @@
 
 > 本文件定义 Codex 在本仓库中的**长期工作规范**，属于永久规则。
 >
-> **当前开发任务、优先级和阶段目标统一放在 `docs/CURRENT_TASK.md`。**
+> **当前可执行状态、最高优先级和验收阻塞统一以 `docs/NOW.md` 为准；完整任务经过仍记录在 `docs/CURRENT_TASK.md`。**
 > 如长期规则与当前任务冲突，应停止执行并记录原因；如仅与旧文档冲突，应以当前任务和最新架构决策为准。
 
 ---
@@ -164,10 +164,11 @@ LLM 负责：
 
 依次阅读：
 
-1. `docs/CODEX_HANDOFF.md`
-2. `docs/PROJECT_STATE.md`
-3. `docs/SAFETY_BOUNDARY.md`
-4. `docs/CURRENT_TASK.md`
+1. `docs/NOW.md`
+2. `docs/CODEX_HANDOFF.md`
+3. `docs/PROJECT_STATE.md`
+4. `docs/SAFETY_BOUNDARY.md`
+5. `docs/CURRENT_TASK.md`
 
 阅读完成后再开始修改。
 
@@ -228,6 +229,7 @@ LLM 负责：
 | 文档                    | 职责              |
 | --------------------- | --------------- |
 | `AGENTS.md`           | 长期工作规范（永久规则）    |
+| `NOW.md`              | 当前事实单一来源、最高优先级与验收阻塞 |
 | `CURRENT_TASK.md`     | 当前开发任务、阶段目标、优先级 |
 | `PROJECT_STATE.md`    | 当前项目状态          |
 | `CODEX_HANDOFF.md`    | 开发交接记录          |
@@ -237,4 +239,4 @@ LLM 负责：
 
 ---
 
-**原则：永久规则放 `AGENTS.md`，阶段任务放 `CURRENT_TASK.md`。避免将一次性的限制写入 `AGENTS.md`，以免影响后续开发。**
+**原则：永久规则放 `AGENTS.md`，当前可执行事实放 `NOW.md`，阶段经过放 `CURRENT_TASK.md`。避免将一次性的限制写入 `AGENTS.md`，以免影响后续开发。**

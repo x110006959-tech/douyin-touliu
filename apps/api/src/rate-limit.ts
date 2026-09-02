@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { securitySecret } from "./auth.js";
 import { prisma } from "./prisma.js";
 
@@ -7,6 +7,8 @@ type RateLimitRule = {
   windowMs: number;
   maxAttempts: number;
 };
+
+type RateLimitClient = PrismaClient | Prisma.TransactionClient;
 
 export type RateLimitCheck =
   | { allowed: true }
@@ -71,8 +73,8 @@ export async function checkSnapshotRateLimit(input: { credentialOrSessionId: str
   return checkRateLimit("collection:snapshot", `${input.credentialOrSessionId}:${input.taskId}`, snapshotRule);
 }
 
-export async function checkDecisionRateLimit(taskId: string) {
-  return checkRateLimit("decision", taskId, decisionRule);
+export async function checkDecisionRateLimit(taskId: string, client: RateLimitClient = prisma) {
+  return checkRateLimit("decision", taskId, decisionRule, new Date(), client);
 }
 
 export async function checkAiExplanationRateLimit(userId: string) {
@@ -94,10 +96,16 @@ async function checkCompositeRateLimit(entries: Array<[string, string, RateLimit
   return { allowed: false, retryAfterSeconds: Math.max(...blocked.map((result) => result.retryAfterSeconds)) };
 }
 
-async function checkRateLimit(scope: string, subject: string, rule: RateLimitRule, now = new Date()): Promise<RateLimitCheck> {
+async function checkRateLimit(
+  scope: string,
+  subject: string,
+  rule: RateLimitRule,
+  now = new Date(),
+  client: RateLimitClient = prisma
+): Promise<RateLimitCheck> {
   const keyHash = hashRateLimitKey(scope, subject);
   const expiresAt = new Date(now.getTime() + rule.windowMs);
-  const rows = await prisma.$queryRaw<Array<{ count: number; expiresAt: Date }>>(Prisma.sql`
+  const rows = await client.$queryRaw<Array<{ count: number; expiresAt: Date }>>(Prisma.sql`
     INSERT INTO "RateLimitBucket" ("keyHash", "windowStartedAt", "expiresAt", "count", "updatedAt")
     VALUES (${keyHash}, ${now}, ${expiresAt}, 1, ${now})
     ON CONFLICT ("keyHash") DO UPDATE SET

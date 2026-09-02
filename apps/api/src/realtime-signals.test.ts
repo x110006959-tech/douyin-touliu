@@ -76,6 +76,29 @@ describe("realtime signals", () => {
     ]);
   });
 
+  it("never derives a trend from a different route's pulse", () => {
+    const start = Date.parse("2026-08-19T13:00:00.000Z");
+    recordMetricPulse("task-route-signals", {
+      ...pulse(start, [metric("gmv", 100)]),
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      pageType: "LOCAL_PROMOTION_DASHBOARD"
+    }, start);
+
+    const liveResult = recordMetricPulse("task-route-signals", {
+      ...pulse(start + 35_000, [metric("gmv", 200)]),
+      routeKey: "LIVE_DATA_SCREEN",
+      pageType: "LIVE_DATA_SCREEN"
+    }, start + 35_000);
+    expect(liveResult.signals).toEqual([]);
+
+    const localResult = recordMetricPulse("task-route-signals", {
+      ...pulse(start + 70_000, [metric("gmv", 140)]),
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      pageType: "LOCAL_PROMOTION_DASHBOARD"
+    }, start + 70_000);
+    expect(localResult.signals).toContainEqual(expect.objectContaining({ kind: "GMV_MOMENTUM" }));
+  });
+
   it("turns live-room API values into factual trends and manual observation suggestions", () => {
     const start = Date.parse("2026-08-12T12:00:00.000Z");
     recordMetricPulse("task-live", pulse(start, [

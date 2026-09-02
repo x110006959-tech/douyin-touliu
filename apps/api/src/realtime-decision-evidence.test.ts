@@ -22,7 +22,7 @@ describe("multi-route realtime decision evidence", () => {
         serviceFee: null
       },
       snapshots: [],
-      reviewedMetrics: [],
+      reviewedMetrics: [manualTargetRoi(50, now)],
       collectionRuns: [{
         id: "run-realtime-routes",
         requiredRoutesJson: ["LOCAL_PROMOTION_DASHBOARD", "LIVE_DATA_SCREEN"],
@@ -46,7 +46,13 @@ describe("multi-route realtime decision evidence", () => {
       { routeKey: "LOCAL_PROMOTION_DASHBOARD", source: "LOCAL_PROMOTION_INTERNAL_API", metricCount: 3 },
       { routeKey: "LIVE_DATA_SCREEN", source: "LIVE_SCREEN_INTERNAL_API", metricCount: 2 }
     ]);
-    expect(input.metrics.map((item) => item.key).sort()).toEqual(["full_domain_pay_roi", "gmv", "gmv", "gpm", "spend"]);
+    expect(input.targetRoi).toBe(50);
+    expect(input.metrics.map((item) => item.key).sort()).toEqual(["full_domain_pay_roi", "gmv", "gmv", "gpm", "spend", "target_roi"]);
+    expect(input.metrics.find((item) => item.key === "target_roi")).toMatchObject({
+      value: "50",
+      metricSource: "MANUAL_INPUT",
+      rawEvidence: { routeKey: "LOCAL_PROMOTION_DASHBOARD", validationStatus: "TRUSTED" }
+    });
     expect(input.metrics.filter((item) => item.key === "gmv")).toMatchObject([
       { value: 800, rawEvidence: { routeKey: "LOCAL_PROMOTION_DASHBOARD" } },
       { value: 500, rawEvidence: { routeKey: "LIVE_DATA_SCREEN" } }
@@ -87,5 +93,36 @@ function metric(key: string, value: number): VisibleMetric {
       evidencePurpose: "PULSE_ONLY",
       routeKey: key === "spend" || key === "pay_roi" || key === "full_domain_pay_roi" ? "LOCAL_PROMOTION_DASHBOARD" : undefined
     }
+  };
+}
+
+function manualTargetRoi(value: number, now: Date) {
+  return {
+    id: "manual-target-roi",
+    taskId: "task-realtime-routes",
+    snapshotId: null,
+    normalizedMetricId: null,
+    metricKey: "target_roi",
+    metricName: "目标 ROI",
+    originalValue: String(value),
+    reviewedValue: String(value),
+    metricUnit: "ROI",
+    metricSource: "MANUAL_INPUT" as const,
+    confidence: 1,
+    rawEvidence: {
+      sourceType: "MANUAL_INPUT",
+      bindingKind: "MANUAL",
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      validationStatus: "TRUSTED",
+      validationReasons: []
+    },
+    pageType: "LOCAL_PROMOTION_DASHBOARD",
+    scope: "TASK_TARGET",
+    timeRange: "当前任务",
+    reviewStatus: "CONFIRMED" as const,
+    reviewerId: "user-1",
+    reviewedAt: now,
+    createdAt: now,
+    updatedAt: now
   };
 }

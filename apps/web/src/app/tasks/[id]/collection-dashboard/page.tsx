@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
+  aiDisclaimer,
   buildDashboardOverviewCards,
   collectionRouteLabels,
   identifyMetricKey,
@@ -20,13 +21,16 @@ import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-stat
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { apiBaseUrl, apiFetch, cookieSessionMarker, createIdempotencyKey } from "@/lib/api";
+import { humanizeDiagnosisFailure } from "@/lib/diagnosis-presentation";
 import { useAuth } from "@/lib/AuthContext";
 import {
   subscribeRealtimeMetricStream,
   type RealtimeMetricStreamStatus,
   usableRealtimeMetrics,
 } from "@/lib/realtime-metric-stream";
-import type { DecisionPreview } from "../task-types";
+import { DiagnosisBusinessSummary } from "../diagnosis-business-summary";
+import { DiagnosisComparison } from "../diagnosis-comparison";
+import type { DecisionPreview, DecisionRun } from "../task-types";
 import {
   CollectionRouteFlow,
   routeHasUsableData,
@@ -43,7 +47,6 @@ type CellDraft = {
 
 export default function CollectionDashboardPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const { token, hydrated } = useAuth();
   const [dashboard, setDashboard] = useState<CollectionDashboardDTO | null>(null);
   const [metrics, setMetrics] = useState<ReviewedMetricDTO[]>([]);
@@ -60,18 +63,39 @@ export default function CollectionDashboardPage() {
   const [refreshAvailable, setRefreshAvailable] = useState(false);
   const [realtimeFrames, setRealtimeFrames] = useState<Record<string, RealtimeMetricFrame>>({});
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeMetricStreamStatus>("CONNECTING");
+  const [decisionPreview, setDecisionPreview] = useState<DecisionPreview | null>(null);
+  const [decisionRun, setDecisionRun] = useState<DecisionRun | null>(null);
+  const [savedTargetRoi, setSavedTargetRoi] = useState("");
+  const [targetRoiDraft, setTargetRoiDraft] = useState("");
+  const [targetRoiSaveState, setTargetRoiSaveState] = useState<"IDLE" | "PENDING" | "SAVING" | "SAVED" | "ERROR">("IDLE");
   const latestCaptureRef = useRef<string | null>(null);
   const decisionIdempotencyKey = useRef("");
+  const targetRoiDraftRef = useRef("");
+  const savedTargetRoiRef = useRef("");
+  const targetRoiRequestedRef = useRef<string | null>(null);
+  const targetRoiSaveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const targetRoiSaveTimerRef = useRef<number | null>(null);
 
   async function load() {
     if (!token) return;
     setError("");
     try {
-      const [nextDashboard, nextMetrics] = await Promise.all([
+      const [nextDashboard, nextMetrics, nextDecisionRun] = await Promise.all([
         apiFetch<CollectionDashboardDTO>(`/collection-tasks/${params.id}/collection-dashboard`, token),
         apiFetch<ReviewedMetricDTO[]>(`/collection-tasks/${params.id}/review-metrics`, token),
+        apiFetch<DecisionRun | null>(`/collection-tasks/${params.id}/decision-runs/latest`, token),
       ]);
       setDashboard(nextDashboard);
+      const nextTargetRoi = nextDashboard.decisionTargets.targetRoi === null ? "" : String(nextDashboard.decisionTargets.targetRoi);
+      setTargetRoiDraft((current) => {
+        const nextDraft = current === savedTargetRoi ? nextTargetRoi : current;
+        targetRoiDraftRef.current = nextDraft;
+        return nextDraft;
+      });
+      setSavedTargetRoi(nextTargetRoi);
+      savedTargetRoiRef.current = nextTargetRoi;
+      targetRoiRequestedRef.current = nextTargetRoi;
+      setTargetRoiSaveState("IDLE");
       setMetrics(nextMetrics);
       setMetricDrafts(Object.fromEntries(nextMetrics.map((metric) => [metric.id, metric.reviewedValue ?? metric.originalValue ?? ""])));
       setMetricPeriodDrafts(
@@ -80,6 +104,7 @@ export default function CollectionDashboardPage() {
         ),
       );
       setCellDrafts((current) => retainCurrentCellDrafts(current, nextDashboard));
+      setDecisionRun(nextDecisionRun);
       latestCaptureRef.current = nextDashboard.summary.latestCapturedAt;
       setRefreshAvailable(false);
     } catch (loadError) {
@@ -92,6 +117,47 @@ export default function CollectionDashboardPage() {
   }, [params.id, token]);
 
   useEffect(() => {
+    if (!token || !dashboard) return;
+    const draftValue = targetRoiDraft.trim();
+    if (draftValue === savedTargetRoi && targetRoiRequestedRef.current === targetRoiDraft) return;
+    setTargetRoiSaveState("PENDING");
+    const draftAtSchedule = targetRoiDraft;
+    targetRoiSaveTimerRef.current = window.setTimeout(() => {
+      targetRoiSaveTimerRef.current = null;
+      setTargetRoiSaveState("SAVING");
+      void persistTargetRoi(draftAtSchedule)
+        .then(() => {
+          if (targetRoiDraftRef.current === draftAtSchedule) setTargetRoiSaveState("SAVED");
+        })
+        .catch((requestError) => {
+          if (targetRoiDraftRef.current !== draftAtSchedule) return;
+          setTargetRoiSaveState("ERROR");
+          setError(requestError instanceof Error ? requestError.message : "自动保存目标 ROI 失败");
+        });
+    }, 700);
+    return () => {
+      if (targetRoiSaveTimerRef.current !== null) {
+        window.clearTimeout(targetRoiSaveTimerRef.current);
+        targetRoiSaveTimerRef.current = null;
+      }
+    };
+  }, [dashboard, savedTargetRoi, targetRoiDraft, token]);
+
+  useEffect(() => {
+    if (!token || !decisionRun || !["PENDING", "RUNNING"].includes(decisionRun.status)) return;
+    const timer = window.setTimeout(() => {
+      void apiFetch<DecisionRun>(`/decision-runs/${decisionRun.id}`, token)
+        .then((nextRun) => {
+          setDecisionRun(nextRun);
+          if (nextRun.status === "SUCCEEDED") setMessage("诊断已完成，结果和建议已显示在本页下方。");
+          if (nextRun.status === "FAILED") setError(humanizeDiagnosisFailure(nextRun.errorCode, nextRun.errorMessage));
+        })
+        .catch((pollError) => setError(pollError instanceof Error ? pollError.message : "读取诊断进度失败"));
+    }, 2_000);
+    return () => window.clearTimeout(timer);
+  }, [decisionRun, token]);
+
+  useEffect(() => {
     setRealtimeFrames({});
     if (!token) return;
     return subscribeRealtimeMetricStream({
@@ -102,7 +168,7 @@ export default function CollectionDashboardPage() {
     });
   }, [params.id, token]);
 
-  const hasUnsavedEdits = useMemo(
+  const hasUnsavedReviewEdits = useMemo(
     () =>
       Object.keys(cellDrafts).length > 0 ||
       metrics.some((metric) => (metricDrafts[metric.id] ?? "") !== (metric.reviewedValue ?? metric.originalValue ?? "")) ||
@@ -111,6 +177,16 @@ export default function CollectionDashboardPage() {
       ),
     [cellDrafts, metricDrafts, metricPeriodDrafts, metrics],
   );
+  const targetRoiDirty = targetRoiDraft.trim() !== savedTargetRoi;
+  const hasUnsavedEdits = hasUnsavedReviewEdits || targetRoiDirty;
+  const targetRoiSaveTone = targetRoiSaveState === "ERROR"
+    ? "text-red-200"
+    : targetRoiDirty ? "text-amber-200" : "text-indigo-100/65";
+  const targetRoiSaveIndicatorClass = targetRoiSaveState === "ERROR"
+    ? "bg-red-300"
+    : targetRoiDirty || targetRoiSaveState === "PENDING" || targetRoiSaveState === "SAVING"
+      ? "bg-amber-300"
+      : "bg-cyan-200";
   const refreshMode = collectionDashboardRefreshMode(dashboard?.summary.collectionRun?.status, hasUnsavedEdits);
 
   useEffect(() => {
@@ -258,7 +334,7 @@ export default function CollectionDashboardPage() {
 
   async function confirmAndRunDiagnosis() {
     if (!token || !dashboard) return;
-    if (hasUnsavedEdits) {
+    if (hasUnsavedReviewEdits) {
       setError("存在尚未保存的修改，请先保存或刷新后再生成诊断。");
       return;
     }
@@ -268,6 +344,10 @@ export default function CollectionDashboardPage() {
     setMessage("");
     try {
       let currentDashboard = dashboard;
+      if (targetRoiDirty) {
+        const saved = await flushTargetRoiSave();
+        currentDashboard = { ...currentDashboard, decisionTargets: saved };
+      }
       let currentMetrics = metrics;
 
       if (currentDashboard.reviewCoverage.pendingCount > 0) {
@@ -307,24 +387,122 @@ export default function CollectionDashboardPage() {
         method: "POST",
         body: "{}",
       });
+      setDashboard(currentDashboard);
+      setMetrics(currentMetrics);
+      setDecisionPreview(preview);
       if (preview.mode === "CONSERVATIVE_ONLY") {
-        router.push(`/tasks/${params.id}?preview=1#diagnosis`);
+        setMessage("当前证据只支持保守诊断，结果已显示在本页下方；本次不会创建动作建议。");
+        scrollToDiagnosis();
         return;
       }
 
-      decisionIdempotencyKey.current ||= createIdempotencyKey(`decision:${params.id}`);
-      await apiFetch(`/collection-tasks/${params.id}/decision-runs`, token, {
-        method: "POST",
-        headers: { "idempotency-key": decisionIdempotencyKey.current },
-        body: "{}",
-      });
-      decisionIdempotencyKey.current = "";
-      router.push(`/tasks/${params.id}#diagnosis`);
+      const nextRun = await createDecisionRun();
+      setMessage(decisionRunMessage(nextRun));
+      scrollToDiagnosis();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "确认数据并生成诊断失败");
     } finally {
       setBusy("");
     }
+  }
+
+  function parseTargetRoiDraft(draft = targetRoiDraft) {
+    const normalized = draft.trim();
+    if (!normalized) return null;
+    const value = Number(normalized);
+    if (!Number.isFinite(value) || value <= 0 || value > 10_000) {
+      throw new Error("目标 ROI 必须是大于 0 且不超过 10000 的数字。");
+    }
+    return value;
+  }
+
+  function persistTargetRoi(draft = targetRoiDraft) {
+    if (!token) throw new Error("登录状态已失效，请重新登录。");
+    const draftAtRequest = draft;
+    targetRoiRequestedRef.current = draftAtRequest;
+    const run = async () => {
+      const targetRoi = parseTargetRoiDraft(draftAtRequest);
+      const saved = await apiFetch<CollectionDashboardDTO["decisionTargets"]>(
+        `/collection-tasks/${params.id}/decision-targets`,
+        token,
+        { method: "PUT", body: JSON.stringify({ targetRoi }) },
+      );
+      if (targetRoiDraftRef.current === draftAtRequest) {
+        const savedValue = saved.targetRoi === null ? "" : String(saved.targetRoi);
+        setSavedTargetRoi(savedValue);
+        savedTargetRoiRef.current = savedValue;
+        setTargetRoiDraft(savedValue);
+        targetRoiDraftRef.current = savedValue;
+        targetRoiRequestedRef.current = savedValue;
+        setDashboard((current) => current ? { ...current, decisionTargets: saved } : current);
+      }
+      return saved;
+    };
+    const request = targetRoiSaveChainRef.current.then(run, run);
+    targetRoiSaveChainRef.current = request.catch(() => undefined);
+    return request;
+  }
+
+  async function flushTargetRoiSave() {
+    if (targetRoiSaveTimerRef.current !== null) {
+      window.clearTimeout(targetRoiSaveTimerRef.current);
+      targetRoiSaveTimerRef.current = null;
+    }
+    const draft = targetRoiDraftRef.current;
+    if (targetRoiRequestedRef.current === draft) {
+      await targetRoiSaveChainRef.current;
+      if (targetRoiDraftRef.current !== draft) return flushTargetRoiSave();
+      if (draft.trim() === savedTargetRoiRef.current) {
+        return dashboard?.decisionTargets || { targetRoi: null, updatedAt: null };
+      }
+      setTargetRoiSaveState("ERROR");
+      throw new Error("目标 ROI 未成功保存，请修改后重试。");
+    }
+    if (draft.trim() === savedTargetRoiRef.current) {
+      return dashboard?.decisionTargets || { targetRoi: null, updatedAt: null };
+    }
+    setTargetRoiSaveState("SAVING");
+    const saved = await persistTargetRoi(draft);
+    if (targetRoiDraftRef.current !== draft) return flushTargetRoiSave();
+    setTargetRoiSaveState("SAVED");
+    return saved;
+  }
+
+  async function runDecision() {
+    if (!token) return;
+    setBusy("decision");
+    setError("");
+    setMessage("");
+    try {
+      if (targetRoiDirty) await flushTargetRoiSave();
+      const nextRun = await createDecisionRun();
+      setMessage(decisionRunMessage(nextRun));
+      scrollToDiagnosis();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "创建诊断失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function createDecisionRun() {
+    if (!token) throw new Error("登录状态已失效，请重新登录。");
+    decisionIdempotencyKey.current ||= createIdempotencyKey(`decision:${params.id}`);
+    const nextDecisionRun = await apiFetch<DecisionRun>(`/collection-tasks/${params.id}/decision-runs`, token, {
+      method: "POST",
+      headers: { "idempotency-key": decisionIdempotencyKey.current },
+      body: "{}",
+    });
+    decisionIdempotencyKey.current = "";
+    setDecisionPreview(null);
+    setDecisionRun(nextDecisionRun);
+    return nextDecisionRun;
+  }
+
+  function scrollToDiagnosis() {
+    window.requestAnimationFrame(() => {
+      document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function setCellDraft(
@@ -497,6 +675,23 @@ export default function CollectionDashboardPage() {
     calibrationState === "COMPLETE"
       ? "border-emerald-200/20 bg-emerald-300/10 text-emerald-100"
       : "border-amber-200/20 bg-amber-300/10 text-amber-100";
+  const formalReady = decisionPreview?.readiness.ready ?? (
+    routesFullyReady && calibrationState === "COMPLETE"
+  );
+  const conservativePreview = decisionPreview?.mode === "CONSERVATIVE_ONLY" ? decisionPreview : null;
+  const displayedDecisionRun = conservativePreview ? null : decisionRun;
+  const diagnosticOutput = displayedDecisionRun?.mode === "LEGACY_RULE"
+    ? {
+        ...displayedDecisionRun.finalResultJson,
+        diagnosis: displayedDecisionRun.diagnosis || "旧版规则诊断",
+        riskLevel: displayedDecisionRun.riskLevel || "MEDIUM" as const,
+        confidence: displayedDecisionRun.confidence ?? 0,
+      }
+    : decisionPreview?.finalOutput || null;
+  const managedLiveGrowthMode = diagnosticOutput?.businessAnalysis?.mode === "MANAGED_LIVE_GROWTH";
+  const evidenceAdvisories = activeRoutes.filter((route) => (
+    route.required && (route.state === "PARTIAL" || route.state === "STALE")
+  ));
   return (
     <main className="min-h-screen bg-[#050b1b] px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
       <header className="mx-auto flex max-w-[1680px] flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
@@ -544,6 +739,51 @@ export default function CollectionDashboardPage() {
       ) : null}
 
       <OverviewPanel
+        targetEditor={
+          <div className="w-full max-w-[320px] rounded-xl border border-white/10 bg-slate-950/20 px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_22px_rgba(2,6,23,0.16)] backdrop-blur-sm sm:w-[304px]">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <label className="text-xs font-semibold tracking-wide text-indigo-50" htmlFor="target-roi">本次目标 ROI</label>
+                <p className="mt-0.5 truncate text-[11px] text-indigo-100/60">用于对比全域支付 ROI</p>
+              </div>
+              <div className="shrink-0">
+                <Input
+                  aria-label="本次目标 ROI"
+                  className={[
+                    "h-10 w-[106px] border-indigo-200/25 bg-slate-950/35 px-3 text-right text-sm font-semibold tabular-nums",
+                    "text-white shadow-inner placeholder:text-indigo-100/35 focus-visible:border-cyan-200 focus-visible:ring-cyan-200/30"
+                  ].join(" ")}
+                  id="target-roi"
+                  inputMode="decimal"
+                  max="10000"
+                  min="0.01"
+                  onChange={(event) => {
+                    targetRoiDraftRef.current = event.target.value;
+                    setTargetRoiDraft(event.target.value);
+                    setTargetRoiSaveState("PENDING");
+                    setError("");
+                  }}
+                  placeholder="例如 50"
+                  step="0.01"
+                  type="number"
+                  value={targetRoiDraft}
+                />
+              </div>
+            </div>
+            <p className={`mt-2 flex items-center gap-1.5 text-[11px] ${targetRoiSaveTone}`}>
+              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${targetRoiSaveIndicatorClass}`} />
+              {targetRoiSaveState === "PENDING"
+                ? "等待自动保存"
+                : targetRoiSaveState === "SAVING"
+                  ? "正在保存..."
+                  : targetRoiSaveState === "ERROR"
+                  ? "保存失败，请修改后重试"
+                  : targetRoiSaveState === "SAVED"
+                    ? "已保存"
+                    : "设定本次经营对标基准"}
+            </p>
+          </div>
+        }
         action={
           <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
             <Button
@@ -551,7 +791,7 @@ export default function CollectionDashboardPage() {
               disabled={
                 Boolean(busy) ||
                 calibrationState === "EMPTY" ||
-                hasUnsavedEdits ||
+                hasUnsavedReviewEdits ||
                 metrics.some((metric) => (
                   !(metric.snapshotId && realtimeCoveredSnapshotIds.has(metric.snapshotId))
                   && metric.sourceStatus === "SOURCE_CONFLICT"
@@ -563,9 +803,11 @@ export default function CollectionDashboardPage() {
             >
               {busy === "confirm-and-diagnose" ? "正在确认并分析..." : "确认可信数据并生成诊断"}
             </Button>
-            <p className={`text-xs ${hasUnsavedEdits ? "text-amber-200" : "text-indigo-100/80"}`}>
-              {hasUnsavedEdits
+            <p className={`text-xs ${hasUnsavedReviewEdits || targetRoiDirty ? "text-amber-200" : "text-indigo-100/80"}`}>
+              {hasUnsavedReviewEdits
                 ? "存在未保存修改，请先在详细数据中保存"
+                : targetRoiDirty
+                  ? "目标 ROI 将在生成诊断前自动保存"
                 : pendingReviewCount > 0
                   ? `${pendingReviewCount} 项可信数据将在生成诊断前确认`
                   : "数据已校准，可直接生成诊断"}
@@ -972,6 +1214,37 @@ export default function CollectionDashboardPage() {
           </section>
         </div>
       </details>
+
+      <section
+        className="mx-auto mt-4 max-w-[1680px] scroll-mt-4 rounded-xl border border-white/10 bg-slate-100 p-3 text-slate-950 shadow-[0_14px_34px_rgba(2,6,23,0.18)] sm:p-4"
+        id="diagnosis"
+      >
+        <div className="mb-4">
+          <p className="mb-1 text-xs font-semibold text-primary">诊断结果</p>
+          <h2 className="text-xl font-semibold">诊断与建议</h2>
+          <p className="mt-1 text-sm text-muted">{aiDisclaimer}</p>
+        </div>
+        <DiagnosisComparison
+          busy={busy}
+          decisionRun={displayedDecisionRun}
+          evidenceAdvisory={formalReady && evidenceAdvisories.length
+            ? `${evidenceAdvisories.map((route) => `${route.label}${route.state === "STALE" ? "数据已过期" : "仅部分可见"}`).join("；")}。暂停、加预算或减预算等动作仍需满足各自证据门槛。`
+            : null}
+          formalContent={diagnosticOutput
+            ? (
+                <DiagnosisBusinessSummary
+                  conservative={!displayedDecisionRun}
+                  managedLiveGrowthMode={managedLiveGrowthMode}
+                  output={diagnosticOutput}
+                />
+              )
+            : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">点击上方“确认可信数据并生成诊断”后，运行进度、诊断结论和建议会直接显示在这里。</p>}
+          formalReady={formalReady}
+          onRunFormal={() => void runDecision()}
+          token={token}
+          onRefresh={() => void load()}
+        />
+      </section>
     </main>
   );
 }
@@ -983,6 +1256,12 @@ function retainCurrentCellDrafts(current: Record<string, CellDraft>, dashboard: 
     ),
   );
   return Object.fromEntries(Object.entries(current).filter(([key]) => keys.has(key)));
+}
+
+function decisionRunMessage(run: DecisionRun) {
+  return run.reuseReason === "UNCHANGED_EVIDENCE"
+    ? "本轮可信数据、目标和诊断版本均未变化，已直接沿用现有结果，没有再次调用模型。"
+    : "诊断任务已创建，运行进度和结果将在本页下方持续更新。";
 }
 
 function cellKey(table: CollectionDashboardDTO["summary"]["tables"][number], rowIndex: number, columnIndex: number) {

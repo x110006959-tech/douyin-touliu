@@ -55,7 +55,15 @@ type ActionProposalDetail = {
   supersededAt: string | null;
   project: { id: string; name: string; accountProfile: { id: string; accountName: string } };
   collectionTask: { id: string; pageTitle: string | null; sourceUrl: string | null };
-  decisionRun: { id: string; diagnosis: string; riskLevel: RiskLevel; confidence: number; strategyVersion: string; createdAt: string };
+  decisionRun: {
+    id: string;
+    diagnosis: string;
+    riskLevel: RiskLevel;
+    confidence: number;
+    strategyVersion: string;
+    createdAt: string;
+    inputJson?: { metrics?: Array<{ key: string; value: number | string | null; unit?: string | null }> };
+  };
   approvalRecords: Array<{ id: string; decision: ApprovalDecision; comment: string | null; createdAt: string }>;
   executionLogs: Array<{ id: string; mode: ExecutionMode; status: ExecutionStatus; note: string | null; createdAt: string }>;
 };
@@ -73,6 +81,13 @@ type ActionOutcomeDetail = {
   createdAt: string;
 };
 
+type OutcomeMetricRow = {
+  metricKey: OutcomeMetric["metricKey"];
+  beforeValue: string;
+  afterValue: string;
+  unit: string;
+};
+
 export default function ActionProposalDetailPage() {
   const params = useParams<{ id: string }>();
   const { token, hydrated } = useAuth();
@@ -83,8 +98,7 @@ export default function ActionProposalDetailPage() {
   const [outcomeWindow, setOutcomeWindow] = useState<ObservationWindow>("30m");
   const [customWindow, setCustomWindow] = useState("");
   const [outcomeResult, setOutcomeResult] = useState<ActionOutcomeResult>("UNCLEAR");
-  const [beforeMetricsJson, setBeforeMetricsJson] = useState("");
-  const [afterMetricsJson, setAfterMetricsJson] = useState("");
+  const [outcomeMetricRows, setOutcomeMetricRows] = useState<OutcomeMetricRow[]>([]);
   const [outcomeNote, setOutcomeNote] = useState("");
   const [outcomeConclusion, setOutcomeConclusion] = useState("");
   const [error, setError] = useState("");
@@ -100,6 +114,7 @@ export default function ActionProposalDetailPage() {
       .then(([detail, latestOutcomes]) => {
         setProposal(detail);
         setOutcomes(latestOutcomes);
+        setOutcomeMetricRows(buildOutcomeMetricRows(detail));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "读取动作建议失败"));
   }
@@ -149,8 +164,11 @@ export default function ActionProposalDetailPage() {
     setBusy("outcome");
     setError("");
     try {
-      const beforeMetrics = parseOutcomeMetrics(beforeMetricsJson, "执行前指标");
-      const afterMetrics = parseOutcomeMetrics(afterMetricsJson, "执行后指标");
+      const beforeMetrics = outcomeMetrics(outcomeMetricRows, "beforeValue");
+      const afterMetrics = outcomeMetrics(outcomeMetricRows, "afterValue");
+      if (outcomeResult !== "UNCLEAR" && (!beforeMetrics?.length || !afterMetrics?.length)) {
+        throw new Error("要判断改善、变差或无变化，必须至少填写一项同口径的执行前后指标");
+      }
       const created = await apiFetch<ActionOutcomeDetail>(`/action-proposals/${proposal.id}/outcomes`, token, {
         method: "POST",
         headers: { "idempotency-key": createIdempotencyKey(`outcome:${proposal.id}`) },
@@ -168,8 +186,7 @@ export default function ActionProposalDetailPage() {
       setOutcomeWindow("30m");
       setCustomWindow("");
       setOutcomeResult("UNCLEAR");
-      setBeforeMetricsJson("");
-      setAfterMetricsJson("");
+      setOutcomeMetricRows(buildOutcomeMetricRows(proposal));
       setOutcomeNote("");
       setOutcomeConclusion("");
     } catch (err) {
@@ -206,8 +223,8 @@ export default function ActionProposalDetailPage() {
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="rounded-md border border-border px-2 py-1">{actionTypeLabels[proposal.actionType]}</span>
           <span className="rounded-md border border-border px-2 py-1">{actionProposalStatusLabels[proposal.status]}</span>
-          <span className="rounded-md border border-border px-2 py-1">风险 {proposal.riskLevel}</span>
-          <span className="rounded-md border border-border px-2 py-1">置信度 {proposal.confidence}</span>
+          <span className="rounded-md border border-border px-2 py-1">本动作风险 {proposal.riskLevel}</span>
+          <span className="rounded-md border border-border px-2 py-1">建议置信度 {Math.round(proposal.confidence * 100)}%</span>
           {proposal.expiresAt ? <span className="rounded-md border border-border px-2 py-1">有效至 {new Date(proposal.expiresAt).toLocaleString("zh-CN")}</span> : null}
         </div>
       </header>
@@ -241,8 +258,8 @@ export default function ActionProposalDetailPage() {
             <div className="grid gap-2 text-sm">
               <p className="font-medium">{proposal.decisionRun.diagnosis}</p>
               <div className="grid gap-2 sm:grid-cols-3">
-                <Info label="风险" value={proposal.decisionRun.riskLevel} />
-                <Info label="置信度" value={String(proposal.decisionRun.confidence)} />
+                <Info label="通过动作最高风险" value={proposal.decisionRun.riskLevel} />
+                <Info label="诊断置信度" value={`${Math.round(proposal.decisionRun.confidence * 100)}%`} />
                 <Info label="策略版本" value={proposal.decisionRun.strategyVersion} />
               </div>
             </div>
@@ -388,16 +405,27 @@ export default function ActionProposalDetailPage() {
                     <option value="UNCLEAR">不明确</option>
                   </select>
                 </label>
-                <Textarea
-                  value={beforeMetricsJson}
-                  onChange={(event) => setBeforeMetricsJson(event.target.value)}
-                  placeholder={'执行前指标 JSON 数组，例如 [{"metricKey":"verify_roi","value":0.8,"unit":"倍"}]'}
-                />
-                <Textarea
-                  value={afterMetricsJson}
-                  onChange={(event) => setAfterMetricsJson(event.target.value)}
-                  placeholder={'执行后指标 JSON 数组，例如 [{"metricKey":"verify_roi","value":1.1,"unit":"倍"}]'}
-                />
+                <div className="rounded-md border border-border p-3">
+                  <strong>同口径执行前后指标</strong>
+                  <p className="mt-1 text-xs text-muted">执行前数值已从本轮诊断快照带入，请核对；执行后使用同一指标、同一范围和同一时间口径填写。</p>
+                  <div className="mt-3 grid gap-3">
+                    {outcomeMetricRows.map((row, index) => (
+                      <div className="grid gap-2 rounded-md bg-slate-50 p-3 sm:grid-cols-[1.2fr_1fr_1fr_auto] sm:items-end" key={row.metricKey}>
+                        <div>
+                          <p className="text-xs text-muted">指标</p>
+                          <strong className="text-sm">{metricKeyLabels[row.metricKey]}</strong>
+                        </div>
+                        <label className="grid gap-1 text-xs">执行前
+                          <input className="h-10 rounded-md border border-border bg-white px-3 text-sm" inputMode="decimal" value={row.beforeValue} onChange={(event) => updateOutcomeMetricRow(index, "beforeValue", event.target.value, setOutcomeMetricRows)} />
+                        </label>
+                        <label className="grid gap-1 text-xs">执行后
+                          <input className="h-10 rounded-md border border-border bg-white px-3 text-sm" inputMode="decimal" value={row.afterValue} onChange={(event) => updateOutcomeMetricRow(index, "afterValue", event.target.value, setOutcomeMetricRows)} />
+                        </label>
+                        <span className="pb-2 text-xs text-muted">{row.unit || "数值"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <Textarea value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="复盘备注" />
                 <Textarea value={outcomeConclusion} onChange={(event) => setOutcomeConclusion(event.target.value)} placeholder="复盘结论" />
                 <Button type="submit" disabled={busy === "outcome"}>
@@ -428,28 +456,54 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function parseOutcomeMetrics(value: string, label: string): OutcomeMetric[] | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (!Array.isArray(parsed) || parsed.length > 100) throw new Error();
-    return parsed.map((metric) => {
-      if (!metric || typeof metric !== "object") throw new Error();
-      const { metricKey, value: metricValue, unit } = metric as Record<string, unknown>;
-      if (
-        typeof metricKey !== "string" ||
-        metricKey === "unknown" ||
-        !(metricKey in metricKeyLabels) ||
-        typeof metricValue !== "number" ||
-        !Number.isFinite(metricValue) ||
-        (unit !== undefined && unit !== null && (typeof unit !== "string" || unit.trim().length > 30))
-      ) {
-        throw new Error();
-      }
-      return { metricKey: metricKey as OutcomeMetric["metricKey"], value: metricValue, unit: typeof unit === "string" ? unit.trim() || null : null };
-    });
-  } catch {
-    throw new Error(`${label}必须是最多 100 项的指标数组，且每项包含 metricKey、有限 value 和可选 unit`);
-  }
+const outcomeMetricKeysByAction: Partial<Record<ActionType, OutcomeMetric["metricKey"][]>> = {
+  CHECK_LIVE_ROOM: ["current_online_viewers", "gmv", "orders"],
+  DECREASE_BID: ["full_domain_pay_roi", "spend", "orders"],
+  DECREASE_BUDGET: ["full_domain_pay_roi", "spend", "orders"],
+  INCREASE_BUDGET: ["full_domain_pay_roi", "spend", "orders"],
+  FINE_TUNE_TARGETING: ["impressions", "clicks", "orders"],
+  OPTIMIZE_SCRIPT: ["average_watch_duration_seconds", "product_conversion_rate", "orders"],
+  CHECK_CREATIVE: ["impressions", "clicks", "ctr"],
+  OBSERVE: ["full_domain_pay_roi", "spend", "orders"]
+};
+
+function buildOutcomeMetricRows(proposal: ActionProposalDetail): OutcomeMetricRow[] {
+  const sourceMetrics = proposal.decisionRun.inputJson?.metrics || [];
+  const desiredKeys = outcomeMetricKeysByAction[proposal.actionType]
+    || sourceMetrics.map((metric) => metric.key).filter(isOutcomeMetricKey).slice(0, 3);
+  return desiredKeys.map((metricKey) => {
+    const source = sourceMetrics.find((metric) => metric.key === metricKey);
+    const sourceNumber = source?.value === null || source?.value === undefined || source.value === ""
+      ? null
+      : Number(source.value);
+    return {
+      metricKey,
+      beforeValue: sourceNumber !== null && Number.isFinite(sourceNumber) ? String(sourceNumber) : "",
+      afterValue: "",
+      unit: source?.unit || ""
+    };
+  });
+}
+
+function isOutcomeMetricKey(value: string): value is OutcomeMetric["metricKey"] {
+  return value !== "unknown" && value in metricKeyLabels;
+}
+
+function outcomeMetrics(rows: OutcomeMetricRow[], field: "beforeValue" | "afterValue"): OutcomeMetric[] | undefined {
+  const completed = rows.filter((row) => row[field].trim() !== "");
+  if (!completed.length) return undefined;
+  return completed.map((row) => {
+    const value = Number(row[field]);
+    if (!Number.isFinite(value)) throw new Error(`${metricKeyLabels[row.metricKey]}必须填写有效数字`);
+    return { metricKey: row.metricKey, value, unit: row.unit.trim() || null };
+  });
+}
+
+function updateOutcomeMetricRow(
+  index: number,
+  field: "beforeValue" | "afterValue",
+  value: string,
+  setRows: (updater: (current: OutcomeMetricRow[]) => OutcomeMetricRow[]) => void
+) {
+  setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
 }

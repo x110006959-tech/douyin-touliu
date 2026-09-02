@@ -85,9 +85,19 @@ export type CollectionDashboardDTO = {
   };
   summary: CaptureSummaryDTO;
   overviewCards: DashboardOverviewCardDTO[];
+  decisionTargets: {
+    targetRoi: number | null;
+    updatedAt: string | null;
+  };
   reviewCoverage: ReviewCoverage;
   tableReviewCoverage: ReviewCoverage;
 };
+
+export const updateDecisionTargetsInputSchema = z.object({
+  targetRoi: z.number().finite().positive().max(10_000).nullable()
+}).strict();
+
+export type UpdateDecisionTargetsInput = z.infer<typeof updateDecisionTargetsInputSchema>;
 
 export const bulkTableCellReviewInputSchema = z.object({
   snapshotId: z.string().min(1),

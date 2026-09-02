@@ -23,6 +23,7 @@ import { createSyntheticDiagnosisTransport } from "./ai-diagnosis/synthetic-eval
 import { syntheticDiagnosisCases } from "@douyin-local-life/diagnosis-skills";
 import { liveScreenInternalApiEnabled } from "./live-screen-internal-api-config.js";
 import { localPromotionInternalApiEnabled } from "./local-promotion-internal-api-config.js";
+import { LlmTransportError } from "@douyin-local-life/llm";
 
 type ApiEnvelope<T> =
   | { success: true; data: T; error: null }
@@ -55,7 +56,7 @@ describe("V0.1 API smoke flow", () => {
   it("reports database readiness", async () => {
     await expect(api<{ ok: boolean; database: string }>("/ready", null)).resolves.toEqual({ ok: true, database: "ready" });
     await expect(api<{ productVersion: string; gitSha: string }>("/version", null)).resolves.toMatchObject({
-      productVersion: "0.2.5",
+      productVersion: "0.2.6",
       gitSha: expect.any(String)
     });
     expect((await api<{ gitSha: string }>("/version", null)).gitSha).not.toBe("unknown");
@@ -122,6 +123,26 @@ describe("V0.1 API smoke flow", () => {
       }
     });
     expect(task.projectId).toBe(project.id);
+
+    await apiError(`/collection-tasks/${task.id}/decision-targets`, token, {
+      method: "PUT",
+      body: { targetRoi: 0 }
+    }, "VALIDATION_ERROR");
+    const savedDecisionTargets = await api<{ targetRoi: number | null; updatedAt: string | null }>(
+      `/collection-tasks/${task.id}/decision-targets`,
+      token,
+      { method: "PUT", body: { targetRoi: 1.4 } }
+    );
+    expect(savedDecisionTargets).toMatchObject({ targetRoi: 1.4 });
+    expect(savedDecisionTargets.updatedAt).toBeTruthy();
+    const collectionDashboard = await api<{ decisionTargets: { targetRoi: number | null } }>(
+      `/collection-tasks/${task.id}/collection-dashboard`,
+      token
+    );
+    expect(collectionDashboard.decisionTargets.targetRoi).toBe(1.4);
+    expect(await prisma.reviewedMetric.count({
+      where: { taskId: task.id, snapshotId: null, metricKey: "target_roi", metricSource: "MANUAL_INPUT" }
+    })).toBe(1);
 
     await apiError(`/collection-tasks/${task.id}/collection-runs`, token, {
       method: "POST",
@@ -214,7 +235,7 @@ describe("V0.1 API smoke flow", () => {
     });
     expect((await api<Array<{ aliasNormalized: string }>>(`/projects/${project.id}/metric-drift-events?status=OPEN`, token)).some((event) => event.aliasNormalized === ctrDrift!.aliasNormalized)).toBe(false);
 
-    const pulse = await api<{ pulseCount: number; signals: unknown[] }>(`/collection-tasks/${task.id}/metric-pulses`, token, {
+    await apiError(`/collection-tasks/${task.id}/metric-pulses`, token, {
       method: "POST",
       body: {
         collectionRunId: collectionRun.id,
@@ -228,8 +249,7 @@ describe("V0.1 API smoke flow", () => {
         metrics: [metric("verify_roi", "verify ROI", 0.8), metric("spend", "spend", 1200), metric("orders", "orders", 0)],
         captureMeta: captureMeta("LIVE_DATA_SCREEN", ["verify_roi", "spend", "orders"])
       }
-    });
-    expect(pulse.pulseCount).toBe(1);
+    }, "METRIC_PULSE_EXTENSION_REQUIRED");
 
     const completedRun = await api<{ id: string; status: string; quality: { completeness: number; blocksStrongActions: boolean } }>(
       `/collection-tasks/${task.id}/collection-runs/latest`,
@@ -258,11 +278,47 @@ describe("V0.1 API smoke flow", () => {
     expect(preview.finalOutput.dataQuality.collectionQuality).toBeTruthy();
     expect(await prisma.decisionRun.count({ where: { collectionTaskId: task.id } })).toBe(decisionCountBeforePreview);
 
+    const previousAiDiagnosisEnabled = process.env.AI_DIAGNOSIS_ENABLED;
+    const previousDeepSeekApiKey = process.env.DEEPSEEK_API_KEY;
+    try {
+      process.env.AI_DIAGNOSIS_ENABLED = "true";
+      delete process.env.DEEPSEEK_API_KEY;
+      await apiError(`/collection-tasks/${task.id}/decision-runs`, token, { method: "POST", body: {} }, "DEEPSEEK_API_KEY_MISSING");
+      expect(await prisma.decisionRun.count({ where: { collectionTaskId: task.id } })).toBe(decisionCountBeforePreview);
+
+      const pendingWithoutConfiguration = await prisma.decisionRun.create({
+        data: {
+          projectId: project.id,
+          collectionTaskId: task.id,
+          mode: "AI_SKILL_ORCHESTRATED",
+          status: "PENDING",
+          evidenceFingerprint: "configuration-preflight",
+          strategyVersion: "managed-live-growth-skills-v4",
+          currentStage: "QUEUED"
+        }
+      });
+      await expect(processNextDecisionRun({ workerId: "test-worker-configuration-preflight" })).resolves.toBeNull();
+      await expect(prisma.decisionRun.findUniqueOrThrow({ where: { id: pendingWithoutConfiguration.id } })).resolves.toMatchObject({
+        status: "PENDING",
+        currentStage: "QUEUED"
+      });
+      expect(await prisma.actionProposal.count({ where: { decisionRunId: pendingWithoutConfiguration.id } })).toBe(0);
+      await prisma.decisionRun.delete({ where: { id: pendingWithoutConfiguration.id } });
+    } finally {
+      restoreDecisionTestEnvironment("AI_DIAGNOSIS_ENABLED", previousAiDiagnosisEnabled);
+      restoreDecisionTestEnvironment("DEEPSEEK_API_KEY", previousDeepSeekApiKey);
+    }
+
     const decisionKey = `decision-${Date.now()}`;
     const decisionKeys = Array.from({ length: 6 }, () => decisionKey);
     const concurrentResults = await Promise.all(decisionKeys.map(async (decisionKey) => {
       const startedAt = performance.now();
-      const timed = await apiWithDecisionTiming<{ id: string; actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }> }>(
+      const timed = await apiWithDecisionTiming<{
+        id: string;
+        strategyVersion: string;
+        skillSetVersion: string;
+        actionProposals: Array<{ id: string; status: string; requiresApproval: boolean }>;
+      }>(
         `/collection-tasks/${task.id}/decision-runs`,
         token,
         { method: "POST", headers: { "idempotency-key": decisionKey }, body: {} }
@@ -283,6 +339,10 @@ describe("V0.1 API smoke flow", () => {
     const queuedRun = concurrentRuns[0];
     if (!queuedRun) throw new Error("Expected an idempotent decision run");
     expect(queuedRun.id).toBeTruthy();
+    expect(queuedRun).toMatchObject({
+      strategyVersion: "managed-live-growth-skills-v9",
+      skillSetVersion: "managed-live-growth-skills-v9"
+    });
     expect(queuedRun.actionProposals).toHaveLength(0);
     const decisionRun = await completeDecisionRun(queuedRun.id, token);
     expect(decisionRun.status).toBe("SUCCEEDED");
@@ -307,6 +367,12 @@ describe("V0.1 API smoke flow", () => {
       body: {}
     });
     expect(replayedDecision.id).toBe(decisionRun.id);
+    const unchangedEvidenceRun = await api<{ id: string; reuseReason?: string }>(`/collection-tasks/${task.id}/decision-runs`, token, {
+      method: "POST",
+      headers: { "idempotency-key": `${decisionKey}-unchanged-evidence` },
+      body: {}
+    });
+    expect(unchangedEvidenceRun).toMatchObject({ id: decisionRun.id, reuseReason: "UNCHANGED_EVIDENCE" });
 
     const latest = await api<{ id: string; actionProposals: Array<{ id: string }> }>(`/collection-tasks/${task.id}/decision-runs/latest`, token);
     expect(concurrentRuns.some((run) => run.id === latest.id)).toBe(true);
@@ -348,7 +414,7 @@ describe("V0.1 API smoke flow", () => {
       workerId: "test-worker-provider-failure",
       transport: {
         provider: "deepseek",
-        model: "deepseek-v4-pro",
+        model: "deepseek-v4-flash",
         async chat() {
           throw new Error("synthetic provider failure");
         }
@@ -360,6 +426,48 @@ describe("V0.1 API smoke flow", () => {
     );
     expect(failedRun).toMatchObject({ status: "FAILED", errorCode: "AI_DIAGNOSIS_FAILED", finalResult: null });
     expect(failedRun.actionProposals).toHaveLength(0);
+
+    const terminalModelFailures = [
+      { code: "DEEPSEEK_TIMEOUT", message: "DeepSeek 请求超时" },
+      { code: "DEEPSEEK_RATE_LIMITED", message: "DeepSeek 请求频率受限" },
+      { code: "DIAGNOSIS_OUTPUT_INVALID", message: "模型结构化诊断在一次修复后仍不合法" }
+    ] as const;
+    for (const failure of terminalModelFailures) {
+      const fixture = await prisma.decisionRun.create({
+        data: {
+          projectId: project.id,
+          collectionTaskId: task.id,
+          mode: "AI_SKILL_ORCHESTRATED",
+          status: "PENDING",
+          evidenceFingerprint: decisionRun.evidenceFingerprint,
+          strategyVersion: "managed-live-growth-skills-v4",
+          currentStage: "QUEUED"
+        }
+      });
+      await processNextDecisionRun({
+        workerId: `test-worker-${failure.code.toLowerCase()}`,
+        transport: {
+          provider: "deepseek",
+          model: "deepseek-v4-flash",
+          async chat() {
+            if (failure.code !== "DIAGNOSIS_OUTPUT_INVALID") {
+              throw new LlmTransportError(failure.code, failure.message, failure.code === "DEEPSEEK_RATE_LIMITED");
+            }
+            return {
+              message: { role: "assistant" as const, content: "{}" },
+              finishReason: "stop",
+              usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+            };
+          }
+        }
+      });
+      await expect(prisma.decisionRun.findUniqueOrThrow({ where: { id: fixture.id } })).resolves.toMatchObject({
+        status: "FAILED",
+        errorCode: failure.code,
+        finalResultJson: null
+      });
+      expect(await prisma.actionProposal.count({ where: { decisionRunId: fixture.id } })).toBe(0);
+    }
 
     const [approveTarget, observeTarget] = projectProposals;
     if (!approveTarget || !observeTarget) throw new Error("Expected at least two deduplicated action proposals");
@@ -1878,7 +1986,7 @@ describe("V0.1 API smoke flow", () => {
     expect(emptySummary.snapshotCount).toBe(0);
     expect(emptySummary.routes.length).toBeGreaterThan(0);
     const snapshotCountBeforePulse = await prisma.dataSnapshot.count({ where: { taskId: taskA.id } });
-    await expect(api<{ pulseCount: number }>(`/collection-tasks/${taskA.id}/metric-pulses`, exchanged.token, {
+    await apiError(`/collection-tasks/${taskA.id}/metric-pulses`, exchanged.token, {
       method: "POST",
       body: {
         routeKey: "LIVE_DATA_SCREEN",
@@ -1890,7 +1998,19 @@ describe("V0.1 API smoke flow", () => {
         metrics: [metric("spend", "DOM 消耗", 100)],
         captureMeta: captureMeta("LIVE_DATA_SCREEN", ["spend"])
       }
-    })).resolves.toMatchObject({ pulseCount: 1 });
+    }, "LIVE_SCREEN_INTERNAL_API_DISABLED");
+    await apiError(`/collection-tasks/${taskA.id}/metric-pulses`, token, {
+      method: "POST",
+      body: {
+        routeKey: "LIVE_DATA_SCREEN",
+        pageType: "LIVE_DATA_SCREEN",
+        localCapturedAt: new Date().toISOString(),
+        tabState: "VISIBLE",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?room_id=${suffix}`,
+        metrics: [metric("spend", "网页会话伪造脉冲", 100)],
+        captureMeta: captureMeta("LIVE_DATA_SCREEN", ["spend"])
+      }
+    }, "METRIC_PULSE_EXTENSION_REQUIRED");
     const previousLocalPromotionApiEnabled = process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED;
     process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED = "true";
     try {
@@ -1931,7 +2051,7 @@ describe("V0.1 API smoke flow", () => {
             }
           }
         }
-      })).resolves.toMatchObject({ pulseCount: 2 });
+      })).resolves.toMatchObject({ pulseCount: 1 });
     } finally {
       if (previousLocalPromotionApiEnabled === undefined) delete process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED;
       else process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED = previousLocalPromotionApiEnabled;
@@ -1976,6 +2096,39 @@ describe("V0.1 API smoke flow", () => {
       }
     }, "LIVE_SCREEN_INTERNAL_API_DISABLED");
     await api(`/collection-tasks/${taskA.id}/routes/LIVE_PRODUCT_TAB`, token, { method: "PUT", body: {} });
+    await apiError(`/collection-tasks/${taskA.id}/metric-pulses`, exchanged.token, {
+      method: "POST",
+      body: {
+        routeKey: "LIVE_PRODUCT_TAB",
+        pageType: "LIVE_DATA_SCREEN",
+        localCapturedAt: new Date().toISOString(),
+        tabState: "VISIBLE",
+        sourceUrl: `https://eos.douyin.com/dp/liveScreen?mode=product&room_id=${suffix}`,
+        captureProtocolVersion: extensionCollectionProtocolVersion,
+        metrics: [metric("orders", "商品订单", 1)],
+        captureMeta: captureMeta("LIVE_PRODUCT_TAB", ["orders"])
+      }
+    }, "METRIC_PULSE_ROUTE_INVALID");
+    await prisma.collectionRouteSource.delete({
+      where: { taskId_routeKey: { taskId: taskA.id, routeKey: "LOCAL_PROMOTION_DASHBOARD" } }
+    });
+    await apiError(`/collection-tasks/${taskA.id}/metric-pulses`, exchanged.token, {
+      method: "POST",
+      body: {
+        routeKey: "LOCAL_PROMOTION_DASHBOARD",
+        pageType: "LOCAL_PROMOTION_DASHBOARD",
+        localCapturedAt: new Date().toISOString(),
+        tabState: "VISIBLE",
+        sourceUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?selected_advid=1",
+        captureProtocolVersion: extensionCollectionProtocolVersion,
+        metrics: [metric("spend", "未配置路线脉冲", 100)],
+        captureMeta: captureMeta("LOCAL_PROMOTION_DASHBOARD", ["spend"])
+      }
+    }, "COLLECTION_ROUTE_NOT_CONFIGURED");
+    await api(`/collection-tasks/${taskA.id}/routes/LOCAL_PROMOTION_DASHBOARD`, token, {
+      method: "PUT",
+      body: {}
+    });
     const collectionRun = await api<{ id: string }>(`/collection-tasks/${taskA.id}/collection-runs`, exchanged.token, {
       method: "POST",
       body: { requiredRoutes: ["LIVE_PRODUCT_TAB"] }
@@ -2198,7 +2351,7 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: {
         collectionTaskId: taskA.id,
-        extensionVersion: "0.2.5",
+        extensionVersion: "0.2.6",
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: "integration-build",
         currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2",
@@ -2215,7 +2368,7 @@ describe("V0.1 API smoke flow", () => {
       method: "POST",
       body: {
         collectionTaskId: taskB.id,
-        extensionVersion: "0.2.5",
+        extensionVersion: "0.2.6",
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: "integration-build",
         currentUrl: "https://localads.chengzijianzhan.cn/",
@@ -2240,9 +2393,11 @@ describe("V0.1 API smoke flow", () => {
     await apiError("/extension/pairing-codes/exchange", null, { method: "POST", body: { code: expiringPair.code } }, "PAIRING_CODE_INVALID");
   });
 
-  it("reuses stored live overview realtime evidence for ai diagnosis without snapshot confirmation", async () => {
-    const previous = process.env.LIVE_SCREEN_INTERNAL_API_ENABLED;
+  it("reuses stored multi-route realtime evidence for AI diagnosis without snapshot confirmation", async () => {
+    const previousLiveScreenApiEnabled = process.env.LIVE_SCREEN_INTERNAL_API_ENABLED;
+    const previousLocalPromotionApiEnabled = process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED;
     process.env.LIVE_SCREEN_INTERNAL_API_ENABLED = "true";
+    process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED = "true";
     try {
       const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const registered = await api<{ token: string }>("/auth/register", null, {
@@ -2276,7 +2431,7 @@ describe("V0.1 API smoke flow", () => {
       });
       await api<{ id: string }>(`/collection-tasks/${task.id}/collection-runs`, token, {
         method: "POST",
-        body: { requiredRoutes: ["LIVE_DATA_SCREEN"] }
+        body: { requiredRoutes: ["LIVE_DATA_SCREEN", "LOCAL_PROMOTION_DASHBOARD"] }
       });
       const pairing = await api<{ code: string }>("/extension/pairing-codes", token, {
         method: "POST",
@@ -2323,17 +2478,61 @@ describe("V0.1 API smoke flow", () => {
         }
       });
       expect(realtimePulse.pulseCount).toBe(1);
+      const localPromotionField = localPromotionInternalApiEndpointContracts.statQuery.fields[0];
+      if (!localPromotionField) throw new Error("Expected a local promotion realtime internal API field");
+      const advertisingId = String(Date.now());
+      const localPromotionPulse = await api<{ pulseCount: number }>(`/collection-tasks/${task.id}/metric-pulses`, exchanged.token, {
+        method: "POST",
+        body: {
+          routeKey: "LOCAL_PROMOTION_DASHBOARD",
+          pageType: "LOCAL_PROMOTION_DASHBOARD",
+          localCapturedAt: new Date().toISOString(),
+          tabState: "VISIBLE",
+          sourceUrl: `https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?selected_advid=${advertisingId}`,
+          captureProtocolVersion: extensionCollectionProtocolVersion,
+          metrics: [localPromotionPulseMetric(localPromotionField, 100.2, "100.20")],
+          captureMeta: {
+            ...captureMeta("LOCAL_PROMOTION_DASHBOARD", [localPromotionField.metricKey]),
+            localPromotionInternalApi: {
+              enabled: true,
+              contractVersion: localPromotionInternalApiContractVersion,
+              adapterVersion: localPromotionInternalApiAdapterVersion,
+              identity: {
+                advid: null,
+                roomId: null,
+                selectedAdvid: advertisingId,
+                selectedAwemeId: null,
+                source: "URL",
+                evidence: {
+                  url: { advid: [], roomId: [], selectedAdvid: [advertisingId], selectedAwemeId: [] },
+                  dom: { advid: [], roomId: [], selectedAdvid: [], selectedAwemeId: [] }
+                }
+              },
+              endpointStatuses: [
+                { endpoint: "pageMetrics", status: "SUCCESS", acceptedBytes: 100 },
+                { endpoint: "statQuery", status: "SUCCESS", acceptedBytes: 100 }
+              ],
+              evidencePurpose: "PULSE_ONLY"
+            }
+          }
+        }
+      });
+      expect(localPromotionPulse.pulseCount).toBe(2);
       expect(await prisma.dataSnapshot.count({ where: { taskId: task.id } })).toBe(0);
 
-      const queued = await api<{ id: string; inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null } }>(`/collection-tasks/${task.id}/decision-runs`, token, {
+      const queued = await api<{ id: string; inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null; realtimeEvidenceItems?: Array<{ routeKey: string; pageType: string }> } }>(`/collection-tasks/${task.id}/decision-runs`, token, {
         method: "POST",
         body: {}
       });
       expect(queued.inputJson.metricLayer).toBe("REALTIME_API");
       expect(queued.inputJson.realtimeEvidence).toMatchObject({
-        routeKey: "LIVE_DATA_SCREEN",
-        pageType: "LIVE_DATA_SCREEN"
+        routeKey: "LOCAL_PROMOTION_DASHBOARD",
+        pageType: "LOCAL_PROMOTION_DASHBOARD"
       });
+      expect(queued.inputJson.realtimeEvidenceItems).toEqual(expect.arrayContaining([
+        expect.objectContaining({ routeKey: "LOCAL_PROMOTION_DASHBOARD", pageType: "LOCAL_PROMOTION_DASHBOARD" }),
+        expect.objectContaining({ routeKey: "LIVE_DATA_SCREEN", pageType: "LIVE_DATA_SCREEN" })
+      ]));
 
       const storedRun = await prisma.decisionRun.findUniqueOrThrow({ where: { id: queued.id } });
       await prisma.decisionRun.update({
@@ -2363,16 +2562,23 @@ describe("V0.1 API smoke flow", () => {
         status: string;
         errorCode: string | null;
         errorMessage: string | null;
-        inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null };
+        inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null; realtimeEvidenceItems?: Array<{ routeKey: string; pageType: string }> };
       }>(`/decision-runs/${queued.id}`, token);
       expect(completed).toMatchObject({ status: "SUCCEEDED", errorCode: null, errorMessage: null });
       expect(completed.inputJson.metricLayer).toBe("REALTIME_API");
       expect(completed.inputJson.realtimeEvidence).toMatchObject({
-        routeKey: "LIVE_DATA_SCREEN",
-        pageType: "LIVE_DATA_SCREEN"
+        routeKey: "LOCAL_PROMOTION_DASHBOARD",
+        pageType: "LOCAL_PROMOTION_DASHBOARD"
       });
+      expect(completed.inputJson.realtimeEvidenceItems).toEqual(expect.arrayContaining([
+        expect.objectContaining({ routeKey: "LOCAL_PROMOTION_DASHBOARD", pageType: "LOCAL_PROMOTION_DASHBOARD" }),
+        expect.objectContaining({ routeKey: "LIVE_DATA_SCREEN", pageType: "LIVE_DATA_SCREEN" })
+      ]));
     } finally {
-      process.env.LIVE_SCREEN_INTERNAL_API_ENABLED = previous;
+      if (previousLiveScreenApiEnabled === undefined) delete process.env.LIVE_SCREEN_INTERNAL_API_ENABLED;
+      else process.env.LIVE_SCREEN_INTERNAL_API_ENABLED = previousLiveScreenApiEnabled;
+      if (previousLocalPromotionApiEnabled === undefined) delete process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED;
+      else process.env.LOCAL_PROMOTION_INTERNAL_API_ENABLED = previousLocalPromotionApiEnabled;
     }
   });
 
@@ -2501,6 +2707,11 @@ async function completeDecisionRun(id: string, token: string) {
     if (run.status === "FAILED") throw new Error(`${id} failed during fake worker execution`);
   }
   throw new Error(`${id} did not reach a terminal status`);
+}
+
+function restoreDecisionTestEnvironment(name: "AI_DIAGNOSIS_ENABLED" | "DEEPSEEK_API_KEY", value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }
 
 function metric(key: string, name: string, value: number | string | null, unit?: string) {

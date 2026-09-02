@@ -1,5 +1,153 @@
 # Codex Handoff
 
+> 开始任何新工作前先阅读 [NOW.md](./NOW.md)。本文件是完整交接账本；其中较早的运行镜像、构建指纹和“下一步人工验收”可能已被后续记录替代，不能单独作为当前事实。
+
+## 2026-09-02 v0.2.6 Git/GitHub 发布准备（源码门禁已通过）
+
+- 已将根包、API、Web、Extension 与共享包版本统一为 `0.2.6`，并纳入实时路线隔离、确定性诊断调度、目标 ROI、结构修复、领域投影、数值目标归一化和决策/实验一致性补丁。
+- 实际通过 lint、typecheck、全仓 527 项测试、build、隔离占位 `DATABASE_URL` 下的 Prisma validate/generate、version check、diff check 与 24/24 合成评测。
+- 本轮上传尚未生成生产 ZIP、commit、tag、push 或 GitHub Release；未改 Prisma Schema、migration、业务数据库、生产运行态或平台数据。完成发布后必须回填本节的制品哈希、提交、标签和 Release 地址。
+
+## 2026-09-01 决策视图与可归因实验契约收口（本机已切换，待用户显式重跑）
+
+- 用户关切的“隐藏无效、图中说明是否正确、这次结果还应如何改进”已落实为服务端裁决与页面展示的同一数据视图。`decisionView` 只显示已确认事实、尚未确认的原因、服务端允许的唯一下一步与被阻断动作的原因；页面不再把规则拒绝的动作渲染成可执行实验。
+- ROI 未达标不再直接等价于降低出价。生产样例的全域支付 ROI `44.59` 低于目标 `60` 会确认 `DELIVERY_ROI`，但因缺少定位出价/定向/承接/商品结构的因果证据，降低出价保持阻断。历史运行保持不可变，只读复核展示。
+- 新运行必须使用完整 v2 实验契约；人工调整只能改变一个变量并关联唯一同类型动作，观察实验不得暗含调整，完成条件与风险止损条件分离。无目标、历史或基准时拒绝比较性措辞；复盘填写同口径前后数值而非 JSON，人工执行未复盘时在诊断主区优先提示。
+- 修复一个最终验证发现的并发限流缺陷：限流原先在幂等/复用前计数，导致相同证据复用被 429 拒绝。现在仅在服务端事务内确认创建新运行时计数；API 闭环回归恢复通过。
+- 已实际通过：定向诊断 18 项、API 31 文件/160 项、Web 49 项、全仓 526 项测试、lint、typecheck、build、Prisma validate/generate、version check、diff check、24/24 合成评测。Docker 候选 4304/3301 通过后已切换本机 API/Worker `pxxis-local-ai-validation:decision-experiment-transaction-v14-20260902` 与 Web `pxxis-prelaunch-20260713-web:decision-experiment-view-v14-20260901`；4300 `/ready`、`/version` 与 3300 登录页为 200，活动诊断为 0。上一套 v13 API/Worker 与 v14 Web 容器停止保留回退。
+- 没有自动模型调用、改写历史记录、创建或执行建议、迁移、`db push`、平台操作、commit、push 或生产部署。候选容器已无挂载清理。下一步只剩用户在真实、已确认数据下显式重跑一次，用页面实际结果验收单变量实验与服务端裁决一致性。
+
+## 2026-09-01 目标 ROI 数值字符串导致新运行仍判健康（本机已切换）
+
+- 用户新运行 `cmti43z490006se0104jnubtb` 使用 Prompt v19 并成功完成；投流 Skill 已输出“全域支付 ROI 44.59 低于目标 60”，最终假设也包含 `DELIVERY`，但核心标签和主文案仍是 `HEALTHY/缺少目标`。
+- 根因不是页面缓存或取错运行，而是正式 `DecisionRun.inputJson.metrics[0].value` 为字符串 `"60"`。模型能理解，确定性 `metric()` 仅接受 number，导致 `targetRoi=null`、`delivery.weak=false`。现在安全解析非空有限数值字符串，并优先读取 `LOCAL_PROMOTION_DASHBOARD` 的投放指标，错误路线同名值不能覆盖。
+- 已增加历史结果读取复核：持久化原结果不改写；若成功 AI 结果与重新计算的确定性标签冲突，DTO 返回服务端复核结论。Web 主卡显示 44.59 < 60 和“优先检查投放产出”，隐藏实验/反馈并暂停所有候选动作；审批、观察和标记执行接口也失败关闭，仍允许人工拒绝旧建议。
+- 全仓 lint、typecheck、522 项测试、build、Prisma validate/generate、version check、diff check 与 24/24 评测通过。API/Worker 已切换 `diagnosis-target-normalization-v12-20260901`，Web 已切换 `diagnosis-review-view-v13-20260901`，加载 Prompt v20 / Orchestration v26 / SkillSet v8；3300/4300 为 200，Worker 运行，切换前后活动诊断为 0。
+- 没有自动重跑模型、改写 `DecisionRun`、删除建议、修改 Schema、migration、平台操作、commit、push 或生产部署。刷新页面即可看到现有运行的服务端复核结果，不需再次付费重跑。
+
+## 2026-09-01 直播间 Skill 跨领域输出改为确定性投影（本机已切换，待重跑）
+
+- 用户最新重跑 `cmthewh1i0005mi0748luk3jh`：数据审计成功，流量 Skill 因证据不足正常拒答；直播间承接 Skill 首次及唯一修复均输出了非 `LIVE_ROOM` 假设，被 `DIAGNOSIS_DOMAIN_CONFLICT` 安全拦截，运行失败且零建议。
+- 根因是直播 Skill 除直播证据外仍收到任务目标 ROI，且领域边界完全依赖模型二次自纠。现在仅投流 Skill 接收 `targetRoi`；领域系统提示明确固定唯一维度；结构、证据引用通过后，服务端删除越界假设及其关联实验/动作，不调用额外修复请求，也不把其他领域内容带入综合结果。
+- 非领域类风险没有放宽：无效 evidence ID、输入未提供的派生计算、无依据行业阈值和最终确定性冲突仍按原规则进行一次受限修复，之后失败关闭。新增回归确认跨领域分支被删除且直播 Skill 只调用一次，投流 Skill 仍独占目标 ROI。
+- 全仓 lint、typecheck、521 项测试、build、Prisma validate/generate、version check、diff check 与 24/24 合成评测通过。API/Worker 已切换 `diagnosis-domain-projection-v11-20260901`，Web 已切换 `diagnosis-domain-view-v12-20260901`，运行加载 Prompt v19 / Orchestration v25 / SkillSet v8；3300/4300 为 200，Worker 运行，切换前后活动诊断均为 0。
+- 最新数据库记录仍是上述历史失败，没有自动重跑 DeepSeek、创建建议、改写历史数据、修改 Schema、执行 migration、平台操作、commit、push 或生产部署。下一步仍由用户显式点击重跑完成真实模型验收。
+
+## 2026-08-31 “无法判断流失”被误判为肯定异常（本机已切换，待重跑）
+
+- 用户重跑产生 `cmthc4cx40003nz07p8vwg54k`：数据审计与全部领域 Skill 成功，投流 Skill 已正确输出全域支付 ROI 44.59 低于目标 60；最终综合在一次修复后被 `DIAGNOSIS_DETERMINISTIC_CONFLICT` 拒绝，运行失败且零建议。
+- 根因不是跨路线结论仍存在，而是旧正则把“缺少前置数据，无法判断是否存在流失”中的“存在流失”误识别为肯定结论。现在先识别“无法/不能判断、尚无证据”等否定和不确定语义，只对肯定的流失、转化偏低或承接异常执行硬拦截。
+- 现场 Skill 输出还暴露两项次生问题：直播承接 Skill 漏接已采到的在线人数、观看时长、成交人数和商品转化率，并越界输出投流缺口、自行用成交金额/订单估算客单价。SkillSet v7 已补入四项直播指标；领域输出只能使用自己的维度，自行派生计算会进入一次定向修复。
+- Web 将历史确定性冲突显示为业务化安全停止说明，不再直接展示整段内部键和错误；Prompt/Orchestration 升至 v18/v24。全仓 lint、typecheck、521 项测试、build、Prisma validate/generate、24/24 评测及正式 3300/4300 健康检查通过。
+- API/Worker 已切换 `diagnosis-boundary-fix-v10-20260831`，Web 已切换 `diagnosis-error-view-v11-20260831`；活动运行为 0。没有改写历史运行、自动重跑模型、创建建议、修改 Schema、执行 migration、平台操作、commit、push 或生产部署。
+
+## 2026-08-31 成功诊断结论与已知证据矛盾修复（本机已切换，待用户重跑）
+
+- 只读核对最新成功运行 `cmth7ayfp0006po07bkw9xu2j`：正式输入同时包含任务目标 ROI 60 与本地推全域支付 ROI 44.59，旧结果却输出“当前未发现明确异常”“缺少目标 ROI/支付金额，无法计算实际 ROI”，并把不同路线/统计范围的观看、点击和订单原始值拼成递减漏斗。图 2 因此不是可信结论。
+- 根因有三处：投流 Skill 没有接收 `full_domain_pay_roi`；领域 Skill 只按指标键筛选而没有按适用路线筛选；服务端虽计算确定性信号，核心标签仍交给模型自由选择。现已让证据目录按路线隔离，投流 Skill 直接比较同口径实际 ROI 与目标，并由服务端确定性规则固定 `mainProblemTag`。最终综合若声称已知目标/支付仍缺失，或在无确定性弱信号时输出跨路线漏斗流失，会以 `DIAGNOSIS_DETERMINISTIC_CONFLICT` 进入一次定向修复，仍不合规则整轮失败且零建议。
+- Web 已移除“AI 诊断尚未就绪”黄色提示块，但没有放宽生成/重跑按钮的可信数据门禁。Prompt/Orchestration/SkillSet 升至 v17/v23/v6，新增路线隔离、确定性标签和矛盾结果回归。
+- 全仓 lint、typecheck、517 项测试、build、Prisma validate/generate、24/24 合成评测、镜像静态检查与正式 3300/4300 健康检查通过。API/Worker 运行 `diagnosis-trust-v9-20260831`，Web 运行 `diagnosis-trust-view-v10-20260831`；切换前后活动诊断均为 0。
+- 历史成功结果、两条既有建议和业务数据均未改写；没有自动调用 DeepSeek、发起重跑、审批或执行建议，也没有 Schema、migration、`db push`、commit、push 或生产部署。用户确认当前可信数据后需显式重跑，才能验收新结论是否按 44.59 < 60 优先识别投流产出问题。
+
+## 2026-08-31 AI 结构修复原因丢失修复（本机已切换，待用户重跑）
+
+- 只读核对确认用户截图对应运行 `cmth2suql000ds4078mc01ms7`：数据审计与流量 Skill 成功，直播间承接 Skill 在一次修复后以 `DIAGNOSIS_OUTPUT_INVALID` 失败，动作建议为 0。失败输出顶层键完整，问题不是 JSON 包装层或采集数据缺失。
+- 根因是 `completeJsonWithRepair` 只展开 Zod `issues`；证据白名单和业务语言门禁抛出的安全 `DIAGNOSIS_*` 自定义异常被压成“输出未通过结构校验”，第二次模型请求看不到具体应修内容。现在仅对带 `DIAGNOSIS_*` 码的异常传递限长的安全码与消息；未知异常仍保持泛化失败。Skill 事件同时保留 `LlmTransportError` 的原始安全错误码，不再降级为 `DIAGNOSIS_SKILL_FAILED`。
+- 新增 LLM 与诊断编排回归，确认行业阈值违规和非法 evidence ID 的具体原因会进入唯一一次修复请求，二次仍失败时 Skill 记录为 `DIAGNOSIS_OUTPUT_INVALID`。全仓 lint、typecheck、515 项测试、build、Prisma validate/generate、version check 与 diff check 通过。
+- API/Worker 已切换为 `pxxis-local-ai-validation:diagnosis-repair-detail-v8-20260831`；候选 4304 与正式 4300 `/ready`、`/version`、3300 首页均为 200，Worker 运行，切换前后活动诊断为 0。旧 `target-roi-v7-20260830` API/Worker 已停止保留为回退。
+- 没有改写历史运行、自动重跑 DeepSeek、创建建议、执行平台操作、修改 Schema、migration、`db push`、commit、push 或生产部署。下一步只能由用户在页面显式点击“重新运行 AI 诊断”完成真实模型验收。
+
+## 2026-08-31 经营数据大屏目标 ROI（本机已验收）
+
+- 经营数据总览标题栏中央新增“本次目标 ROI”输入。停止输入约 0.7 秒后自动保存，值可清除；服务端仅接受大于 0 且不超过 10000 的有限数字。目标保存不再需要单独按钮，生成诊断会先完成尚未落库的目标保存，并处理快速修改或清空时的并发请求；同一草稿已有在途保存时只等待该结果，不重复发送写入，失败则阻止生成诊断。
+- 目标 ROI 的视觉已改为深色半透明横向信息条，和经营总览头部保持同一颜色、圆角和阴影层级；说明左置、数值右置，白底输入框与大段说明文字不再抢占视觉焦点。自动保存状态仍完整可见。
+- 目标以任务级可信 `MANUAL_INPUT` 保存到既有 `ReviewedMetric`，不新增 Prisma Schema、不伪装成插件采集数据、不混入标准指标校准清单。保存写审计，并使用登录用户、任务归属、串行事务和活动 `DecisionRun` 门禁；诊断处于 `PENDING` 或 `RUNNING` 时拒绝修改。
+- 创建诊断时目标同时进入 `DecisionRun.inputJson.targetRoi` 和合法 `target_roi` 证据目录，目标变更会改变证据指纹。确定性 AI 信号改为优先将全域支付 ROI 与该目标对标，普通支付 ROI 只在全域口径缺失时回退使用。
+- 已通过 lint、typecheck、全仓 514 项测试（API 153、Web 47）、build、Prisma generate/validate 与 24 例合成诊断评测；API/Worker 为 `target-roi-v7-20260830`，Web 已在候选 3301 健康检查后切换至 `target-roi-view-v9-20260831`，3300/4300 为 200、活动运行数为 0。没有调用模型、创建建议、执行平台操作、migration、commit、push 或生产部署。
+
+## 2026-08-30 决策缺口去重与历史结果降噪（本机）
+
+- 用户现场指出“同直播类型、同时段、同口径”的历史观看与点击缺口重复且无必要。Prompt 升至 v16：历史趋势只允许作为一个决策缺口，不得按观看、点击、成交逐项重复，也不得要求“同直播类型”；最终 `missingEvidence` 上限收紧为 3 条。
+- Web 新增展示归并：旧诊断中的同类历史缺口统一为“缺少近期历史趋势，暂不能判断当前表现是在改善还是回落”；旧 v15 的冗长实验区不再展示，动作说明中的 `route:`/`metric:` 证据后缀从业务文案移除，原证据仍保留在折叠审计层与持久化结果中。
+- 新增 3 项展示回归；全仓 lint、typecheck、512 项测试、build、Prisma validate/generate 通过。API/Worker 切换至 `diagnosis-boundary-v6-20260830`，Web 最终切换至 `diagnosis-boundary-view-v6-1-20260830`，3300/4300 为 200，活动诊断为 0。
+- 真实 Chrome 登录态刷新验收：缺口区只显示 3 条，“同直播类型”计数 0，旧实验标题计数 0，业务主区原始证据编号计数 0。未改数据库、未调用模型、未创建建议、未执行平台操作、migration、commit、push 或生产部署。
+
+## 2026-08-30 诊断结果经营化收口与阈值治理（本机）
+
+- 用户指出成功诊断把内部分析过程、英文指标键、证据 ID、规则候选和大量技术信息平铺给业务人员，并把模型经验中的点击率、转化率、GPM 等数字当成通用健康阈值。经复核参考 PPT 与巨量引擎官方经营资料，确定“好商品、优质内容/直播承接、广告放大、阶段匹配”只能作为组织诊断的经营框架，案例数字和行业经验不得脱离当前目标、同口径历史或明确基准直接裁决。
+- Prompt 升至 `managed-live-growth-prompt-v15`，SkillSet 升至 `managed-live-growth-skills-v5`。领域与综合输出限制为少量事实、判断、缺口、验证动作和待审批动作；禁止展示思维过程、内部字段名、Skill/route/evidence ID，禁止跨统计范围计算比率或在缺少明确基准时声称“行业平均、健康水平、通常应达到”。违反业务化语言约束会进入既有一次结构修复，仍不合法则运行失败且不创建建议。
+- 确定性信号不再强制要求当前两条路线没有采集的 `impressions/ctr/pay_roi/target_roi`，识别现有 `full_domain_pay_roi`，并移除 3 万观看、1% 点击率、0.5% 转化率、GPM 150、商品 1%/4%、消耗 5000 等任意阈值。只有零值断链或实际 ROI 低于任务明确目标等硬证据才进入异常；其余标为“当前未发现明确异常”或“判断条件不足”。
+- Web 主视图重排为“本轮经营判断 → 已经说明什么 → 今天先做什么 → 作决定前还缺什么 → 怎么验证”；Skill、规则裁决、证据目录和反馈折叠到“查看诊断依据与安全裁决”。第一阶段关闭的案例库不再在主界面提供人工纳入/排除按钮；旧 Prompt v14 的实验阈值不再展示。
+- 全仓 lint、typecheck、test（509 项）、build、Prisma validate/generate 和 24 例脚本化评测通过。本机 API/Worker 已切换到 `diagnosis-business-v5-20260830`，Web 已切换到 `diagnosis-business-view-v5-20260830`；3300/4300 健康，切换前活动运行数为 0，未自动调用模型或创建动作建议。
+- 当前 Chrome 会话已过期，任务页只显示“需要重新登录”。用户恢复登录后仍需完成最后一次真实页面目检；不得把未登录的 HTTP 200 或静态构建检查写成业务页面已验收。未执行 migration、`db push`、生产部署、平台操作、commit 或 push。
+
+## 2026-08-30 成功诊断结果页崩溃修复与容器清理（本机）
+
+- Flash 重试运行 `cmtfdq0vq0002s4016xxdiab0` 实际为 `SUCCEEDED`：固定审计及 4 个领域 Skill 均成功，创建 5 条 `PENDING_APPROVAL` 建议。Chrome 的“页面无法加载”不是网络或模型失败，而是结果页 `EvidenceLinks` 对规则裁决中的截断字符串调用 `.map()`。
+- 根因是最终结果同时包含模型候选和规则裁决候选，两者浅拷贝后共享同一个 `evidenceIds` 数组；持久化安全清洗为防循环引用，把第二处共享引用写成 `[TRUNCATED]`。规则引擎现在深拷贝候选证据数组；Web 对历史结果优先回取顶层已校验候选的证据数组，并对非数组输入失败关闭为空列表。
+- 全仓 lint、typecheck、test（506 项）、build、Prisma validate/generate、version check、diff check 和 24 例合成评测通过。本机 API/Worker 已切换到 `persisted-evidence-v25-20260830`，Web 已切换到 `diagnosis-result-v4-20260830`；3300/4300 为 200，Chrome 两个原报错标签页均显示完整结果和 5 条建议。
+- 按用户授权删除 18 个已停止且无挂载的本项目候选/旧回滚容器；未删除镜像、数据卷、数据库或其他项目容器。当前仅保留运行中的 Web/API/Worker/PostgreSQL，以及 v24 API/Worker、v3 Web 三个最近回滚容器。
+- 未改写既有诊断、未自动审批或执行建议，未执行 migration、`db push`、平台操作、commit、push 或生产部署。
+
+## 2026-08-30 Flash 首次真实运行证据 ID 修复（本机）
+
+- 用户触发的运行 `cmtfd0xzs000eq8019bdvy189` 已真实进入 DeepSeek Flash 领域 Skill。数据审计与流量 Skill 成功，直播间转化 Skill 因模型把合法 ID `metric:orders:LOCAL_PROMOTION_DASHBOARD:2` 拼错为 `metric:orders:LOCAL_POMOTION_DASHBOARD:2` 被服务端拒绝；运行保持 `FAILED`，动作建议为 0。该失败证明证据白名单门禁有效，不是采集、密钥、余额或模型可用性问题。
+- Prompt v14 现在把当前合法证据 ID 清单显式传给领域 Skill；领域输出、核心裁决和最终综合的合法 ID 校验均进入既有“一次结构化修复”范围。修复提示只允许逐字复制清单中的 ID；一次修复后仍非法则继续失败关闭，绝不自动猜测或创建建议。
+- 失败卡片会读取首个失败 Skill，显示“具体原因”；历史的泛化 `AI_DIAGNOSIS_FAILED` 运行无需改写数据库，也能解释为非法证据引用被安全拦截。
+- 已通过全仓 lint、typecheck、test（505 项，其中 API 150 项）、build、Prisma validate/generate、version check、diff check，以及 24/24 合成评测（虚构证据 0、安全违规 0）。本机 API/Worker 已切换到 `pxxis-local-ai-validation:evidence-repair-v24-20260830`，Web 已切换到 `diagnosis-error-detail-v3-20260830`；3300、4300 ready/version 均为 200，队列为空。
+- 未修改 Schema、未执行 migration、`db push`、平台操作、提交、推送或生产部署；没有自动重跑付费真实诊断。下一步由用户在页面显式点击“重新运行 AI 诊断”，再核对新运行的 Skill、证据和建议。
+
+## 2026-08-30 DeepSeek Flash 默认模型切换（本机）
+
+- 源码默认模型、`.env.example` 与本机未跟踪 `.env` 的 `DEEPSEEK_MODEL` 均改为 `deepseek-v4-flash`；LLM 回归新增默认模型断言。Docker Compose 的 API 与 Worker 均显式接收同一组服务端 AI 配置，避免 API 的入队预检与 Worker 配置分离。
+- 已构建并切换本机 API/Worker 镜像 `pxxis-local-ai-validation:flash-v23-20260830`。4300 `/ready`、`/version` 为 200，两个运行容器的实际模型值均为 `deepseek-v4-flash`；切换前确认 `PENDING/RUNNING=0`。
+- 用运行 API 容器的现有服务端凭据做无生成 `GET /models` 校验：HTTP 200 且 Flash 模型存在；没有输出密钥、发送提示词、创建 `DecisionRun` 或动作建议。旧 v22 API/Worker 及 4303 候选容器已停止保留为本机回滚/排查副本。
+- 全仓 lint、typecheck、test（502 项）、build、Prisma validate/generate 均实际通过；未执行 migration、`db push`、数据清理、平台操作、commit、push 或生产部署。
+
+## 2026-08-30 DecisionRun 入队版本留痕修复（本机切换）
+
+- 进一步审查发现：创建 `DecisionRun` 时已写入 `skillSetVersion=v4`，但 `strategyVersion` 仍是历史常量 v1；只有成功完成后才会被 Worker 改为 v4，造成失败运行的审计元数据不一致。
+- 已将入队记录改为从 `diagnosisSkillSetVersion` 取值，并在 API 并发/幂等创建回归中断言两个版本字段均为 `managed-live-growth-skills-v4`。隔离 API 测试为 30 文件 / 147 项通过；全仓 lint、typecheck、test（502 项）与 build 均通过。
+- 本机 API 与 Worker 已切换到 `pxxis-local-ai-validation:fixed-skill-plan-v22-20260830`；4300 ready/version 为 200，运行镜像内静态核验 `queued-run-version-is-v4=true`，Worker 为 v4。旧 v21 容器停止保留为本机回退；没有处理队列、migration、`db push`、数据清理、平台操作、commit、push 或生产部署。
+- 使用本机运行容器做了无生成的 DeepSeek `GET /models` 校验：接口返回 200，配置模型 `deepseek-v4-pro` 在列表中；没有输出密钥、发送提示词或创建诊断运行。
+
+## 2026-08-30 双路线实时 AI 诊断误拒绝修复与本机切换
+
+- 用户点击校准大屏的“确认可信数据并生成诊断”后，三次运行均在 `audit_data_readiness` 失败，错误为 `DECISION_NOT_READY / 诊断输入不是已放行的正式证据层`。只读核验确认每次输入都同时包含直播与本地推实时证据，但本地推因确定性优先级排在 `realtimeEvidence` 首位。
+- 根因位于 `isFormalDiagnosisEvidenceLayer`：它只接受单条 `LIVE_DATA_SCREEN` 证据，而入口、Worker 与实时证据构建器已经支持两条路线。现改为检查 `realtimeEvidenceItems` 中每条路线、页面和受控内部 API 来源；本地推优先的双路线输入现能通过审计并按固定 Skill 计划执行。SkillSet 升至 `managed-live-growth-skills-v4`。
+- 新增包级回归和 API 端到端回归：同一任务无快照、同时收到直播和本地推实时脉冲时，正式运行可完成；隔离 API 测试为 30 文件 / 146 项通过。全仓 `lint`、`typecheck`、`test`（501 项）、`build`、Prisma `validate`/`generate` 与脚本化 24 例评测均实际通过（24/24 结构、24/24 核心、虚构证据 0、安全违规 0）。
+- 已构建并切换本机 API 与 Worker 镜像 `pxxis-local-ai-validation:fixed-skill-plan-v21-20260829`；4300 `/ready`、`/version` 均为 200，容器内实际加载 SkillSet v4。旧 v20 API 和 Worker 均停止保留为本机回退；4301 候选也已停止保留。没有 migration、`db push`、数据清理、平台操作、提交、推送或生产部署。
+- 对用户失败运行的只读复核显示：新版正式证据层判断为 `true`、实时证据数为 2。原始脉冲已超过时效，不能重跑；用户下一步应重新手动启动两条路线采集，再在校准大屏点击诊断。三条历史失败运行保留，关联 `ActionProposal=0`。
+
+## 2026-08-30 实时脉冲入口失败关闭（源码完成，未切换本机 API）
+
+- 修复实时趋势基线跨路线比较：同一任务内直播与本地推脉冲只与同 `routeKey` 的历史帧比较；未配置在任务中的路线会在写入前拒绝。
+- `/metric-pulses` 现仅接受已配对 Extension 的 `LIVE_DATA_SCREEN` 与 `LOCAL_PROMOTION_DASHBOARD`。网页会话、非实时路线和直播纯 DOM 脉冲均失败关闭；直播必须具备可按共享契约复核的内部 API 指标，本地推延续既有严格 API 校验。正式 `/snapshots` 的 DOM/人工复核兼容能力未改。
+- 实测通过：`realtime-signals` 与直播 API 校验器 24 项定向回归，API typecheck，仓库隔离 PostgreSQL API 测试 30 文件/147 项；随后全仓 lint、typecheck、test（502 项）、build、Prisma validate/generate、version:check 与 `git diff --check` 均通过。直接运行 Vitest 时因 shell 未设置 `DATABASE_URL` 被 Prisma 前置条件阻断；改用仓库 `apps/api/scripts/test.mjs` 后测试容器自动创建、清理并通过；`prisma validate` 另以隔离测试 URL 重跑通过。
+- 未执行 migration、`db push`、业务数据写入、容器重建或切换、平台操作、提交、推送或部署。本机 4300 尚未包含本节新增入口门禁；下一位执行者须先完成全仓验证，再经用户授权构建/切换本机 API 后进行真实 Chrome 双路线验收。
+
+## 2026-08-29 本机 AI 运行态准备（未执行真实诊断）
+
+- 从当前工作树构建本机镜像 `pxxis-local-ai-validation:fixed-skill-plan-v20-20260829`；候选 API 先在 4301 通过数据库、版本和 AI 配置预检，再接管 4300。当前 `/version` 返回 `local-ai-v20-20260829`，3300 Web、4300 API 和 PostgreSQL 均为 HTTP 200/ready。
+- 当前源码 Worker `pxxis-local-ai-validation-worker` 已接入同一 `pxxis-prelaunch-20260713_backend` 网络并保持运行；配置预检为 `CONFIG_OK`。密钥没有读取、输出、写入源码、数据库或文档。
+- 旧 API 已停止保留为 `pxxis-prelaunch-20260713-api-1-rollback-ai-v20-20260829`；Web、PostgreSQL、数据卷、Schema、迁移和平台状态均未修改。候选 4301 容器已清理。
+- 启动前后均只读确认 AI 队列为空；未创建 `DecisionRun`、`ActionProposal` 或 `ActionOutcome`，未调用 DeepSeek。当前库中唯一全量复核任务采集于 2026-07-28、已过期；当前活跃任务没有正式快照。下一步只能由用户在平台页面手动采集和人工复核新鲜证据，再在任务页显式创建一次诊断。
+
+## 2026-08-29 AI 诊断固定调度第一阶段（源码完成）
+
+- `packages/diagnosis-skills/src/index.ts` 提供固定计划并将 SkillSet 标记为 v4；计划在正式证据层通过时以当前 `FRESH/AGING` 已放行路线与注册表顺序选择领域，固定 `audit_data_readiness` 第一、`retrievalEnabled=false`。双路线实时输入会校验每条证据的路线、页面和内部 API 来源，不再把本地推优先输入误判为非正式证据层。
+- `apps/api/src/ai-diagnosis/orchestrator.ts` 现接收并校验服务端计划，串行执行审计与领域 Skill；已移除正式链路中的模型规划、补漏 Tool Calls 和案例检索。保留领域 Skill 的结构化模型分析、一次修复、核心裁决、最终综合、合法 evidence ID 校验及规则裁决。
+- `apps/api/src/ai-diagnosis/config.ts`、路由和 Worker 在显式开关打开且密钥缺失时提前失败；无配置时不创建或领取运行。超时、限流、结构错误的回归均确认 `DecisionRun=FAILED` 且零 `ActionProposal`。
+- 已实际通过根目录 lint、typecheck、test（499 项）、build、Prisma validate/generate；脚本化 24 例评测为 24/24、24/24、0、0。未执行真实 AI、Worker、migration、部署、commit、push 或平台操作。
+- 下一位执行者不得将本次源码验证当作运行态或真实 AI 验收：当前 `.env` 仍无密钥且 AI 开关关闭。真实步骤仅限用户在本机显式配置密钥/开关、选择当前可信且人工复核任务、核对 Skill 记录后人工审批与手动执行；暂不人工纳入案例库。
+
+## 2026-08-29 当前事实单一来源建立
+
+- 新增 `docs/NOW.md`，将“当前已核实事实、最高优先级、未完成阻塞、验收证据要求”从三份追加式历史文档中抽离。
+- 当前明确：`v0.2.5` 已发布但本机工作树有未提交 API 补丁；该补丁处理实时趋势跨路线基线与未配置路线接收问题，尚未验证、提交或确认进入运行态。
+- 本机运行态已只读核验：Web/API/PostgreSQL healthy，3300 首页、4300 `/ready` 与 `/version` 为 HTTP 200；运行 API 标识为 `0.2.5 / 4ffdf9d3a639`，因此不能把工作树补丁当作已部署。
+- 后续交接必须先更新 NOW，再追加完整经过到本文件、`PROJECT_STATE.md` 和 `CURRENT_TASK.md`；源码构建或发布记录不得替代运行态/真实 Chrome 验收。
+
 ## 2026-08-28 v0.2.5 Git/GitHub 发布（完成）
 
 - 已将实时采集、经营大屏、本地推受限内部 API、扩展状态隔离与对应回归测试提交到源码基线 `4ddacd590d55`；版本一致性为 `0.2.5`。
@@ -1302,3 +1450,24 @@ AI 智能投流诊断与决策闭环系统面向巨量本地推 / 本地生活 /
 - 用户明确允许后，已构建 `pxxis-prelaunch-20260713-api:local-promotion-contract-v2-20260828`，先在临时 4301 候选容器验证 `/ready`、数据库连接及共享契约，再切换 4300。
 - 当前正式 API healthy，`/ready` database ready，运行契约与插件一致；直播 7 项脉冲在切换后继续被接受。旧 API 已停止保留为 `pxxis-prelaunch-20260713-api-1-before-contract-v2-20260828`，临时候选容器已删除。
 - 未改 Web、PostgreSQL、数据卷、迁移或业务数据。用户关闭并重开 Popup 后即可重新启动本地推持续采集；真实全域 5 项仍需在平台页与任务大屏完成同一时刻验收。
+
+## 2026-08-29 校准大屏内联诊断与向导收敛（本机已切换）
+
+- 根因已确认：校准大屏的“确认可信数据并生成诊断”成功后硬编码跳转到 `/tasks/:id#diagnosis`，故用户被送回旧任务向导，而非留在经营数据大屏。
+- 当前按钮会在本页完成确认、预检和正式诊断创建；保守诊断、运行中 Skill 状态、失败详情和完成后的结论/建议均显示在页面下方的 `#diagnosis` 区域，并自动平滑滚动至该区域。不会自动执行任何平台操作或动作建议。
+- 任务向导移除独立“人工核对”卡和步骤，保留连接插件、采集页面、数据汇总、诊断建议四步；数据确认仍只能在校准大屏完成，并继续受服务端证据与复核门禁约束。
+- 提取 `DiagnosisBusinessSummary` 供任务页与校准大屏复用，避免两处展示结论、风险和建议时分叉。
+- 实际验证：根目录 `corepack pnpm lint`、`typecheck`、`test`（501 项）和 `build` 均通过；候选 Web 在 3301 HTTP 200 后已切换 3300，正式 Web 镜像为 `pxxis-prelaunch-20260713-web:diagnosis-inline-v2-20260829`，首页 HTTP 200。候选容器已删除，旧 Web 保留为 `pxxis-prelaunch-20260713-web-1-rollback-inline-diagnosis-v1-20260829`；更早的第一版回退副本也仍停止保留。
+- 未执行真实 AI、数据库写入、迁移、生产部署、提交、推送或平台操作。仍需用户在已登录且拥有真实新鲜数据时完成一次页面级验收；当前浏览器会话不可用于代替该验收。
+
+## 2026-08-31 本机 Docker 历史容器清理
+
+- 按用户要求清理本项目多余容器。先逐个确认候选均为已退出、无数据卷或宿主机挂载的历史 Web/API/Worker 回退副本，再删除其中 10 个较早版本。
+- 保留运行中的 Web `target-roi-view-v7-20260830`、API/Worker `target-roi-v7-20260830`、PostgreSQL，以及紧邻当前版本的一整套 `diagnosis-boundary-v6` 回退容器；未删除镜像、Docker 数据卷、数据库、业务数据或其他项目容器。
+- 清理后实际核验：3300 Web、4300 `/ready` 与 `/version` 均返回 HTTP 200；Web、API、PostgreSQL 均为 Docker healthy，Worker 保持运行。未重建服务、未运行迁移、未修改配置、未执行平台操作、commit、push 或生产部署。
+
+### 2026-08-31 候选与过旧回退容器补充清理
+
+- 按用户要求删除本轮验证遗留的两个候选容器（Web 3301、API 4304）及 7 个更旧的 Web/API/Worker 回退容器；全部均已退出且无数据卷或宿主机挂载。
+- 最近一套完整 Web/API/Worker 回退容器、运行服务、PostgreSQL、镜像、数据卷和其他项目容器均保留。
+- 删除后实际确认 3300 Web、4300 `/ready`、4300 `/version` 均返回 HTTP 200。

@@ -3,8 +3,13 @@ import { diagnosisSkillSetVersion } from "@douyin-local-life/diagnosis-skills";
 import { DEFAULT_DEEPSEEK_MODEL } from "@douyin-local-life/llm";
 import { diagnosisFeedbackInputSchema, diagnosisCaseStatusInputSchema } from "@douyin-local-life/shared/diagnosis";
 import { writeAuditLog } from "../audit.js";
-import { aiDiagnosisEnabled } from "../ai-diagnosis/config.js";
-import { diagnosisOrchestrationVersion, diagnosisPromptVersion } from "../ai-diagnosis/orchestrator.js";
+import { aiDiagnosisConfigurationIssue, aiDiagnosisEnabled } from "../ai-diagnosis/config.js";
+import {
+  buildDecisionRunDeterministicReview,
+  diagnosisOrchestrationVersion,
+  diagnosisPromptVersion
+} from "../ai-diagnosis/orchestrator.js";
+import { buildDiagnosisDecisionView } from "../ai-diagnosis/decision-view.js";
 import { decisionEngineInputSchema } from "@douyin-local-life/shared";
 import { buildDecisionInput } from "../decision.js";
 import { decisionEvidenceFingerprint } from "../decision-evidence.js";
@@ -26,6 +31,8 @@ export function createDecisionRunRouter() {
 
   const createRun = async (req: Request, res: Response) => {
     if (!aiDiagnosisEnabled()) return sendError(res, 503, "AI_DIAGNOSIS_DISABLED", "AI 诊断尚未完成验收，当前功能未开启");
+    const configurationIssue = aiDiagnosisConfigurationIssue();
+    if (configurationIssue) return sendError(res, 503, configurationIssue.code, configurationIssue.message);
     const task = await getOwnedTask(currentUser(req).id, req.params.id || "");
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
     const idempotency = readIdempotencyKey(req);
@@ -41,11 +48,6 @@ export function createDecisionRunRouter() {
     if (active) {
       res.setHeader("Diagnosis-Already-Running", "true");
       return sendSuccess(res, toDecisionRunDTO(active), 202);
-    }
-    const limit = await checkDecisionRateLimit(task.id);
-    if (!limit.allowed) {
-      res.setHeader("Retry-After", String(limit.retryAfterSeconds));
-      return sendError(res, 429, "RATE_LIMITED", "AI 诊断运行过于频繁，请稍后再试");
     }
     const realtimeFrames = latestRealtimeMetricFrames(task.id);
     if (!task.snapshots[0] && !realtimeFrames.length) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
@@ -66,10 +68,7 @@ export function createDecisionRunRouter() {
     const refreshedRealtimeFrames = latestRealtimeMetricFrames(task.id);
     if (!refreshed?.snapshots[0] && !refreshedRealtimeFrames.length) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
     const refreshedTask = refreshed as NonNullable<typeof refreshed>;
-    const decisionInput = buildDecisionInput({
-      ...refreshedTask,
-      reviewedMetrics: initialized.metrics.length ? initialized.metrics : refreshedTask.reviewedMetrics
-    }, { realtimeFrames: refreshedRealtimeFrames });
+    const decisionInput = buildDecisionInput(refreshedTask, { realtimeFrames: refreshedRealtimeFrames });
     decisionEngineInputSchema.parse(decisionInput);
     const readiness = evaluateDecisionReadiness(refreshedTask, decisionInput);
     if (!readiness.ready) {
@@ -86,14 +85,30 @@ export function createDecisionRunRouter() {
             where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
             include: decisionRunInclude
           });
-          if (replay) return { run: replay, replayed: true };
+          if (replay) return { run: replay, replayed: true, unchangedEvidence: false };
         }
         const existingActive = await tx.decisionRun.findFirst({
           where: { collectionTaskId: task.id, mode: "AI_SKILL_ORCHESTRATED", status: { in: ["PENDING", "RUNNING"] } },
           include: decisionRunInclude,
           orderBy: { createdAt: "desc" }
         });
-        if (existingActive) return { run: existingActive, replayed: true };
+        if (existingActive) return { run: existingActive, replayed: true, unchangedEvidence: false };
+        const unchangedSuccessfulRun = await tx.decisionRun.findFirst({
+          where: {
+            collectionTaskId: task.id,
+            mode: "AI_SKILL_ORCHESTRATED",
+            status: "SUCCEEDED",
+            evidenceFingerprint,
+            promptVersion: diagnosisPromptVersion,
+            skillSetVersion: diagnosisSkillSetVersion,
+            orchestrationVersion: diagnosisOrchestrationVersion
+          },
+          include: decisionRunInclude,
+          orderBy: { createdAt: "desc" }
+        });
+        if (unchangedSuccessfulRun) return { run: unchangedSuccessfulRun, replayed: true, unchangedEvidence: true };
+        const limit = await checkDecisionRateLimit(task.id, tx);
+        if (!limit.allowed) return { rateLimited: true as const, retryAfterSeconds: limit.retryAfterSeconds };
         const run = await tx.decisionRun.create({
           data: {
             projectId: task.projectId,
@@ -108,7 +123,7 @@ export function createDecisionRunRouter() {
             orchestrationVersion: diagnosisOrchestrationVersion,
             engineVersion: "ai-skill-diagnosis-v1",
             evidenceFingerprint,
-            strategyVersion: "managed-live-growth-skills-v1",
+            strategyVersion: diagnosisSkillSetVersion,
             currentStage: "QUEUED",
             inputJson: toJson(decisionInput)
           },
@@ -120,8 +135,16 @@ export function createDecisionRunRouter() {
           taskId: task.id,
           detailJson: { decisionRunId: run.id, evidenceFingerprint }
         }, tx);
-        return { run, replayed: false };
+        return { run, replayed: false, unchangedEvidence: false };
       });
+      if (created.rateLimited) {
+        res.setHeader("Retry-After", String(created.retryAfterSeconds));
+        return sendError(res, 429, "RATE_LIMITED", "AI 诊断运行过于频繁，请稍后再试");
+      }
+      if (created.unchangedEvidence) {
+        res.setHeader("Diagnosis-Reused-Unchanged-Evidence", "true");
+        return sendSuccess(res, { ...toDecisionRunDTO(created.run), reuseReason: "UNCHANGED_EVIDENCE" }, 200);
+      }
       if (created.replayed) res.setHeader("Diagnosis-Already-Running", "true");
       return sendSuccess(res, toDecisionRunDTO(created.run), 202);
     } catch (error) {
@@ -242,7 +265,10 @@ export function createDecisionRunRouter() {
 }
 
 const decisionRunInclude = {
-  actionProposals: { orderBy: { createdAt: "asc" as const } },
+  actionProposals: {
+    orderBy: { createdAt: "asc" as const },
+    include: { outcomes: { select: { id: true } } }
+  },
   skillExecutions: { orderBy: { sequence: "asc" as const } },
   diagnosisCase: true,
   feedback: { orderBy: { updatedAt: "desc" as const }, take: 1 }
@@ -264,9 +290,16 @@ function findIdempotentRun(collectionTaskId: string, idempotencyKey: string) {
 }
 
 function toDecisionRunDTO(run: Awaited<ReturnType<typeof findActiveRun>> extends infer T ? NonNullable<T> : never) {
+  const deterministicReview = run.mode === "AI_SKILL_ORCHESTRATED" && run.status === "SUCCEEDED"
+    ? buildDecisionRunDeterministicReview(run.inputJson, run.finalResultJson)
+    : null;
   return {
     ...run,
     finalResult: run.finalResultJson,
+    deterministicReview,
+    decisionView: run.mode === "AI_SKILL_ORCHESTRATED" && run.status === "SUCCEEDED"
+      ? buildDiagnosisDecisionView(run.inputJson, run.finalResultJson, run.actionProposals)
+      : null,
     skillExecutions: run.skillExecutions.map((item) => ({
       id: item.id,
       skillId: item.skillId,

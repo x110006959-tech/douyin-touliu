@@ -5423,6 +5423,9 @@ ${input.visibleText || ""}`;
   }
 
   // ../../packages/shared/src/collection-dashboard.ts
+  var updateDecisionTargetsInputSchema = external_exports.object({
+    targetRoi: external_exports.number().finite().positive().max(1e4).nullable()
+  }).strict();
   var bulkTableCellReviewInputSchema = external_exports.object({
     snapshotId: external_exports.string().min(1),
     expectedSnapshotUpdatedAt: external_exports.string().datetime(),
@@ -5730,6 +5733,24 @@ ${input.visibleText || ""}`;
         path: ["customWindow"],
         message: "custom observationWindow requires customWindow"
       });
+    }
+    if (value.result !== "UNCLEAR") {
+      if (!value.beforeMetrics?.length || !value.afterMetrics?.length) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "\u660E\u786E\u590D\u76D8\u7ED3\u679C\u5FC5\u987B\u5305\u542B\u81F3\u5C11\u4E00\u9879\u6267\u884C\u524D\u540E\u540C\u53E3\u5F84\u6307\u6807"
+        });
+        return;
+      }
+      const beforeKeys = new Set(value.beforeMetrics.map((metric) => metric.metricKey));
+      if (!value.afterMetrics.some((metric) => beforeKeys.has(metric.metricKey))) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "\u6267\u884C\u524D\u540E\u6307\u6807\u5FC5\u987B\u81F3\u5C11\u6709\u4E00\u9879\u4F7F\u7528\u76F8\u540C metricKey"
+        });
+      }
     }
   });
   var subjectContextSchema = external_exports.object({
@@ -7239,7 +7260,7 @@ ${input.visibleText.slice(0, 5e4)}`;
         ok: true,
         ...collectPageContext(),
         tabState: document.visibilityState === "visible" ? "VISIBLE" : "HIDDEN",
-        buildFingerprint: "e078d8fdfcdf"
+        buildFingerprint: "f268e9840248"
       });
       return true;
     }

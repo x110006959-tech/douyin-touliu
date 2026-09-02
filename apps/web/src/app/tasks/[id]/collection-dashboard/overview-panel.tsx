@@ -13,6 +13,7 @@ type OverviewPanelProps = {
   realtimeStatus: RealtimeMetricStreamStatus;
   hasRealtimeFrame: boolean;
   action: ReactNode;
+  targetEditor: ReactNode;
   routeCoverageLabel: string;
   snapshotCount: number;
 };
@@ -23,6 +24,7 @@ export function OverviewPanel({
   realtimeStatus,
   hasRealtimeFrame,
   action,
+  targetEditor,
   routeCoverageLabel,
   snapshotCount
 }: OverviewPanelProps) {
@@ -50,7 +52,7 @@ export function OverviewPanel({
 
   return (
     <section className="mx-auto mt-4 max-w-[1680px] overflow-hidden rounded-2xl border border-indigo-300/20 bg-[radial-gradient(circle_at_12%_0%,rgba(70,89,227,0.22),transparent_31%),linear-gradient(145deg,#081833_0%,#0b1d42_50%,#102752_100%)] shadow-[0_24px_62px_rgba(2,6,23,0.42)]">
-      <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-5 text-white sm:px-6 lg:flex-row lg:items-start lg:justify-between">
+      <div className="grid gap-4 border-b border-white/10 px-4 py-5 text-white sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold tracking-tight">经营数据总览</h2>
@@ -62,7 +64,8 @@ export function OverviewPanel({
             直播现场与投放经营使用同一套信息层级；实时 API 约每 30 秒更新一次，关键数值、来源、统计范围与更新时间仍可追溯。
           </p>
         </div>
-        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
+        <div className="lg:justify-self-center">{targetEditor}</div>
+        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end lg:justify-self-end">
           <p className="text-xs text-slate-300">
             {latestUpdatedAt ? `最近更新 ${formatOverviewTime(latestUpdatedAt)}` : "等待首次数据"}
           </p>

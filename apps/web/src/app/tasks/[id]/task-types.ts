@@ -11,6 +11,7 @@ import type {
 } from "@douyin-local-life/shared";
 import type {
   DiagnosisEvidence,
+  DiagnosisExperiment,
   DiagnosisFinalResult,
   DiagnosisRuleAdjudication,
   DiagnosisSkillExecutionDTO,
@@ -70,6 +71,7 @@ export type DecisionRun = {
   strategyVersion: string;
   provider: string | null;
   model: string | null;
+  promptVersion: string | null;
   currentStage: string | null;
   errorCode: string | null;
   errorMessage: string | null;
@@ -79,6 +81,7 @@ export type DecisionRun = {
   diagnosisCase?: { id: string; status: "DRAFT" | "ELIGIBLE" | "EXCLUDED" } | null;
   feedback?: Array<{ mainProblemCorrect: boolean; usefulnessScore: number; correctionNote: string | null }>;
   createdAt: string;
+  reuseReason?: "UNCHANGED_EVIDENCE";
   actionProposals: Array<{
     id: string;
     actionType: ActionType;
@@ -89,6 +92,7 @@ export type DecisionRun = {
     status: ActionProposalStatus;
     requiresApproval: boolean;
     manualExecutedAt: string | null;
+    outcomes?: Array<{ id: string }>;
   }>;
   finalResultJson?: {
     businessAnalysis?: DecisionBusinessAnalysis;
@@ -105,6 +109,46 @@ export type DecisionRun = {
     evidenceCatalog?: DiagnosisEvidence[];
     ruleAdjudication?: DiagnosisRuleAdjudication & { lifecycleSuppressed?: unknown[] };
   }) | null;
+  deterministicReview?: {
+    status: "CONFLICT";
+    expectedMainProblemTag: DiagnosisFinalResult["mainProblemTag"];
+    conclusion: string;
+  } | null;
+  decisionView?: {
+    mainProblemTag: DiagnosisFinalResult["mainProblemTag"];
+    headline: string;
+    conclusion: string;
+    conclusionSource: "AI_EXPLANATION" | "SERVER_DETERMINISTIC" | "SERVER_REVIEW";
+    conclusionConfidence: number;
+    problemSeverity: "UNASSESSED";
+    problemSeverityReason: string;
+    actionRisk: RiskLevel | null;
+    targetComparison: {
+      metricLabel: "全域支付 ROI";
+      actual: number;
+      target: number;
+      absoluteGap: number;
+      achievementRate: number;
+      relativeShortfall: number;
+    } | null;
+    facts: DiagnosisFinalResult["factSnapshot"];
+    openQuestions: string[];
+    nextStep: {
+      kind: "APPROVAL" | "MANUAL_EXECUTION" | "OBSERVATION" | "OUTCOME_REVIEW" | "COMPLETED" | "COLLECT_EVIDENCE" | "NONE";
+      title: string;
+      reason: string;
+      proposalId: string | null;
+      actionType: ActionType | null;
+      status: ActionProposalStatus | null;
+    };
+    primaryExperiment: DiagnosisExperiment | null;
+    blockedActions: Array<{
+      actionType: ActionType;
+      title: string;
+      reason: string;
+      source: "POLICY" | "LIFECYCLE";
+    }>;
+  } | null;
 };
 
 export type DecisionPreview = {

@@ -156,7 +156,8 @@ function validationIssue(error: unknown, value: unknown) {
     : [];
   const rootSummary = `顶层键：${rootKeys.length ? rootKeys.join(",") : "<none>"}`;
   if (error && typeof error === "object" && !Array.isArray(error)) {
-    const issues = (error as { issues?: unknown }).issues;
+    const errorRecord = error as { code?: unknown; message?: unknown; issues?: unknown };
+    const issues = errorRecord.issues;
     if (Array.isArray(issues)) {
       const summary = issues.slice(0, 12).flatMap((issue): string[] => {
         if (!issue || typeof issue !== "object" || Array.isArray(issue)) return [];
@@ -166,6 +167,14 @@ function validationIssue(error: unknown, value: unknown) {
         return [`${path || "<root>"}: ${message}`];
       });
       if (summary.length) return `${rootSummary}；${summary.join("；")}`.slice(0, 1_500);
+    }
+    if (
+      typeof errorRecord.code === "string"
+      && errorRecord.code.startsWith("DIAGNOSIS_")
+      && typeof errorRecord.message === "string"
+      && errorRecord.message.trim()
+    ) {
+      return `${rootSummary}；${errorRecord.code}: ${errorRecord.message.trim()}`.slice(0, 1_500);
     }
   }
   return `${rootSummary}；输出未通过结构校验`;

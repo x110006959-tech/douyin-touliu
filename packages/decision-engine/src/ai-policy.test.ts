@@ -42,5 +42,19 @@ describe("AI candidate policy guard", () => {
       validEvidenceIds: new Set(["metric:roi"])
     });
     expect(result.acceptedProposals[0]).toMatchObject({ requiresApproval: true, status: "PENDING_APPROVAL" });
+    expect(result.adjudication.accepted[0]?.evidenceIds).toEqual(["metric:roi"]);
+    expect(result.adjudication.accepted[0]?.evidenceIds).not.toBe(candidate.evidenceIds);
+  });
+
+  it("isolates rejected candidates from the model result before persistence", () => {
+    const result = guardAiCandidateActionsWithPolicy({
+      policy: { policyVersion: "v1", dataQuality: { missingFields: [], completeness: 1, blocksStrongActions: false } },
+      candidates: [candidate],
+      validEvidenceIds: new Set()
+    });
+
+    expect(result.adjudication.rejected[0]?.candidate.evidenceIds).toEqual(["metric:roi"]);
+    expect(result.adjudication.rejected[0]?.candidate).not.toBe(candidate);
+    expect(result.adjudication.rejected[0]?.candidate.evidenceIds).not.toBe(candidate.evidenceIds);
   });
 });

@@ -1119,6 +1119,24 @@ export const createActionOutcomeInputSchema = z
         message: "custom observationWindow requires customWindow"
       });
     }
+    if (value.result !== "UNCLEAR") {
+      if (!value.beforeMetrics?.length || !value.afterMetrics?.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "明确复盘结果必须包含至少一项执行前后同口径指标"
+        });
+        return;
+      }
+      const beforeKeys = new Set(value.beforeMetrics.map((metric) => metric.metricKey));
+      if (!value.afterMetrics.some((metric) => beforeKeys.has(metric.metricKey))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["afterMetrics"],
+          message: "执行前后指标必须至少有一项使用相同 metricKey"
+        });
+      }
+    }
   });
 
 export const subjectContextSchema = z.object({

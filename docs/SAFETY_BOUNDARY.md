@@ -35,7 +35,7 @@
 - 首次未知表格结构只有在完整逐格核对后才能记录表头、行标识、列关系、路线及页面指纹校准；稳定且全部门禁通过的后续同结构快照才可自动放行。结构变化必须重新核对。
 - 指标与表格单元格的校准写入必须由服务端校验登录用户、任务归属、当前快照并发版本、路线状态和敏感字段；单项、批量和全部确认均不得信任前端声明或覆盖新快照。
 - `MetricPulse` 只进入单 API 实例的有界内存缓冲区，不写业务表和审计表；`RealtimeSignal` 只描述事实变化，不包含平台动作。
-- 名称和界面声明为 API 的实时脉冲只能使用固定白名单内部 API，不得静默降级为 DOM。开关关闭、页面不合格、可信 `room_id` 缺失或 API 无有效指标时必须明确失败并停止；同一精确 `liveScreen` 页内切换概览、商品或流量分栏不改变其房间级内存语义，也不得借脉冲创建任何路线快照。
+- `metric-pulses` 只允许已配对 Extension 上报，且路线只能是 `LIVE_DATA_SCREEN` 或 `LOCAL_PROMOTION_DASHBOARD`；网页会话、人工请求、未知路线及直播商品/流量分栏均不得写入实时内存。名称和界面声明为 API 的实时脉冲只能使用固定白名单内部 API，不得静默降级为 DOM。开关关闭、页面不合格、可信身份缺失或 API 无有效指标时必须明确失败并停止，也不得借脉冲创建任何路线快照。
 - 直播 PULSE 的 `key_index` 只允许以下 7 项及其精确平台路径：直播间成交金额 `data.PayGmv.value`、在线人数 `data.CurrentUserCnt.value`、人均观看时长 `data.ClientAvgWatchDuration.value`、千次观看成交金额 `data.GPM.value`、成交订单数 `data.PayOrderCnt.value`、成交人数 `data.PayUvAll.value`、商品转化率 `data.GoodsCvr.value`。不得用商品点击率替代商品转化率，不得用开播时长替代人均观看时长，也不得递归扫描或上传未知字段。
 - 直播分钟趋势只有在用户主动正式采集的 SNAPSHOT 中、对应 `room_minute_indicator` 端点已通过全部内部 API 门禁时，才可投影为既有 `HOURLY_ROWS` 结构化数据；PULSE 的分钟行不得创建快照、写入业务表或审计表。
 - 直播大屏内部 API 仅能在用户显式开启脉冲或主动正式采集、服务端 `LIVE_SCREEN_INTERNAL_API_ENABLED=true`、且当前页精确为 `https://eos.douyin.com/dp/liveScreen` 时直调固定白名单路径。不得拦截、替换或观察全局 `fetch/XMLHttpRequest`，不得拼接任意 URL、请求体、翻页或全量拉取。

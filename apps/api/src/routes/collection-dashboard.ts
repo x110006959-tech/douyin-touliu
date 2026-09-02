@@ -4,6 +4,7 @@ import {
   buildDashboardOverviewCards,
   confirmTableBindingInputSchema,
   confirmAllReviewMetricsInputSchema,
+  updateDecisionTargetsInputSchema,
   type CollectionDashboardDTO
 } from "@douyin-local-life/shared";
 import { writeAuditLog } from "../audit.js";
@@ -18,6 +19,7 @@ import { currentUser } from "../server-utils.js";
 import { getTableCellValue, projectSnapshotTables, toTableCellReviewDTO } from "../table-cell-reviews.js";
 import { isSerializableConflict, runSerializableTransaction } from "../transactions.js";
 import { calibrateFullyReviewedTables, confirmTableBindingCalibration, hasTrustedTableBinding } from "../metric-validation.js";
+import { currentTargetRoiMetric, replaceTaskTargetRoi, targetRoiFromMetrics } from "../decision-targets.js";
 
 export function createCollectionDashboardRouter() {
   const router = Router();
@@ -29,6 +31,7 @@ export function createCollectionDashboardRouter() {
       getCaptureSummary(user.id, req.params.id)
     ]);
     if (!task || !summary) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const targetRoiMetric = currentTargetRoiMetric(task.reviewedMetrics);
     const response: CollectionDashboardDTO = {
       task: {
         id: task.id,
@@ -41,10 +44,59 @@ export function createCollectionDashboardRouter() {
         tables: summary.tables
       },
       overviewCards: buildDashboardOverviewCards(summary.metrics, latestRealtimeMetricFrames(task.id)),
+      decisionTargets: {
+        targetRoi: targetRoiFromMetrics(task.reviewedMetrics),
+        updatedAt: targetRoiMetric?.updatedAt.toISOString() || null
+      },
       reviewCoverage: reviewCoverage(currentReviewedMetrics(task)),
       tableReviewCoverage: tableReviewCoverageForSummary(summary)
     };
     return sendSuccess(res, response);
+  });
+
+  router.put("/collection-tasks/:id/decision-targets", async (req, res) => {
+    const user = currentUser(req);
+    const parsed = updateDecisionTargetsInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, 400, "VALIDATION_ERROR", "目标 ROI 必须是大于 0 且不超过 10000 的数字，也可以留空");
+    }
+
+    const result = await runSerializableTransaction(async (tx) => {
+      const task = await getOwnedTask(user.id, req.params.id, tx);
+      if (!task) return { error: "TASK_NOT_FOUND" as const };
+      const activeRun = await tx.decisionRun.findFirst({
+        where: {
+          collectionTaskId: task.id,
+          mode: "AI_SKILL_ORCHESTRATED",
+          status: { in: ["PENDING", "RUNNING"] }
+        },
+        select: { id: true }
+      });
+      if (activeRun) return { error: "DECISION_RUN_ACTIVE" as const };
+      const before = targetRoiFromMetrics(task.reviewedMetrics);
+      const saved = await replaceTaskTargetRoi(tx, {
+        taskId: task.id,
+        reviewerId: user.id,
+        targetRoi: parsed.data.targetRoi
+      });
+      await writeAuditLog(req, "DECISION_TARGET_ROI_UPDATED", {
+        workspaceId: task.project.workspaceId,
+        projectId: task.projectId,
+        taskId: task.id,
+        detailJson: { previousTargetRoi: before, targetRoi: parsed.data.targetRoi }
+      }, tx);
+      return {
+        decisionTargets: {
+          targetRoi: parsed.data.targetRoi,
+          updatedAt: saved?.updatedAt.toISOString() || null
+        }
+      };
+    });
+    if (!("decisionTargets" in result)) {
+      if (result.error === "TASK_NOT_FOUND") return sendError(res, 404, result.error, "采集任务不存在");
+      return sendError(res, 409, "DECISION_RUN_ACTIVE", "AI 诊断正在运行，结束后才能修改目标 ROI");
+    }
+    return sendSuccess(res, result.decisionTargets);
   });
 
   router.post("/collection-tasks/:id/table-cell-reviews/bulk", async (req, res) => {

@@ -69,6 +69,26 @@ function input(overrides: Partial<DecisionEngineInput> = {}): DecisionEngineInpu
 }
 
 describe("decision-engine", () => {
+  it("recognizes full-domain pay ROI while keeping bid decreases behind causal evidence", () => {
+    const result = runDecisionRules(input({
+      targetRoi: 60,
+      metrics: completeMetrics([
+        metric("pay_roi", "整体支付 ROI", null),
+        metric("full_domain_pay_roi", "全域支付 ROI", 44.59),
+        metric("target_roi", "目标 ROI", 60),
+        metric("impressions", "曝光量", null),
+        metric("clicks", "点击量", null)
+      ])
+    }));
+
+    expect(result.businessAnalysis?.metricExplanations.find((item) => item.title === "账号支付/核销 ROI")?.value).toBe(44.59);
+    expect(result.dataQuality.actionEligibility?.DECREASE_BID).toMatchObject({
+      eligible: false,
+      missingEvidence: expect.arrayContaining(["曝光量", "点击量"])
+    });
+    expect(result.dataQuality.actionEligibility?.DECREASE_BID?.missingEvidence).not.toContain("账号支付/核销 ROI");
+  });
+
   it("keeps managed live focused on live growth instead of service-provider profit", () => {
     const result = runDecisionRules(
       input({

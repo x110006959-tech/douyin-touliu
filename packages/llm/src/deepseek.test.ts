@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDeepSeekTransport, LlmTransportError, type ChatTransport } from "./deepseek.js";
+import { createDeepSeekTransport, DEFAULT_DEEPSEEK_MODEL, LlmTransportError, type ChatTransport } from "./deepseek.js";
 import { completeJsonWithRepair, runToolLoop } from "./tool-loop.js";
 
 describe("DeepSeek transport", () => {
+  it("defaults to the Flash model", () => {
+    const transport = createDeepSeekTransport({ apiKey: "test-secret-key" });
+    expect(DEFAULT_DEEPSEEK_MODEL).toBe("deepseek-v4-flash");
+    expect(transport.model).toBe("deepseek-v4-flash");
+  });
+
   it("retries one 429 without exposing the api key", async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
@@ -145,5 +151,42 @@ describe("generic tool loop", () => {
     })).rejects.toThrow("顶层键：<none>；confidence: Required");
     expect(requests[1]?.messages.at(-1)?.content).toContain("顶层键：<none>；confidence: Required");
     expect(requests[1]?.thinking).toBe("disabled");
+  });
+
+  it("passes safe diagnosis guard failures to the single repair request", async () => {
+    const requests: import("./deepseek.js").ChatRequest[] = [];
+    let call = 0;
+    const transport: ChatTransport = {
+      provider: "fake",
+      model: "fake",
+      async chat(request) {
+        requests.push(request);
+        call += 1;
+        return {
+          message: { role: "assistant", content: JSON.stringify({ statement: call === 1 ? "bad" : "good" }) },
+          finishReason: "stop",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+        };
+      }
+    };
+
+    const result = await completeJsonWithRepair({
+      transport,
+      messages: [{ role: "user", content: "json" }],
+      parse: (value) => {
+        if ((value as { statement?: unknown }).statement === "bad") {
+          throw Object.assign(new Error("可见诊断文案包含内部字段名或证据 ID"), {
+            code: "DIAGNOSIS_BUSINESS_LANGUAGE_INVALID"
+          });
+        }
+        return value as { statement: string };
+      },
+      repairInstruction: "repair"
+    });
+
+    expect(result.value.statement).toBe("good");
+    expect(requests[1]?.messages.at(-1)?.content).toContain(
+      "DIAGNOSIS_BUSINESS_LANGUAGE_INVALID: 可见诊断文案包含内部字段名或证据 ID"
+    );
   });
 });

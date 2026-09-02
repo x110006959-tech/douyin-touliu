@@ -22,29 +22,29 @@ export function guardAiCandidateActionsWithPolicy(input: {
 
   for (const candidate of input.candidates) {
     if (!allowedActionTypes.has(candidate.actionType)) {
-      rejected.push({ candidate, reasonCode: "ACTION_NOT_ALLOWED", reason: "候选动作不在服务端允许枚举内" });
+      rejected.push({ candidate: cloneCandidate(candidate), reasonCode: "ACTION_NOT_ALLOWED", reason: "候选动作不在服务端允许枚举内" });
       continue;
     }
     if (!candidate.evidenceIds.length) {
-      rejected.push({ candidate, reasonCode: "EVIDENCE_REQUIRED", reason: "候选动作没有引用任何诊断证据" });
+      rejected.push({ candidate: cloneCandidate(candidate), reasonCode: "EVIDENCE_REQUIRED", reason: "候选动作没有引用任何诊断证据" });
       continue;
     }
     const invalidEvidence = candidate.evidenceIds.filter((id) => !input.validEvidenceIds.has(id));
     if (invalidEvidence.length) {
-      rejected.push({ candidate, reasonCode: "EVIDENCE_INVALID", reason: `候选动作引用了无效证据：${invalidEvidence.join("、")}` });
+      rejected.push({ candidate: cloneCandidate(candidate), reasonCode: "EVIDENCE_INVALID", reason: `候选动作引用了无效证据：${invalidEvidence.join("、")}` });
       continue;
     }
     const eligibility = input.policy.dataQuality.actionEligibility?.[candidate.actionType];
     if (eligibility && !eligibility.eligible) {
       const reasons = [...eligibility.blockingEvidence, ...eligibility.missingEvidence];
       rejected.push({
-        candidate,
+        candidate: cloneCandidate(candidate),
         reasonCode: "ACTION_POLICY_BLOCKED",
         reason: reasons.length ? reasons.join("；") : "候选动作未通过数据质量和安全策略"
       });
       continue;
     }
-    accepted.push({ ...candidate, requiresApproval: true });
+    accepted.push({ ...cloneCandidate(candidate), requiresApproval: true });
     acceptedProposals.push({
       actionType: candidate.actionType,
       title: candidate.title,
@@ -61,4 +61,8 @@ export function guardAiCandidateActionsWithPolicy(input: {
     adjudication: { policyVersion: input.policy.policyVersion, accepted, rejected },
     acceptedProposals
   };
+}
+
+function cloneCandidate(candidate: AiCandidateAction): AiCandidateAction {
+  return { ...candidate, evidenceIds: [...candidate.evidenceIds] };
 }

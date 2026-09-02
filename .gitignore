@@ -5,6 +5,7 @@ node_modules/
 .pnpm-store/
 coverage/
 .backups/
+.tmp/
 
 .next/
 dist/

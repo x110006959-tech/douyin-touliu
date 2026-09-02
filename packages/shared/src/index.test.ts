@@ -68,10 +68,17 @@ describe("action outcome contracts", () => {
         { metricKey: "average_watch_duration_seconds", value: 59.76, unit: "s" }
       ],
       afterMetrics: [
-        { metricKey: "product_conversion_rate", value: 0.4824, unit: "%" }
+        { metricKey: "average_watch_duration_seconds", value: 72.4, unit: "s" }
       ],
       result: "IMPROVED"
     }).success).toBe(true);
+
+    expect(createActionOutcomeInputSchema.safeParse({
+      observationWindow: "30m",
+      beforeMetrics: [{ metricKey: "average_watch_duration_seconds", value: 59.76, unit: "s" }],
+      afterMetrics: [{ metricKey: "product_conversion_rate", value: 0.4824, unit: "%" }],
+      result: "IMPROVED"
+    }).success).toBe(false);
 
     expect(createActionOutcomeInputSchema.safeParse({
       observationWindow: "30m",

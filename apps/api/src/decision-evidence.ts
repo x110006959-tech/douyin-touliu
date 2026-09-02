@@ -25,6 +25,7 @@ type DecisionEvidenceTask = {
   reviewedMetrics: Array<{
     id: string;
     snapshotId: string | null;
+    metricKey: string;
     reviewStatus: string;
     reviewedValue: string | null;
     updatedAt: Date;
@@ -54,10 +55,14 @@ export function decisionEvidenceFingerprint(task: DecisionEvidenceTask) {
     .sort((left, right) => left.routeKey.localeCompare(right.routeKey) || left.id.localeCompare(right.id));
   const snapshotIds = new Set(snapshots.map((snapshot) => snapshot.id));
   const reviews = task.reviewedMetrics
-    .filter((metric) => metric.snapshotId && snapshotIds.has(metric.snapshotId))
+    .filter((metric) => (
+      (metric.snapshotId !== null && snapshotIds.has(metric.snapshotId))
+      || (metric.snapshotId === null && metric.metricKey === "target_roi")
+    ))
     .map((metric) => ({
       id: metric.id,
       snapshotId: metric.snapshotId,
+      metricKey: metric.metricKey,
       reviewStatus: metric.reviewStatus,
       reviewedValue: metric.reviewedValue,
       updatedAt: metric.updatedAt.toISOString()

@@ -31,7 +31,7 @@ describe("live screen internal API server validation", () => {
   });
 
   it("rejects an unknown field path even if it is presented as a key-index alias", () => {
-    const pulse = pulseInput("LIVE_PRODUCT_TAB");
+    const pulse = pulseInput();
     const metric = pulse.metrics[0]!;
     metric.rawEvidence = {
       ...metric.rawEvidence!,
@@ -52,7 +52,7 @@ describe("live screen internal API server validation", () => {
   it("accepts the primary path from the explicit approved path registry", () => {
     const field = liveScreenInternalApiContracts.key_index.fields[0]!;
     expect(field.approvedFieldPaths).toContain(field.fieldPath);
-    expect(validateLiveScreenInternalApiPayload(pulseInput("LIVE_PRODUCT_TAB"))).toEqual({ ok: true });
+    expect(validateLiveScreenInternalApiPayload(pulseInput())).toEqual({ ok: true });
   });
 
   it("keeps the server feature switch fail-closed", () => {
@@ -111,9 +111,12 @@ describe("live screen internal API server validation", () => {
     });
   });
 
-  it("allows room-level API pulses from product and traffic tabs but keeps formal API evidence on overview", () => {
+  it("keeps realtime API pulses on the configured live overview route", () => {
     const pulse = pulseInput("LIVE_PRODUCT_TAB");
-    expect(validateLiveScreenInternalApiPayload(pulse)).toEqual({ ok: true });
+    expect(validateLiveScreenInternalApiPayload(pulse)).toMatchObject({
+      ok: false,
+      code: "LIVE_SCREEN_INTERNAL_API_PAGE_FORBIDDEN"
+    });
     expect(validateLiveScreenInternalApiPayload({
       ...input(validMetric()),
       routeKey: "LIVE_PRODUCT_TAB"
@@ -123,8 +126,22 @@ describe("live screen internal API server validation", () => {
     });
   });
 
+  it("requires internal API evidence for realtime pulses without changing DOM snapshot compatibility", () => {
+    const value = input(validMetric());
+    const domOnly = {
+      ...value,
+      metrics: [],
+      captureMeta: undefined
+    };
+    expect(validateLiveScreenInternalApiPayload({ ...domOnly, mode: "SNAPSHOT" })).toEqual({ ok: true });
+    expect(validateLiveScreenInternalApiPayload({ ...domOnly, mode: "PULSE" })).toMatchObject({
+      ok: false,
+      code: "LIVE_SCREEN_PULSE_API_EVIDENCE_REQUIRED"
+    });
+  });
+
   it("rejects minute-trend evidence in a real-time pulse", () => {
-    const pulse = pulseInput("LIVE_PRODUCT_TAB");
+    const pulse = pulseInput();
     pulse.captureMeta!.liveScreenInternalApi!.minuteRows = [{ intervalLabel: "12:01", liveViews: "20" }];
     expect(validateLiveScreenInternalApiPayload(pulse)).toMatchObject({
       ok: false,
@@ -133,7 +150,7 @@ describe("live screen internal API server validation", () => {
   });
 
   it("rejects DOM or dual-source evidence in a real-time pulse", () => {
-    const pulse = pulseInput("LIVE_PRODUCT_TAB");
+    const pulse = pulseInput();
     const metric = pulse.metrics[0]!;
     metric.rawEvidence = {
       ...metric.rawEvidence!,
@@ -147,7 +164,7 @@ describe("live screen internal API server validation", () => {
   });
 
   it("rejects a former minute endpoint status even when no minute rows are attached", () => {
-    const pulse = pulseInput("LIVE_PRODUCT_TAB");
+    const pulse = pulseInput();
     pulse.captureMeta!.liveScreenInternalApi!.endpointStatuses = [{
       endpoint: "room_minute_indicator",
       status: "SUCCESS",
@@ -160,7 +177,7 @@ describe("live screen internal API server validation", () => {
   });
 });
 
-function pulseInput(routeKey: "LIVE_PRODUCT_TAB" | "LIVE_TRAFFIC_TAB") {
+function pulseInput(routeKey: "LIVE_DATA_SCREEN" | "LIVE_PRODUCT_TAB" | "LIVE_TRAFFIC_TAB" = "LIVE_DATA_SCREEN") {
   const field = liveScreenInternalApiContracts.key_index.fields[0]!;
   const metric: VisibleMetric = {
     key: field.metricKey,

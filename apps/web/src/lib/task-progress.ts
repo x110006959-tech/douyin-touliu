@@ -12,12 +12,13 @@ export function getTaskWizardProgress(input: TaskWizardProgressInput) {
     // 仍绑定此任务，或当前页面可以安全采集。
     { number: 1, label: "连接插件", complete: input.extensionConnected },
     { number: 2, label: "采集页面", complete: input.requiredRoutesCaptured },
-    { number: 3, label: "数据汇总", complete: input.requiredRoutesCaptured },
-    { number: 4, label: "人工核对", complete: input.reviewComplete },
-    { number: 5, label: "诊断建议", complete: input.decisionCreated }
+    // 数据确认继续由校准大屏和服务端门禁执行，但不再拆成一个会让用户
+    // 离开经营大屏的独立向导阶段。
+    { number: 3, label: "数据汇总", complete: input.reviewComplete },
+    { number: 4, label: "诊断建议", complete: input.decisionCreated }
   ];
   return {
-    currentStep: steps.find((step) => !step.complete)?.number || 5,
+    currentStep: steps.find((step) => !step.complete)?.number || 4,
     steps
   };
 }

@@ -1,5 +1,7 @@
 # V0.2.1 Migration Notes
 
+> 当前数据库状态以 [NOW.md](./NOW.md) 与实际 `prisma migrate status` 为准。本项目最近的 `v0.2.5` 发布及当前未提交实时趋势补丁均**不包含 Prisma Schema 或 migration 变更**；未经明确授权不得执行 `db push`、migration 或对现有数据库做修复写入。
+
 ## V0.2.9 邮箱验证迁移
 
 执行：

@@ -82,7 +82,28 @@ export const diagnosisExperimentSchema = z.object({
   steps: z.array(z.string().min(1).max(500)).min(1).max(10),
   verifyMetrics: z.array(z.string().min(1).max(100)).min(1).max(10),
   stopConditions: z.array(z.string().min(1).max(500)).min(1).max(10),
-  evidenceIds: z.array(z.string().min(1)).min(1).max(20)
+  evidenceIds: z.array(z.string().min(1)).min(1).max(20),
+  experimentType: z.enum(["OBSERVATION", "MANUAL_CHANGE"]).optional(),
+  actionType: z.enum(diagnosisActionTypes).nullable().optional(),
+  singleVariable: z.string().min(1).max(200).optional(),
+  controlScope: z.string().min(1).max(300).optional(),
+  observationWindow: z.string().min(1).max(200).optional(),
+  baselineMetrics: z.array(z.string().min(1).max(100)).min(1).max(10).optional(),
+  completionCriteria: z.array(z.string().min(1).max(500)).min(1).max(10).optional(),
+  abortCriteria: z.array(z.string().min(1).max(500)).min(1).max(10).optional(),
+  interferenceFactors: z.array(z.string().min(1).max(300)).max(10).optional()
+});
+
+export const diagnosisExperimentV2Schema = diagnosisExperimentSchema.extend({
+  experimentType: z.enum(["OBSERVATION", "MANUAL_CHANGE"]),
+  actionType: z.enum(diagnosisActionTypes).nullable(),
+  singleVariable: z.string().min(1).max(200),
+  controlScope: z.string().min(1).max(300),
+  observationWindow: z.string().min(1).max(200),
+  baselineMetrics: z.array(z.string().min(1).max(100)).min(1).max(10),
+  completionCriteria: z.array(z.string().min(1).max(500)).min(1).max(10),
+  abortCriteria: z.array(z.string().min(1).max(500)).min(1).max(10),
+  interferenceFactors: z.array(z.string().min(1).max(300)).max(10)
 });
 
 export const aiCandidateActionSchema = z.object({

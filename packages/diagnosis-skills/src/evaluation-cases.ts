@@ -36,20 +36,20 @@ const scenarios: Array<{
     group: "TRAFFIC",
     expected: "TRAFFIC",
     variants: [
-      { impressions: 2_000, ctr: 0.04, live_viewers: 120, orders: 8, gpm: 1_100, spend: 500, pay_roi: 2.6, target_roi: 2.5 },
-      { impressions: 60_000, ctr: 0.003, live_viewers: 160, orders: 6, gpm: 1_000, spend: 1_800, pay_roi: 1.5, target_roi: 2.5 },
-      { impressions: 12_000, ctr: 0.01, live_viewers: 100, orders: 5, gpm: 1_300, spend: 700, pay_roi: 2, target_roi: 2.5 },
-      { impressions: 90_000, ctr: 0.002, live_viewers: 150, orders: 4, gpm: 900, spend: 2_200, pay_roi: 1.2, target_roi: 2.5 }
+      { impressions: 2_000, ctr: 0, live_viewers: 0, orders: 0, gpm: 0, spend: 500, pay_roi: 0, target_roi: 2.5 },
+      { impressions: 60_000, ctr: 0, live_viewers: 0, orders: 0, gpm: 0, spend: 1_800, pay_roi: 0, target_roi: 2.5 },
+      { impressions: 12_000, ctr: 0, live_viewers: 0, orders: 0, gpm: 0, spend: 700, pay_roi: 0, target_roi: 2.5 },
+      { impressions: 90_000, ctr: 0, live_viewers: 0, orders: 0, gpm: 0, spend: 2_200, pay_roi: 0, target_roi: 2.5 }
     ]
   },
   {
     group: "LIVE_ROOM",
     expected: "LIVE_ROOM",
     variants: [
-      { impressions: 80_000, ctr: 0.05, live_viewers: 8_000, orders: 3, gpm: 40, spend: 2_000, pay_roi: 0.5, target_roi: 2.5 },
+      { impressions: 80_000, ctr: 0.05, live_viewers: 8_000, orders: 0, gpm: 0, spend: 2_000, pay_roi: 0.5, target_roi: 2.5 },
       { impressions: 50_000, ctr: 0.04, live_viewers: 5_000, orders: 0, gpm: 0, spend: 1_400, pay_roi: 0.2, target_roi: 2.5 },
-      { impressions: 45_000, ctr: 0.045, live_viewers: 4_000, orders: 8, gpm: 80, spend: 1_200, pay_roi: 0.8, target_roi: 2.5 },
-      { impressions: 70_000, ctr: 0.035, live_viewers: 6_500, orders: 12, gpm: 120, spend: 2_300, pay_roi: 1, target_roi: 2.5 }
+      { impressions: 45_000, ctr: 0.045, live_viewers: 4_000, orders: 0, gpm: 0, spend: 1_200, pay_roi: 0.8, target_roi: 2.5 },
+      { impressions: 70_000, ctr: 0.035, live_viewers: 6_500, orders: 0, gpm: 0, spend: 2_300, pay_roi: 1, target_roi: 2.5 }
     ]
   },
   {
@@ -121,7 +121,7 @@ function buildInput(values: Record<string, number | null>, group: SyntheticDiagn
     sourceUrl: "",
     metrics,
     tables: [
-      { routeKey: "LIVE_PRODUCT_TAB", pageType: "LIVE_DATA_SCREEN", rows: [["商品", "曝光", "点击", "订单"], ["A", 10_000, group === "PRODUCT" ? 30 : 500, group === "PRODUCT" ? 1 : 40]] },
+      { routeKey: "LIVE_PRODUCT_TAB", pageType: "LIVE_DATA_SCREEN", rows: [["商品", "曝光", "点击", "订单"], ["A", 10_000, group === "PRODUCT" ? 300 : 500, group === "PRODUCT" ? 0 : 40]] },
       { routeKey: "TASK_TABLE", pageType: "TASK_TABLE", rows: [["单元", "消耗", "ROI"], ["单元A", values.spend || 0, values.pay_roi || 0]] }
     ],
     visibleText: "",

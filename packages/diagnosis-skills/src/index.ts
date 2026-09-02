@@ -11,7 +11,7 @@ import {
 } from "@douyin-local-life/shared/diagnosis";
 import type { CollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
 
-export const diagnosisSkillSetVersion = "managed-live-growth-skills-v2";
+export const diagnosisSkillSetVersion = "managed-live-growth-skills-v9";
 
 export type DiagnosisTokenUsage = {
   inputTokens: number;
@@ -27,6 +27,14 @@ export type DiagnosisSkillModel = {
     evidence: DiagnosisEvidence[];
     deterministicContext: Record<string, unknown>;
   }): Promise<{ output: unknown; usage: DiagnosisTokenUsage }>;
+};
+
+export type DiagnosisDomainSkillId = Exclude<DiagnosisSkillId, "audit_data_readiness" | "retrieve_similar_cases">;
+
+export type DiagnosisSkillPlan = {
+  auditSkillId: "audit_data_readiness";
+  domainSkillIds: DiagnosisDomainSkillId[];
+  retrievalEnabled: false;
 };
 
 export const diagnosisSkillInputSchema = z.object({
@@ -67,7 +75,7 @@ export type DiagnosisSkillDefinition = {
 };
 
 type DomainSpec = {
-  id: Exclude<DiagnosisSkillId, "audit_data_readiness" | "retrieve_similar_cases">;
+  id: DiagnosisDomainSkillId;
   version: string;
   title: string;
   dimension: string;
@@ -85,16 +93,16 @@ const domainSpecs: DomainSpec[] = [
     dimension: "TRAFFIC",
     routes: ["LIVE_TRAFFIC_TAB", "LIVE_DATA_SCREEN"],
     metricKeys: ["impressions", "clicks", "ctr", "live_viewers", "hourly_live_views", "hourly_natural_live_views", "hourly_commercial_live_views"],
-    method: "区分流量规模、来源结构、曝光到点击及点击到进房效率；没有同周期证据时不得作因果判断。"
+    method: "按自然流量、商业流量与进房链路说明当前事实；没有明确目标或近期同口径历史对比时，不得判断流量高低，也不得把示例数字当行业基准。"
   },
   {
     id: "diagnose_live_room_conversion",
-    version: "1.0.0",
+    version: "1.1.0",
     title: "直播间承接诊断",
     dimension: "LIVE_ROOM",
     routes: ["LIVE_DATA_SCREEN"],
-    metricKeys: ["live_viewers", "orders", "gmv", "gpm", "clicks", "ctr", "refund_rate"],
-    method: "沿进房、商品点击、下单与成交漏斗定位承接问题，明确反证和需要单变量验证的环节。"
+    metricKeys: ["live_viewers", "current_online_viewers", "average_watch_duration_seconds", "transaction_users", "product_conversion_rate", "orders", "gmv", "gpm", "clicks", "ctr", "refund_rate"],
+    method: "沿进房、商品点击、下单与成交漏斗定位承接问题；输入已有在线人数、观看时长、成交人数或商品转化率时应直接使用。不同路线或不同口径的人数、次数和金额不得拼接为漏斗，也不得仅凭数字逐级递减声称存在流失；不得自行计算客单价等输入未提供的派生指标。缺少商品明细或历史对比时只说明判断边界。"
   },
   {
     id: "diagnose_product_structure",
@@ -103,7 +111,7 @@ const domainSpecs: DomainSpec[] = [
     dimension: "PRODUCT",
     routes: ["LIVE_PRODUCT_TAB"],
     metricKeys: ["gmv", "orders", "impressions", "clicks", "ctr"],
-    method: "使用商品表中的曝光、点击、订单和成交证据区分引流款、承接款与低效款；样本不足时拒绝排名。"
+    method: "使用商品表中同一商品、同一口径的曝光、点击、订单和成交证据区分引流款、承接款与待验证商品；样本不足或缺少对照时拒绝排名。"
   },
   {
     id: "diagnose_delivery_units",
@@ -111,8 +119,8 @@ const domainSpecs: DomainSpec[] = [
     title: "投流单元诊断",
     dimension: "DELIVERY",
     routes: ["LOCAL_PROMOTION_DASHBOARD", "TASK_TABLE"],
-    metricKeys: ["spend", "daily_budget", "remaining_budget", "orders", "pay_roi", "verify_roi", "target_roi", "cpa", "target_cpa"],
-    method: "对照本地推总览、任务列表、目标 ROI 与单元差异；预算、暂停和目标调整只可作为待规则裁决的人工候选动作。"
+    metricKeys: ["spend", "daily_budget", "remaining_budget", "orders", "pay_roi", "full_domain_pay_roi", "verify_roi", "target_roi", "cpa", "target_cpa"],
+    method: "对照本地推总览、任务列表、任务明确目标与单元差异；全域支付 ROI 与目标 ROI 同时存在时必须直接比较，不得再声称缺少支付金额、客单价或目标。没有目标或同口径历史数据时只展示实际消耗与产出，不判定 ROI 高低。预算、暂停和目标调整只可作为待规则裁决的人工候选动作。"
   },
   {
     id: "diagnose_activity_and_compliance",
@@ -205,6 +213,34 @@ export const diagnosisSkillRegistry = new Map<DiagnosisSkillId, DiagnosisSkillDe
   diagnosisSkills.map((skill) => [skill.id, skill])
 );
 
+/**
+ * Creates the only production Skill schedule. The Worker owns this decision;
+ * models only analyse the evidence supplied to an already selected Skill.
+ */
+export function createDiagnosisSkillPlan(input: DecisionEngineInput): DiagnosisSkillPlan {
+  const availableRoutes = new Set(releasedDiagnosisRoutes(input));
+  const domainSkillIds = isFormalDiagnosisEvidenceLayer(input)
+    ? [...diagnosisSkillRegistry.values()]
+      .filter((skill) => isDomainSkillId(skill.id))
+      .filter((skill) => skill.applicableRoutes.some((route) => availableRoutes.has(route)))
+      .map((skill) => skill.id as DiagnosisDomainSkillId)
+    : [];
+  return {
+    auditSkillId: "audit_data_readiness",
+    domainSkillIds,
+    retrievalEnabled: false
+  };
+}
+
+/** Returns only routes currently released by the formal diagnosis evidence layer. */
+export function releasedDiagnosisRoutes(input: DecisionEngineInput): CollectionRouteKey[] {
+  return [...new Set(
+    (input.collectionQuality?.routes || [])
+      .filter((route) => route.state === "FRESH" || route.state === "AGING")
+      .map((route) => route.routeKey)
+  )];
+}
+
 export function buildDiagnosisEvidenceCatalog(input: DecisionEngineInput, similarCases: DiagnosisSkillInput["similarCases"] = []) {
   const evidence: DiagnosisEvidence[] = [];
   evidence.push({
@@ -253,15 +289,23 @@ export function buildDiagnosisEvidenceCatalog(input: DecisionEngineInput, simila
   return z.array(diagnosisEvidenceSchema).parse(evidence);
 }
 
-function isFormalDiagnosisEvidenceLayer(input: DecisionEngineInput) {
+export function isFormalDiagnosisEvidenceLayer(input: DecisionEngineInput) {
   if (input.dataReviewStatus !== "REVIEWED") return false;
   if (input.metricLayer === "REVIEWED_METRIC") return true;
-  const evidence = input.realtimeEvidence;
-  return input.metricLayer === "REALTIME_API"
-    && evidence?.source === "LIVE_SCREEN_INTERNAL_API"
-    && evidence.routeKey === "LIVE_DATA_SCREEN"
-    && evidence.pageType === "LIVE_DATA_SCREEN"
-    && evidence.metricCount > 0;
+  if (input.metricLayer !== "REALTIME_API") return false;
+
+  const evidenceItems = input.realtimeEvidenceItems?.length
+    ? input.realtimeEvidenceItems
+    : input.realtimeEvidence
+      ? [input.realtimeEvidence]
+      : [];
+  return evidenceItems.some((evidence) => evidence.metricCount > 0 && (
+    evidence.routeKey === "LIVE_DATA_SCREEN"
+      ? evidence.pageType === "LIVE_DATA_SCREEN" && evidence.source === "LIVE_SCREEN_INTERNAL_API"
+      : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD"
+        ? evidence.pageType === "LOCAL_PROMOTION_DASHBOARD" && evidence.source === "LOCAL_PROMOTION_INTERNAL_API"
+        : false
+  ));
 }
 
 export function requiredDomainSkills(availableRoutes: CollectionRouteKey[], hasSimilarCases: boolean): DiagnosisSkillId[] {
@@ -271,6 +315,10 @@ export function requiredDomainSkills(availableRoutes: CollectionRouteKey[], hasS
     .map((spec) => spec.id);
   if (hasSimilarCases) ids.push("retrieve_similar_cases");
   return ids;
+}
+
+function isDomainSkillId(skillId: DiagnosisSkillId): skillId is DiagnosisDomainSkillId {
+  return skillId !== "audit_data_readiness" && skillId !== "retrieve_similar_cases";
 }
 
 function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
@@ -285,7 +333,7 @@ function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
     async execute(rawInput, model) {
       const input = parseInput(rawInput);
       const selected = input.evidenceCatalog.filter((item) =>
-        (item.kind === "METRIC" && spec.metricKeys.includes(item.metricKey as MetricKey))
+        (item.kind === "METRIC" && item.routeKey && spec.routes.includes(item.routeKey) && spec.metricKeys.includes(item.metricKey as MetricKey))
         || (item.kind === "TABLE_ROW" && item.routeKey && spec.routes.includes(item.routeKey) && matchesTableKeywords(item, spec.tableKeywords))
         || (item.kind === "ROUTE" && item.routeKey && spec.routes.includes(item.routeKey))
       );
@@ -313,7 +361,10 @@ function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
         skillVersion: spec.version,
         systemPrompt: [
           `你是“${spec.title}”业务诊断 Skill。`,
+          `你只能分析 ${spec.dimension} 维度，hypotheses.dimension 只能填写 ${spec.dimension}，不得代替其他领域下结论。`,
           spec.method,
+          "采用本地生活经营视角：商品与优惠、内容/直播承接、广告流量需要协同，按蓄水、促成交、复盘阶段组织建议；这套框架不能替代本轮数据证据。",
+          "培训材料与案例中的数值只适用于其原始行业、客户和场次，不得复用为当前任务的通用阈值。",
           "只能引用输入 evidence 的 id；必须同时寻找支持证据、冲突证据和缺失证据。",
           "建议只能是人工实验或系统枚举内候选动作，不得声称已经操作平台。",
           "输出必须符合给定 JSON 结构，不得包含隐藏推理。"
@@ -323,7 +374,7 @@ function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
           dimension: spec.dimension,
           dataReviewStatus: input.decisionInput.dataReviewStatus,
           reviewCoverage: input.decisionInput.reviewCoverage || null,
-          targetRoi: input.decisionInput.targetRoi ?? null
+          ...(spec.dimension === "DELIVERY" ? { targetRoi: input.decisionInput.targetRoi ?? null } : {})
         }
       });
       const parsed = domainOutputSchema.parse(response.output);

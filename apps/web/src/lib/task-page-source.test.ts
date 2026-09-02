@@ -10,6 +10,10 @@ const diagnosisComparisonSource = readFileSync(
   fileURLToPath(new URL("../app/tasks/[id]/diagnosis-comparison.tsx", import.meta.url)),
   "utf8"
 );
+const diagnosisBusinessSummarySource = readFileSync(
+  fileURLToPath(new URL("../app/tasks/[id]/diagnosis-business-summary.tsx", import.meta.url)),
+  "utf8"
+);
 const dashboardSource = readFileSync(
   fileURLToPath(new URL("../app/dashboard/page.tsx", import.meta.url)),
   "utf8"
@@ -38,15 +42,41 @@ const projectPageSource = readFileSync(
   fileURLToPath(new URL("../app/projects/[id]/page.tsx", import.meta.url)),
   "utf8"
 );
+const actionProposalSource = readFileSync(
+  fileURLToPath(new URL("../app/action-proposals/[id]/page.tsx", import.meta.url)),
+  "utf8"
+);
 
 describe("task page acceptance guard", () => {
   it("shows a single asynchronous AI diagnosis with policy adjudication", () => {
     expect(taskPageSource).toContain("<DiagnosisComparison");
     expect(taskPageSource).toContain("onRunFormal={() => void runDecision()}");
     expect(diagnosisComparisonSource).toContain("DeepSeek + 业务 Skills");
-    expect(diagnosisComparisonSource).toContain("候选动作与规则裁决");
-    expect(diagnosisComparisonSource).toContain("待人工审批动作");
+    expect(diagnosisComparisonSource).toContain("本轮经营判断");
+    expect(diagnosisComparisonSource).toContain("这组数据已经说明什么");
+    expect(diagnosisComparisonSource).toContain("今天先做什么");
+    expect(diagnosisComparisonSource).toContain("作决定前还缺什么");
+    expect(diagnosisComparisonSource).toContain("summarizeDecisionBoundaries");
+    expect(diagnosisComparisonSource).toContain('decisionRun?.promptVersion === "managed-live-growth-prompt-v16"');
+    expect(diagnosisComparisonSource).toContain('decisionRun?.promptVersion === "managed-live-growth-prompt-v17"');
+    expect(diagnosisComparisonSource).toContain('decisionRun?.promptVersion === "managed-live-growth-prompt-v18"');
+    expect(diagnosisComparisonSource).toContain('decisionRun?.promptVersion === "managed-live-growth-prompt-v19"');
+    expect(diagnosisComparisonSource).toContain('decisionRun?.promptVersion === "managed-live-growth-prompt-v20"');
+    expect(diagnosisComparisonSource).toContain('decisionRun?.promptVersion === "managed-live-growth-prompt-v21"');
+    expect(diagnosisComparisonSource).toContain("服务端证据复核已修正主结论");
+    expect(diagnosisComparisonSource).toContain("所有候选动作已暂停");
+    expect(diagnosisComparisonSource).toContain("当前唯一验证任务");
+    expect(diagnosisComparisonSource).toContain("查看诊断依据与安全裁决");
+    expect(diagnosisComparisonSource).toContain("只展示服务端规则允许推进的唯一下一步");
+    expect(diagnosisComparisonSource).toContain("本轮为什么没有展示其他动作");
+    expect(diagnosisComparisonSource).toContain("待记录结果");
     expect(diagnosisComparisonSource).toContain("不展示模型隐藏思考");
+    expect(diagnosisComparisonSource).toContain("引用了本次合法证据清单之外的指标");
+    expect(diagnosisComparisonSource).toContain("本次未生成任何建议");
+    expect(diagnosisComparisonSource).not.toContain("问题假设与反证");
+    expect(diagnosisComparisonSource).not.toContain("候选动作与规则裁决");
+    expect(diagnosisComparisonSource).not.toContain("人工纳入案例库");
+    expect(diagnosisComparisonSource).not.toContain("排除案例");
     expect(diagnosisComparisonSource).not.toContain("专家参考分析");
     expect(diagnosisComparisonSource).toContain('proposal.status === "PENDING_APPROVAL"');
     expect(diagnosisComparisonSource).toContain('href={`/action-proposals/${proposal.id}`}');
@@ -56,7 +86,7 @@ describe("task page acceptance guard", () => {
 
   it("keeps task data summarized and routes calibration through the dedicated dashboard", () => {
     expect(taskPageSource).toContain('href={`/tasks/${task.id}/collection-dashboard`}');
-    expect(taskPageSource).toContain("进入校准大屏");
+    expect(taskPageSource).toContain("打开校准大屏");
     expect(taskPageSource).toContain("下一步：进入经营数据大屏");
     expect(taskPageSource).toContain("collectionDashboardPendingRouteLabels");
     expect(taskPageSource).toContain("请先完成：");
@@ -103,16 +133,30 @@ describe("task page acceptance guard", () => {
     expect(collectionDashboardSource).toContain("确认可信数据并生成诊断");
     expect(collectionDashboardSource).toContain("table-cell-reviews/confirm-all");
     expect(collectionDashboardSource).toContain("/decision-preview");
-    expect(collectionDashboardSource).toContain("?preview=1#diagnosis");
-    expect(collectionDashboardSource).toContain("router.push(`/tasks/${params.id}#diagnosis`)");
+    expect(collectionDashboardSource).toContain('id="diagnosis"');
+    expect(collectionDashboardSource).toContain("scrollToDiagnosis");
+    expect(collectionDashboardSource).toContain("scrollIntoView");
+    expect(collectionDashboardSource).toContain("setDecisionRun(nextDecisionRun)");
+    expect(collectionDashboardSource).toContain("const conservativePreview");
+    expect(collectionDashboardSource).toContain("const displayedDecisionRun");
+    expect(collectionDashboardSource).toContain("<DiagnosisComparison");
+    expect(collectionDashboardSource).not.toContain("?preview=1#diagnosis");
+    expect(collectionDashboardSource).not.toContain("router.push(`/tasks/${params.id}#diagnosis`)");
     expect(collectionDashboardSource).not.toContain("overviewMetrics.slice(1, 8)");
     expect(taskPageSource).toContain('id="diagnosis"');
-    expect(taskPageSource).toContain("当前展示保守诊断");
+    expect(diagnosisBusinessSummarySource).toContain("当前展示保守诊断");
     expect(taskPageSource).toContain('searchParams.get("preview") !== "1"');
     expect(collectionDashboardSource).not.toContain("刷新指标");
     expect(collectionDashboardSource).not.toContain("review-metrics/initialize");
     expect(taskPageSource).toContain("该问题会阻断依赖相关字段的诊断");
-    expect(diagnosisComparisonSource).toContain("AI 诊断尚未就绪");
+    expect(diagnosisComparisonSource).not.toContain("AI 诊断尚未就绪");
+    expect(diagnosisComparisonSource).not.toContain("formalBlockingReasons");
+  });
+
+  it("keeps confirmation inside data summary instead of a separate manual-review step", () => {
+    expect(taskPageSource).not.toContain("<CardTitle>人工核对</CardTitle>");
+    expect(taskPageSource).not.toContain("第 5 步</p><CardTitle>诊断与建议");
+    expect(taskPageSource).toContain("第 4 步</p><CardTitle>诊断与建议");
   });
 
   it("opens the station dashboard only after both primary routes become ready", () => {
@@ -264,6 +308,30 @@ describe("task page acceptance guard", () => {
     expect(dashboardSource).toContain("返回登录");
     expect(authPageStateSource).toContain("inline-flex h-10 items-center justify-center");
     expect(authPageStateSource).toContain("返回登录");
+  });
+
+  it("automatically saves a task target ROI in the dashboard before diagnosis", () => {
+    expect(collectionDashboardSource).toContain("本次目标 ROI");
+    expect(collectionDashboardSource).toContain("decision-targets");
+    expect(collectionDashboardSource).toContain("window.setTimeout");
+    expect(collectionDashboardSource).toContain("await flushTargetRoiSave()");
+    expect(collectionDashboardSource).toContain("targetRoiRequestedRef");
+    expect(collectionDashboardSource).toContain("if (targetRoiRequestedRef.current === draft)");
+    expect(collectionDashboardSource).toContain("目标 ROI 未成功保存，请修改后重试。");
+    expect(collectionDashboardSource).not.toContain('onClick={() => void saveTargetRoi()}');
+    expect(collectionDashboardSource).toContain("用于对比全域支付 ROI");
+    expect(collectionDashboardSource).toContain("bg-slate-950/20");
+    expect(collectionDashboardSource).toContain("设定本次经营对标基准");
+    expect(overviewPanelSource).toContain("targetEditor");
+  });
+
+  it("records outcomes with guided same-scope fields instead of raw JSON", () => {
+    expect(actionProposalSource).toContain("同口径执行前后指标");
+    expect(actionProposalSource).toContain("执行前数值已从本轮诊断快照带入");
+    expect(actionProposalSource).toContain("outcomeMetricRows.map");
+    expect(actionProposalSource).not.toContain("beforeMetricsJson");
+    expect(actionProposalSource).not.toContain("afterMetricsJson");
+    expect(actionProposalSource).not.toContain("JSON 数组");
   });
 
   it("inherits route templates without requiring per-task URLs while preserving legacy links", () => {

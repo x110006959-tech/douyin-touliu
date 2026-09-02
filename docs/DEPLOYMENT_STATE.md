@@ -1,5 +1,133 @@
 # Deployment State
 
+> 当前部署/本机运行态结论以 [NOW.md](./NOW.md) 为准；本文件保留每次切换的完整历史，不得以较早镜像记录推断当前容器。
+
+## 2026-09-02 诊断限流事务边界 v14 切换（本机，非生产）
+
+- 在前一版决策/实验一致性运行态基础上，修复限流检查仍使用全局 Prisma 客户端的问题。新镜像 `pxxis-local-ai-validation:decision-experiment-transaction-v14-20260902` 由 API 与 Worker 共用；Web 继续运行 `pxxis-prelaunch-20260713-web:decision-experiment-view-v14-20260901`。
+- 候选 API `127.0.0.1:4304` 通过 `/ready`、`/version` 与 Prompt v21 / Orchestration v27 / SkillSet v9 检查；切换前只读确认 `PENDING/RUNNING=0`。正式 4300 `/ready`、`/version` 与 3300 登录页均为 200，`/version.gitSha=decision-experiment-transaction-v14-20260902`，Worker running，活动诊断仍为 0。
+- 原 API/Worker 停止保留为 `*-before-decision-experiment-transaction-v14-20260902` 回退容器；候选无挂载并已清理。PostgreSQL、数据卷、Schema、历史诊断、业务数据、平台状态和外部流量未改动。
+- 切换后串行执行全仓质量门禁：526 项测试、lint、typecheck、build、Prisma validate/generate、version check、diff check、24/24 合成评测全部通过。未自动调用模型、创建建议、执行建议、迁移、`db push`、commit、push 或生产部署。
+
+## 2026-09-01 决策/实验一致性 v13/v14 切换（本机，非生产）
+
+- 构建 API/Worker `pxxis-local-ai-validation:decision-experiment-contract-v13-20260901` 与 Web `pxxis-prelaunch-20260713-web:decision-experiment-view-v14-20260901`。候选 API `127.0.0.1:4304` 和候选 Web `127.0.0.1:3301` 均返回 HTTP 200；候选镜像内核对为 Prompt v21 / Orchestration v27 / SkillSet v9。
+- 切换前以只读数据库查询确认 `PENDING/RUNNING=0`，之后新 API、Worker、Web 接管 4300/3300/既有 Worker 名称。切换后 4300 `/ready`、`/version` 与 3300 登录页均为 200，`/version.gitSha=decision-experiment-contract-v13-20260901`，Worker 正在运行，活动诊断仍为 0。
+- 原 API、Worker、Web 已停止并保留为 `*-before-decision-experiment-*-20260901` 回退容器；候选容器均无数据卷或宿主机挂载，已清理。PostgreSQL 容器、数据卷、Schema、历史诊断、业务数据和外部流量均未改动。
+- 实际通过：定向诊断 18 项、API 31 文件/160 项、Web 49 项、全仓 526 项测试、lint、typecheck、build、Prisma validate/generate、version check、diff check 和 24/24 合成评测。未自动调用模型、创建或执行建议、执行 migration、`db push`、平台操作、commit、push 或生产部署。
+
+## 2026-09-01 目标数值归一化 v12/v13 切换（本机，非生产）
+
+- 构建 API/Worker `pxxis-local-ai-validation:diagnosis-target-normalization-v12-20260901` 与 Web `pxxis-prelaunch-20260713-web:diagnosis-review-view-v13-20260901`。候选 4304/3301 通过 `/ready`、`/version`、登录页 200；候选 API 对现有运行 `cmti43z490006se0104jnubtb` 实测返回 `DELIVERY_ROI` 和 44.59 < 60 的服务端复核结论后，正式接管 4300/3300/Worker，候选删除。
+- 正式运行加载 Prompt v20 / Orchestration v26 / SkillSet v8；4300 `/ready`、`/version` 与 3300 登录页均为 200，Worker running，切换前后 `PENDING/RUNNING=0`。原 v11/v12 API、Worker、Web 停止保留为回退。
+- 全仓 lint、typecheck、522 项测试、build、Prisma validate/generate、version check、diff check 与 24/24 合成评测通过。最新运行仍是原成功记录，没有自动模型调用、历史数据改写、Schema、migration、`db push`、平台操作、commit、push 或生产部署。
+
+## 2026-09-01 诊断领域投影 v11/v12 切换（本机，非生产）
+
+- 构建 API/Worker `pxxis-local-ai-validation:diagnosis-domain-projection-v11-20260901` 与 Web `pxxis-prelaunch-20260713-web:diagnosis-domain-view-v12-20260901`。候选 4304/3301 先通过 `/ready`、`/version`、登录页 HTTP 200 与镜像版本静态检查，再正式接管 4300/3300/Worker；候选随后删除。
+- 正式运行加载 Prompt v19 / Orchestration v25 / SkillSet v8；4300 `/ready`、`/version` 和 3300 登录页均为 200，Worker 为 running，切换前后 `PENDING/RUNNING=0`。原 v10/v11 API、Worker、Web 已停止保留为回退容器。
+- 全仓 lint、typecheck、521 项测试、build、Prisma validate/generate、version check、diff check 与 24/24 合成评测通过。最新 `DecisionRun` 仍为用户历史失败 `cmthewh1i0005mi0748luk3jh`；没有自动调用模型、创建建议、修改 Schema、migration、`db push`、平台操作、commit、push 或生产部署。
+
+## 2026-08-31 诊断否定语义边界 v10/v11 切换（本机，非生产）
+
+- 构建 API/Worker `pxxis-local-ai-validation:diagnosis-boundary-fix-v10-20260831` 与 Web `pxxis-prelaunch-20260713-web:diagnosis-error-view-v11-20260831`。候选 4304/3301 的 ready、version、HTTP 与镜像静态检查通过后，正式接管 4300/3300/Worker。
+- 正式运行加载 Prompt v18 / Orchestration v24 / SkillSet v7；3300 登录页、4300 `/ready`、`/version` 均为 200，Worker 运行，切换前后 `PENDING/RUNNING=0`。候选已停止，原 v9/v10 运行容器停止保留为回退。
+- 全仓 lint、typecheck、521 项测试、build、Prisma validate/generate 与 24/24 合成评测通过。历史失败运行和业务数据未改写；没有自动调用模型、创建建议、migration、`db push`、生产部署、平台操作、commit 或 push。
+
+## 2026-08-31 诊断可信度 v9/v10 切换（本机，非生产）
+
+- 构建 API/Worker `pxxis-local-ai-validation:diagnosis-trust-v9-20260831` 与 Web `pxxis-prelaunch-20260713-web:diagnosis-trust-view-v10-20260831`。候选 4304/3301 先通过 ready、version 和 HTTP 200；镜像内确认 Prompt v17 / Orchestration v23 / SkillSet v6、确定性冲突门禁存在，Web 构建产物不存在“AI 诊断尚未就绪”。
+- 首次并行构建因外部依赖仓库连接超时失败，顺序重试后两镜像均成功。切换期间 Docker 容器操作锁死，重启本机 Docker Desktop 后恢复；PostgreSQL 数据卷保持不变，最终正式 API 4300、Web 3300 和 Worker 均运行，HTTP 健康检查为 200。
+- 切换前后 `PENDING/RUNNING=0`。原 v8 API/Worker 与 v9 Web 停止保留为回退容器；3301/4304 候选也停止保留。历史诊断、两条既有建议、Schema、Extension 和业务数据未修改。
+- 全仓 lint、typecheck、517 项测试、build、Prisma validate/generate 与 24/24 合成评测通过。没有自动调用模型、创建新运行、审批或执行建议，也没有 migration、`db push`、生产部署、commit 或 push。
+
+## 2026-08-31 AI 结构修复详情切换（本机，非生产）
+
+- 从当前工作树构建 `pxxis-local-ai-validation:diagnosis-repair-detail-v8-20260831`。候选 API 在 `127.0.0.1:4304` 返回 `/ready` 与 `/version` 200，并静态核对包含安全诊断门禁原因传递和 Skill 错误码保留逻辑。
+- 切换前后数据库中 `PENDING/RUNNING` AI 运行均为 0。正式 API/Worker 随后接管 4300/既有 Worker；4300 `/ready`、`/version` 与 3300 首页均为 200，Worker 保持运行，运行版本为 `diagnosis-repair-detail-v8-20260831`。候选已删除。
+- 原 `target-roi-v7-20260830` API/Worker 停止保留为 `*-before-diagnosis-repair-detail-v8` 回退容器。Web、PostgreSQL、数据卷、Schema、Extension 和历史诊断记录未修改。
+- 没有自动调用 DeepSeek、创建动作建议、执行 migration、`db push`、平台操作、生产部署、commit 或 push。
+
+## 2026-08-31 目标 ROI 视觉收口（本机，非生产）
+
+- 目标 ROI 输入从独立白底小卡改为与经营总览头部一致的深色半透明横向控件；保存状态使用低干扰指示，不改动输入、自动保存、诊断或服务端逻辑。
+- 已通过 lint、typecheck、全仓 514 项测试、build、Prisma validate/generate。候选 Web `pxxis-prelaunch-20260713-web:target-roi-view-v9-20260831` 在 `127.0.0.1:3301` 健康且返回 200 后接管 `127.0.0.1:3300`；候选容器已删除，v8 Web 停止保留为本机回退。
+- API/Worker、PostgreSQL、数据卷、Extension 与 4300 API 未修改；切换后 Web 首页、API `/ready`、`/version` 均为 200。未发起诊断、模型调用、平台操作、migration、`db push`、commit、push 或生产部署。
+
+## 2026-08-31 目标 ROI 自动保存并发收口（本机，非生产）
+
+- 审计发现：自动保存请求已发出但尚未返回时立即创建诊断，会将同一草稿再次排入写入链。现在改为等待在途保存的结果；仅在保存确认后创建诊断，失败会明确阻止创建。没有修改服务端接口、Schema 或任何业务数据。
+- 已通过根目录 lint、typecheck、全仓 514 项测试、build、Prisma validate/generate。候选 Web `pxxis-prelaunch-20260713-web:target-roi-view-v8-20260831` 在 `127.0.0.1:3301` 健康且返回 200 后接管 `127.0.0.1:3300`；候选容器已删除，v7 Web 停止保留为本机回退。
+- API/Worker、PostgreSQL、数据卷、Extension 与 4300 API 未修改；切换后 Web 首页、API `/ready`、`/version` 均为 200。未发起诊断、模型调用、平台操作、migration、`db push`、commit、push 或生产部署。
+
+## 2026-08-31 目标 ROI 本机切换（非生产）
+
+- 从当前工作树构建 API/Worker `pxxis-local-ai-validation:target-roi-v7-20260830` 与 Web `pxxis-prelaunch-20260713-web:target-roi-view-v7-20260830`。候选 API 在 `127.0.0.1:4304`、候选 Web 在 `127.0.0.1:3301` 先后返回 HTTP 200；候选已在正式切换后删除。
+- 切换前查询 `PENDING/RUNNING=0`；正式 API、Worker、Web 接管 4300/3300 后 `/ready`、`/version` 与首页为 200，容器内确认 `server-determined-skill-plan-v22`。旧 API、Worker、Web 停止并保留为本机回退，未删除数据库或数据卷。
+- 真实 Chrome 登录态刷新经营大屏后，确认目标 ROI 输入在标题栏中央、保存按钮按草稿启停、清空能回到未设置状态。未点击保存或生成诊断，未调用模型、创建建议或执行平台动作。
+- 本次没有 migration、`db push`、生产部署、commit 或 push。
+
+## 2026-08-30 决策缺口精简 v6 本机切换（非生产）
+
+- API/Worker 镜像 `pxxis-local-ai-validation:diagnosis-boundary-v6-20260830` 先在 4304 验证 ready 与 Prompt v16；Web 候选先后在 3301 验证，最终运行镜像为 `diagnosis-boundary-view-v6-1-20260830`。
+- 切换前后 `PENDING/RUNNING=0`。当前 4300 ready/version、3300 首页均为 200，API/Web healthy，Worker 运行；候选容器均在确认零挂载后删除，上一版容器停止保留为本机回滚。
+- 已在真实 Chrome 登录态刷新现有历史结果：重复历史缺口归并，页面无“同直播类型”、无旧实验区、业务主区无原始证据编号。未重跑模型或改写历史诊断。
+- 未修改 PostgreSQL、数据卷、Extension、Schema 或业务动作状态；未执行 migration、`db push`、生产部署、平台操作、commit 或 push。
+
+## 2026-08-30 经营化诊断 v5 本机切换（非生产）
+
+- API 候选镜像 `pxxis-local-ai-validation:diagnosis-business-v5-20260830` 先在 `127.0.0.1:4304` 通过 ready 与 Prompt v15 / SkillSet v5 静态核验，Web 候选 `pxxis-prelaunch-20260713-web:diagnosis-business-view-v5-20260830` 在 `127.0.0.1:3301` 返回 HTTP 200；候选容器均为零挂载并在切换后删除。
+- 切换前确认 `PENDING/RUNNING=0`。当前 API、Worker、Web 已分别接管 4300/3300；API 与 Web 健康，Worker 运行，镜像内加载 Prompt v15 / Orchestration v21 / SkillSet v5，模型仍为 `deepseek-v4-flash`。
+- 上一版 API、Worker、Web 分别停止保留为 `*-before-business-v5-20260830` 本机回滚容器。PostgreSQL、数据卷、Extension、Schema 和既有业务记录未修改；未自动发起模型诊断或创建建议。
+- Chrome 打开 3300 任务页时现有会话已过期，只能看到重新登录提示，因此本轮尚缺登录态业务页面目检。静态构建和 HTTP 200 不能替代该验收。
+- 未执行 migration、`db push`、生产部署、平台操作、commit 或 push。
+
+## 2026-08-30 成功诊断结果兼容切换与旧容器清理（本机，非生产）
+
+- 候选 API `persisted-evidence-v25-20260830` 在 4304、候选 Web `diagnosis-result-v4-20260830` 在 3301 均返回 HTTP 200；切换前队列为空。随后 API/Worker/Web 分别接管 4300/3300，正式健康检查均为 200。
+- 已使用用户实际 Chrome 会话重新加载两个原报错标签页，页面标题恢复为 `pxxis 本地生活投流诊断`，完整展示成功诊断、合法证据链接和 5 条待人工审批建议。
+- 删除 18 个停止、无挂载的候选或历史回滚容器。保留当前 Web/API/Worker/PostgreSQL，以及 `evidence-repair-v24-20260830` API/Worker 和 `diagnosis-error-detail-v3-20260830` Web 三个最近回滚；所有数据卷、数据库、其他项目容器和镜像均未删除。
+- 未执行 migration、`db push`、生产部署、平台操作、自动审批、commit 或 push。
+
+## 2026-08-30 证据引用修复与失败详情切换（本机，非生产）
+
+- API 候选使用 `pxxis-local-ai-validation:evidence-repair-v24-20260830` 在 `127.0.0.1:4304` 通过数据库 ready、version 及容器内 Prompt v14 / Orchestration v21 检查；随后 API 与 Worker 接管现有本机服务，模型仍为 `deepseek-v4-flash`。
+- Web 候选使用 `pxxis-prelaunch-20260713-web:diagnosis-error-detail-v3-20260830` 在 `127.0.0.1:3301` 返回 HTTP 200，随后接管 `127.0.0.1:3300`。正式 3300 首页、4300 ready/version 均为 200。
+- 切换前 `PENDING/RUNNING=0`。旧 v23 API/Worker 与旧 Web 均停止保留为回滚容器，两个候选也已停止保留；PostgreSQL、Extension、数据卷和业务记录未修改。
+- 本次没有自动重跑真实诊断、没有执行 migration、`db push`、生产部署、平台操作、commit 或 push。
+
+## 2026-08-30 DeepSeek Flash 模型切换（本机，非生产）
+
+- 已构建 `pxxis-local-ai-validation:flash-v23-20260830`，候选 API 先在 `127.0.0.1:4303` 验证 ready、version 和 Flash 环境配置后，正式 API 接管 `127.0.0.1:4300`，Worker 随后切换为同一镜像。
+- 实际核验：4300 `/ready`、`/version` 均为 HTTP 200，API 和 Worker 的 `DEEPSEEK_MODEL` 均为 `deepseek-v4-flash`。用正式 API 容器仅调用 DeepSeek `GET /models`，返回 HTTP 200 且该模型可用；没有发送提示词或创建业务记录。
+- 切换前 `PENDING/RUNNING=0`。旧 v22 API 与 Worker、4303 候选均停止保留；未重建 Web、Extension 或 PostgreSQL，未执行 migration、`db push`、数据清理、生产部署、平台操作、commit 或 push。
+
+## 2026-08-30 DecisionRun 版本留痕修复切换（本机，非生产）
+
+- 已构建并切换 `pxxis-local-ai-validation:fixed-skill-plan-v22-20260830`。候选 API 先在 `127.0.0.1:4302` 通过 ready、version 与 SkillSet v4 核验；正式 API 及 Worker 随后接管现有本机服务。
+- 实际核验：4300 `/ready`、`/version` 均为 HTTP 200，运行产物包含 `strategyVersion: diagnosisSkillSetVersion`，Worker 保持运行；切换时 `PENDING/RUNNING=0`。旧 v21 API/Worker 停止保留为可恢复回退，4302 候选停止保留。
+- 以运行容器的服务端凭据对 DeepSeek 模型列表执行无生成校验，HTTP 200 且配置模型存在；未发送提示词、创建运行或产生平台动作。
+- 未重建 Web、Extension 或 PostgreSQL；未执行 migration、`db push`、数据清理、生产部署、平台操作、commit 或 push。
+
+## 2026-08-30 双路线实时 AI 诊断修复切换（本机，非生产）
+
+- 已从当前工作树构建 `pxxis-local-ai-validation:fixed-skill-plan-v21-20260829`。候选 API 先在 `127.0.0.1:4301` 完成 ready、version 与容器内 SkillSet v4 检查；随后正式 API 接管 `127.0.0.1:4300`，Worker 也切换为同一镜像。
+- 实际核验：4300 `/ready` 与 `/version` 均为 HTTP 200；API 与 Worker 均加载 `managed-live-growth-skills-v4`，且切换时 `PENDING/RUNNING` 队列为 0。旧 v20 API 和 Worker 已停止保留为本机回退，4301 候选已停止保留。
+- 本次仅修复本机运行态中双路线实时证据的正式层误判；没有重建 Web/插件/PostgreSQL、没有 migration、`db push`、数据清理、生产部署、平台操作、commit 或 push。三条旧失败运行未删除。
+
+## 2026-08-29 本机 AI 验收 API/Worker 切换（非生产部署）
+
+- 从当前工作树构建 `pxxis-local-ai-validation:fixed-skill-plan-v20-20260829`；候选 API 先绑定 `127.0.0.1:4301`，通过数据库 ready、版本和 AI 配置预检后，正式实例接管 `127.0.0.1:4300`。运行 `/version` 为 `0.2.5 / local-ai-v20-20260829`，3300 Web、4300 API 和 PostgreSQL 均返回健康结果。
+- 新增本机 Worker 容器 `pxxis-local-ai-validation-worker`，使用同一受限 Docker 网络与服务端环境。它通过配置预检并保持运行；切换前后均确认没有待领取的 AI 运行，所以未调用模型、未创建 `DecisionRun`、`ActionProposal` 或 `ActionOutcome`。
+- 旧 API 停止保留为 `pxxis-prelaunch-20260713-api-1-rollback-ai-v20-20260829`；4301 候选容器已移除。Web、PostgreSQL、数据卷、Schema、migration、业务数据、生产环境、DNS 和平台页面均未修改。
+- 这只使本机环境具备受控诊断条件。当前数据库缺少新鲜且完整人工复核的证据，仍需用户手动采集/复核后再显式创建一次诊断；所有平台动作继续由用户手动完成。
+
+## 2026-08-29 本机运行态复核（非生产部署）
+
+- 已只读核验当前容器：Web `pxxis-prelaunch-20260713-web-1` 使用 `dashboard-pulse-cadence-30s-20260828`，API `pxxis-prelaunch-20260713-api-1` 使用 `local-promotion-contract-v2-20260828`，PostgreSQL 均为 healthy。
+- `http://127.0.0.1:3300/`、`http://127.0.0.1:4300/ready` 与 `/version` 均返回 HTTP 200；运行 API 报告产品/插件版本 `0.2.5`、构建 SHA `4ffdf9d3a639`、采集协议 `8`。
+- 当前工作树另有未提交的实时趋势路线隔离补丁，尚未进入该 API 容器；本次仅记录事实，没有重建、替换容器、执行 migration、`db push`、平台操作或生产部署。
+
 ## 2026-08-28 v0.2.5 GitHub 发布（非生产部署）
 
 - 已从源码基线 `4ddacd590d55` 生成生产扩展归档 `collector-v0.2.5-4ddacd590d55.zip`，发布清单标记 `buildTarget=production`、`localTestOnly=false`；SHA-256 为 `95ac90bb5bb7637d47c6586cd0db787702a201b93d2fdfdb3ef283b2b7f7b94b`。
@@ -552,3 +680,15 @@
 - 经用户明确授权，仅将本机 `127.0.0.1:4300` API 从 `pxxis-prelaunch-20260713-api:local-plugin-v0.2.5` 切换为 `pxxis-prelaunch-20260713-api:local-promotion-contract-v2-20260828`。
 - 新镜像先在临时 4301 容器验证数据库 ready 和共享契约 `2026-08-28.2 / 1.2.1`，再切换正式端口。正式容器 Docker health、API `/ready`、`/version` 均通过；3300 Web 继续返回 HTTP 200。
 - 旧 API 容器停止保留为 `pxxis-prelaunch-20260713-api-1-before-contract-v2-20260828`，可用于本机回退。PostgreSQL、数据卷、Schema、Web 容器、生产环境、DNS 与外部流量均未修改。
+
+## 2026-08-29 本机校准大屏内联诊断 Web 切换（非生产部署）
+
+- Web 已由 `pxxis-prelaunch-20260713-web:dashboard-pulse-cadence-30s-20260828` 切换为 `pxxis-prelaunch-20260713-web:diagnosis-inline-v2-20260829`，端口仍仅绑定 `127.0.0.1:3300`，并继续指向本机 `127.0.0.1:4300` API。
+- 先以临时 3301 候选容器完成 HTTP 200 与启动日志检查，再完成 3300 替换；当前正式容器运行中、首页 HTTP 200。候选容器已删除，上一版 Web 停止保留为 `pxxis-prelaunch-20260713-web-1-rollback-inline-diagnosis-v1-20260829`，可用于本机回退。
+- 未更改 API、PostgreSQL、数据卷、Schema、迁移、生产 DNS、外部流量、平台状态或插件源代码。本次只更新本机 Web 的诊断结果呈现和向导步骤。
+
+## 2026-08-31 本机 Docker 历史容器清理（非部署）
+
+- 已删除 10 个本项目已退出、无数据卷或宿主机挂载的较早 Web/API/Worker 回退容器；保留当前运行中的 Web、API、Worker、PostgreSQL，以及紧邻当前版本的一整套回退容器。
+- 清理后 Web `127.0.0.1:3300`、API `127.0.0.1:4300/ready`、`/version` 均返回 HTTP 200；Web/API/PostgreSQL healthy，Worker running。
+- 未删除镜像、Docker 数据卷、数据库或业务数据，未重建服务、执行 migration、修改配置、发布、部署或切换外部流量。

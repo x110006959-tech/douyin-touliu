@@ -1,4 +1,4 @@
-export const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
+export const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 export const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 export const DEFAULT_AI_DIAGNOSIS_TIMEOUT_MS = 120_000;
 
