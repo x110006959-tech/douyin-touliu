@@ -2,11 +2,12 @@
 
 > 当前事实、最高优先级与验收阻塞请先阅读 [NOW.md](./NOW.md)。本文件为技术与运行状态沿革，历史镜像、指纹和“待验收”条目必须结合 NOW 的日期和证据判断。
 
-## 2026-09-02 v0.2.6 Git/GitHub 发布准备（源码门禁已通过）
+## 2026-09-02 v0.2.6 Git/GitHub 发布（制品已生成，待上传）
 
 - 当前源码已统一为 `0.2.6`，包含实时路线隔离、确定性诊断调度、目标 ROI、结构化输出修复、领域证据投影、数值目标归一化及决策/实验一致性补丁。
 - 已实际通过 lint、typecheck、全仓 527 项测试、build、隔离占位 `DATABASE_URL` 下的 Prisma validate/generate、version check、diff check 和 24/24 合成评测。
-- 仅准备源码版本和发布制品，未改变 Prisma Schema、migration、业务数据库、本机运行容器或生产部署；生产 ZIP 与 GitHub 发布待本轮完成后补记。
+- 生产归档 `collector-v0.2.6-89a5de704f91.zip` 已生成，SHA-256 为 `48668223d1a5dedfcae4c9ae59152ad36e20371facc95076632ba06c0d69720a`，对应源码提交 `89a5de704f91`。
+- 仅准备源码版本和发布制品，未改变 Prisma Schema、migration、业务数据库、本机运行容器或生产部署；tag、push 与 GitHub Release 待本轮完成后补记。
 
 ## 2026-09-01 诊断展示、规则裁决和实验生命周期统一（本机）
 

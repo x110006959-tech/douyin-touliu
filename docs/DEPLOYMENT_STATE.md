@@ -2,6 +2,12 @@
 
 > 当前部署/本机运行态结论以 [NOW.md](./NOW.md) 为准；本文件保留每次切换的完整历史，不得以较早镜像记录推断当前容器。
 
+## 2026-09-02 v0.2.6 发布制品（制品已生成，待上传，非生产部署）
+
+- 源码版本已统一为 `0.2.6`，发布脚本从源码提交 `89a5de704f91` 生成 `apps/extension/release/collector-v0.2.6-89a5de704f91.zip`；`buildTarget=production`、`localTestOnly=false`。
+- 制品 SHA-256 为 `48668223d1a5dedfcae4c9ae59152ad36e20371facc95076632ba06c0d69720a`；本机 API/Web/Worker、数据库、Schema、迁移和生产环境均未因本次上传动作切换或修改。
+- GitHub 主分支、`v0.2.6` 标签与 Release 尚待本轮上传完成后补记。
+
 ## 2026-09-02 诊断限流事务边界 v14 切换（本机，非生产）
 
 - 在前一版决策/实验一致性运行态基础上，修复限流检查仍使用全局 Prisma 客户端的问题。新镜像 `pxxis-local-ai-validation:decision-experiment-transaction-v14-20260902` 由 API 与 Worker 共用；Web 继续运行 `pxxis-prelaunch-20260713-web:decision-experiment-view-v14-20260901`。

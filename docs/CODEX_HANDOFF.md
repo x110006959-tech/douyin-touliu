@@ -2,11 +2,12 @@
 
 > 开始任何新工作前先阅读 [NOW.md](./NOW.md)。本文件是完整交接账本；其中较早的运行镜像、构建指纹和“下一步人工验收”可能已被后续记录替代，不能单独作为当前事实。
 
-## 2026-09-02 v0.2.6 Git/GitHub 发布准备（源码门禁已通过）
+## 2026-09-02 v0.2.6 Git/GitHub 发布（制品已生成，待上传）
 
 - 已将根包、API、Web、Extension 与共享包版本统一为 `0.2.6`，并纳入实时路线隔离、确定性诊断调度、目标 ROI、结构修复、领域投影、数值目标归一化和决策/实验一致性补丁。
 - 实际通过 lint、typecheck、全仓 527 项测试、build、隔离占位 `DATABASE_URL` 下的 Prisma validate/generate、version check、diff check 与 24/24 合成评测。
-- 本轮上传尚未生成生产 ZIP、commit、tag、push 或 GitHub Release；未改 Prisma Schema、migration、业务数据库、生产运行态或平台数据。完成发布后必须回填本节的制品哈希、提交、标签和 Release 地址。
+- 生产归档已生成：`apps/extension/release/collector-v0.2.6-89a5de704f91.zip`，SHA-256 为 `48668223d1a5dedfcae4c9ae59152ad36e20371facc95076632ba06c0d69720a`，源码提交为 `89a5de704f91`。
+- 未改 Prisma Schema、migration、业务数据库、生产运行态或平台数据；tag、push 和 GitHub Release 尚待本轮完成，完成后回填本节地址与最终提交。
 
 ## 2026-09-01 决策视图与可归因实验契约收口（本机已切换，待用户显式重跑）
 

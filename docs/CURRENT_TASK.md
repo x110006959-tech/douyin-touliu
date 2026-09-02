@@ -2,11 +2,12 @@
 
 > 当前最高优先级、运行态事实和验收阻塞请先阅读 [NOW.md](./NOW.md)。本文件保留完整阶段经过；历史“待验收”记录不自动代表当前仍未完成。
 
-## 2026-09-02 v0.2.6 Git/GitHub 发布准备（源码门禁已通过）
+## 2026-09-02 v0.2.6 Git/GitHub 发布（制品已生成，待上传）
 
 - 本轮将实时信号路线隔离、服务端确定性诊断调度、目标 ROI 任务级输入、结构化输出修复、领域证据投影、数值目标归一化和决策/实验生命周期一致性补丁作为同一版本发布；同步将根包、API、Web、Extension 与共享包版本统一为 `0.2.6`。
 - 已实际通过 `corepack pnpm lint`、`corepack pnpm typecheck`、`corepack pnpm test`（527 项）、`corepack pnpm build`、隔离占位 `DATABASE_URL` 下的 Prisma `validate`/`generate`、`corepack pnpm version:check`、`git diff --check` 与 `corepack pnpm diagnosis:eval:fake`（24/24 结构、24/24 核心命中、虚构证据 0、安全违规 0）。
-- 版本升级只更新源码与扩展元数据，未修改 Prisma Schema、migration、业务数据库、平台数据或生产运行态；生产 ZIP、commit、tag、push 和 GitHub Release 在本节记录时尚未生成。
+- 生产归档已由仓库发布脚本生成：`apps/extension/release/collector-v0.2.6-89a5de704f91.zip`，`localTestOnly=false`，SHA-256 为 `48668223d1a5dedfcae4c9ae59152ad36e20371facc95076632ba06c0d69720a`。
+- 版本升级只更新源码与扩展元数据，未修改 Prisma Schema、migration、业务数据库、平台数据或生产运行态；源码提交已完成，tag、push 和 GitHub Release 尚待本轮上传。
 
 ## 2026-09-01 诊断裁决、实验设计与复盘闭环一致性（本机已切换，待用户真实模型验收）
 
