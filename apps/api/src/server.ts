@@ -61,6 +61,7 @@ import { createCollectionDashboardRouter } from "./routes/collection-dashboard.j
 import { createSystemHealthRouter } from "./routes/system-health.js";
 import { createWorkspaceRouter } from "./routes/workspaces.js";
 import { createDecisionRunRouter } from "./routes/decision-runs.js";
+import { createProjectHistoryRouter } from "./routes/project-history.js";
 import { actionProposalStatusFilter, prepareActionProposals, proposalLifecyclePolicy, toReadableActionProposal } from "./proposal-lifecycle.js";
 import {
   createCollectionRunSchema,
@@ -103,6 +104,7 @@ import { localPromotionInternalApiEnabled } from "./local-promotion-internal-api
 import { structureLiveScreenMinuteTrend } from "./live-screen-minute-trend.js";
 import { validateLiveScreenInternalApiPayload } from "./live-screen-internal-api-validation.js";
 import { validateLocalPromotionInternalApiPulse } from "./local-promotion-internal-api-validation.js";
+import { recordProjectHistoryObservation } from "./project-history.js";
 
 export function createServer(options: { isDraining?: () => boolean } = {}) {
   ensureSecurityConfiguration();
@@ -172,6 +174,7 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
   app.use(createSystemHealthRouter());
   app.use(createWorkspaceRouter());
   app.use(createDecisionRunRouter());
+  app.use(createProjectHistoryRouter());
 
   app.get("/projects", async (req, res) => {
     const user = currentUser(req);
@@ -673,6 +676,15 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
       const run = await prisma.collectionRun.findFirst({ where: { id: parsed.data.collectionRunId, taskId: task.id, status: { in: ["ACTIVE", "COMPLETED", "DEGRADED"] } }, select: { id: true } });
       if (!run) return sendError(res, 409, "COLLECTION_RUN_NOT_ACTIVE", "巡检批次不存在或已停止");
     }
+    await prisma.$transaction((tx) => recordProjectHistoryObservation(tx, {
+      projectId: task.projectId,
+      collectionTaskId: task.id,
+      routeKey: parsed.data.routeKey,
+      pageType: parsed.data.pageType,
+      observedAt: new Date(parsed.data.localCapturedAt),
+      sourceKind: "PULSE",
+      metrics: parsed.data.metrics
+    }), { isolationLevel: "Serializable" });
     const recorded = recordMetricPulse(task.id, parsed.data);
     console.info(`[${getRequestId(res)}] metric pulse accepted`, {
       taskId: task.id,
@@ -983,6 +995,15 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
             where: { taskId: task.id, routeKey },
             data: { status: "CAPTURED", lastCapturedAt: collectedAt, lastError: null, sourceUrl: snapshotPayload.sourceUrl }
           });
+          await recordProjectHistoryObservation(tx, {
+            projectId: task.projectId,
+            collectionTaskId: task.id,
+            routeKey,
+            pageType: snapshotPayload.pageType,
+            observedAt: collectedAt,
+            sourceKind: "SNAPSHOT",
+            metrics: normalized
+          });
         }
         await tx.collectionTask.update({
           where: { id: task.id },
@@ -1171,6 +1192,15 @@ export function createServer(options: { isDraining?: () => boolean } = {}) {
         await tx.collectionRouteSource.updateMany({
           where: { taskId: task.id, routeKey: parsed.data.routeKey },
           data: { status: "CAPTURED", lastCapturedAt: now, lastError: null }
+        });
+        await recordProjectHistoryObservation(tx, {
+          projectId: task.projectId,
+          collectionTaskId: task.id,
+          routeKey: parsed.data.routeKey,
+          pageType: parsed.data.pageType,
+          observedAt: now,
+          sourceKind: "MANUAL",
+          metrics: normalized
         });
         await writeAuditLog(req, "MANUAL_METRICS_IMPORTED", {
           workspaceId: task.project.workspaceId,

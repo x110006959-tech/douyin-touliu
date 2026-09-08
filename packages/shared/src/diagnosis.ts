@@ -1,5 +1,11 @@
 import { z } from "zod";
-import type { ActionType, DecisionEngineInput, RiskLevel } from "./index.js";
+import type {
+  ActionType,
+  DecisionEngineInput,
+  DiagnosisRecentTrend,
+  DiagnosisScenario,
+  RiskLevel
+} from "./index.js";
 import { collectionRouteKeys, type CollectionRouteKey } from "./collection-routes.js";
 
 export const diagnosisSkillIds = [
@@ -56,7 +62,9 @@ export const diagnosisEvidenceSchema = z.object({
   metricKey: z.string().max(100).nullable().optional(),
   tableIndex: z.number().int().nonnegative().nullable().optional(),
   rowIndex: z.number().int().nonnegative().nullable().optional(),
-  capturedAt: z.string().datetime().nullable().optional()
+  capturedAt: z.string().datetime().nullable().optional(),
+  semanticScope: z.string().max(200).nullable().optional(),
+  observationPeriod: z.string().max(200).nullable().optional()
 });
 
 export const diagnosisClaimSchema = z.object({
@@ -106,6 +114,14 @@ export const diagnosisExperimentV2Schema = diagnosisExperimentSchema.extend({
   interferenceFactors: z.array(z.string().min(1).max(300)).max(10)
 });
 
+/**
+ * 新模型契约只允许输出 abortCriteria。stopConditions 是旧记录和旧接口的
+ * 兼容字段，由服务端从 abortCriteria 派生，避免模型写出两套互相冲突的止损条件。
+ */
+export const diagnosisExperimentModelSchema = diagnosisExperimentV2Schema
+  .omit({ stopConditions: true })
+  .strict();
+
 export const aiCandidateActionSchema = z.object({
   actionType: z.enum(diagnosisActionTypes),
   title: z.string().min(1).max(200),
@@ -131,6 +147,11 @@ export const diagnosisSkillOutputSchema = z.object({
   confidence: z.number().min(0).max(1)
 });
 
+/** 领域 Skill 只负责事实、假设与证据缺口，不能直接生成实验或候选动作。 */
+export const diagnosisDomainAnalysisOutputSchema = diagnosisSkillOutputSchema
+  .omit({ skillId: true, skillVersion: true, experiments: true, candidateActions: true })
+  .strict();
+
 export const diagnosisFinalResultSchema = z.object({
   schemaVersion: z.literal("ai-diagnosis-result-v1"),
   coreConclusion: z.string().min(1).max(2000),
@@ -140,17 +161,81 @@ export const diagnosisFinalResultSchema = z.object({
   hypotheses: z.array(diagnosisHypothesisSchema).min(1).max(20),
   missingEvidence: z.array(z.string().min(1).max(300)).max(30),
   experiments: z.array(diagnosisExperimentSchema).max(20),
-  stopConditions: z.array(z.string().min(1).max(500)).min(1).max(20),
+  // 保留历史输出字段。新运行由服务端从每个实验的 abortCriteria 汇总；
+  // 没有实验时允许为空，不能伪造全局止损条件。
+  stopConditions: z.array(z.string().min(1).max(500)).max(20),
   candidateActions: z.array(aiCandidateActionSchema).max(20)
 });
+
+/**
+ * 仅用于解析新模型输出。strict() 会拒绝旧 stopConditions 字段，而不是静默
+ * 丢弃它，从而避免重复字段覆盖、遗漏或掩盖风险条件。
+ */
+export const diagnosisFinalModelOutputSchema = diagnosisFinalResultSchema
+  .omit({ experiments: true, stopConditions: true })
+  .extend({
+    experiments: z.array(diagnosisExperimentModelSchema).max(1),
+    candidateActions: z.array(aiCandidateActionSchema).max(1)
+  })
+  .strict();
 
 export type DiagnosisEvidence = z.infer<typeof diagnosisEvidenceSchema>;
 export type DiagnosisClaim = z.infer<typeof diagnosisClaimSchema>;
 export type DiagnosisHypothesis = z.infer<typeof diagnosisHypothesisSchema>;
 export type DiagnosisExperiment = z.infer<typeof diagnosisExperimentSchema>;
+export type DiagnosisExperimentModelOutput = z.infer<typeof diagnosisExperimentModelSchema>;
 export type AiCandidateAction = z.infer<typeof aiCandidateActionSchema>;
 export type DiagnosisSkillOutput = z.infer<typeof diagnosisSkillOutputSchema>;
+export type DiagnosisDomainAnalysisOutput = z.infer<typeof diagnosisDomainAnalysisOutputSchema>;
 export type DiagnosisFinalResult = z.infer<typeof diagnosisFinalResultSchema>;
+export type DiagnosisFinalModelOutput = z.infer<typeof diagnosisFinalModelOutputSchema>;
+
+export type DiagnosisTrustedFactMetric = {
+  metricKey: string;
+  metricLabel: string;
+  value: number;
+  unit: string | null;
+  sourceLabel: string;
+  capturedAt: string | null;
+  observationPeriod: string | null;
+  semanticScope: string | null;
+};
+
+export type DiagnosisTrustedFactsView = {
+  version: 1;
+  scenario: DiagnosisScenario;
+  dataFreshness: {
+    latestCollectedAt: string | null;
+    summary: string;
+  };
+  target: {
+    status: "MET" | "BELOW_TARGET" | "UNAVAILABLE";
+    actual: number | null;
+    target: number | null;
+    message: string;
+  };
+  trend: {
+    status: DiagnosisRecentTrend["status"] | "UNKNOWN";
+    summary: string;
+    recentTrend: DiagnosisRecentTrend | null;
+  };
+  cause: {
+    status: "UNCONFIRMED";
+    message: string;
+  };
+  metricGroups: Array<{
+    id: "FULL_DOMAIN" | "LIVE_ROOM" | "LOCAL_DASHBOARD";
+    label: string;
+    sourceLabel: string;
+    metrics: DiagnosisTrustedFactMetric[];
+  }>;
+  facts: DiagnosisClaim[];
+  boundaries: string[];
+  nextCheck: {
+    title: string;
+    detail: string;
+  };
+};
 
 export type SimilarDiagnosisCase = {
   id: string;
@@ -217,6 +302,7 @@ export type AiDecisionRunDTO = {
   confidence: number | null;
   diagnosis: string | null;
   finalResult: (DiagnosisFinalResult & { ruleAdjudication?: DiagnosisRuleAdjudication; evidenceCatalog?: DiagnosisEvidence[] }) | null;
+  trustedFacts?: DiagnosisTrustedFactsView | null;
   skillExecutions: DiagnosisSkillExecutionDTO[];
   actionProposals: unknown[];
   createdAt: string;

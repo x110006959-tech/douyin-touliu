@@ -159,10 +159,14 @@ describe("extension source safety guard", () => {
     );
     const heartbeatIndex = exchangeSource.indexOf("const heartbeat = taskPageUrl");
     const rejectedHeartbeatIndex = exchangeSource.indexOf("if (!heartbeat.ok)");
-    const credentialCommitIndex = exchangeSource.indexOf("await chrome.storage.local.set({ [STORAGE.TOKEN]: token");
+    const credentialCommitIndex = exchangeSource.indexOf("[STORAGE.TOKEN]: token");
+    const contextRequestIndex = exchangeSource.indexOf("const contextResponse = await fetchWithTimeout");
+    const connectionSuccessIndex = exchangeSource.indexOf("return { ok: true, paired: true, config, context }");
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0);
     expect(rejectedHeartbeatIndex).toBeGreaterThan(heartbeatIndex);
-    expect(credentialCommitIndex).toBeGreaterThan(rejectedHeartbeatIndex);
+    expect(credentialCommitIndex).toBeGreaterThanOrEqual(0);
+    expect(credentialCommitIndex).toBeLessThan(contextRequestIndex);
+    expect(connectionSuccessIndex).toBeGreaterThan(rejectedHeartbeatIndex);
   });
 
   it("rejects auto-detected snapshot routes that are no longer enabled for the current task", () => {

@@ -11,7 +11,8 @@ import { writeAuditLog } from "../audit.js";
 import { refreshCollectionRunStatus } from "../collection-runs.js";
 import { prisma } from "../prisma.js";
 import { sendError, sendSuccess } from "../response.js";
-import { ensureReviewMetricsForTask } from "../review-metrics.js";
+import { ensureReviewMetricsForTask, normalizedMetricsToVisibleMetrics } from "../review-metrics.js";
+import { recordProjectHistoryObservation } from "../project-history.js";
 import { currentUser, toJson } from "../server-utils.js";
 import { isSerializableConflict, runSerializableTransaction } from "../transactions.js";
 
@@ -72,6 +73,15 @@ export function createSnapshotAccountRouter() {
         });
         const initialized = await ensureReviewMetricsForTask({ id: snapshot.taskId, snapshots: [confirmed] }, tx);
         await markRouteCaptured(tx, confirmed);
+        await recordProjectHistoryObservation(tx, {
+          projectId: snapshot.task.projectId,
+          collectionTaskId: snapshot.taskId,
+          routeKey: parsed.data.routeKey,
+          pageType: confirmed.pageType || "UNKNOWN",
+          observedAt: confirmed.localCollectedAt,
+          sourceKind: "SNAPSHOT",
+          metrics: normalizedMetricsToVisibleMetrics(confirmed.normalizedMetrics)
+        });
         await writeAuditLog(req, "SNAPSHOT_ROUTE_MANUALLY_CONFIRMED", {
           workspaceId: snapshot.task.project.workspaceId,
           projectId: snapshot.task.projectId,

@@ -19,11 +19,13 @@ import { takeLatestVerificationForTest } from "./email-verification.js";
 import { prisma } from "./prisma.js";
 import { resetRateLimitBuckets } from "./rate-limit.js";
 import { processNextDecisionRun } from "./ai-diagnosis/worker.js";
+import { buildDiagnosisContext } from "./project-history.js";
 import { createSyntheticDiagnosisTransport } from "./ai-diagnosis/synthetic-evaluation.js";
 import { syntheticDiagnosisCases } from "@douyin-local-life/diagnosis-skills";
 import { liveScreenInternalApiEnabled } from "./live-screen-internal-api-config.js";
 import { localPromotionInternalApiEnabled } from "./local-promotion-internal-api-config.js";
 import { LlmTransportError } from "@douyin-local-life/llm";
+import type { DiagnosisFinalModelOutput } from "@douyin-local-life/shared/diagnosis";
 
 type ApiEnvelope<T> =
   | { success: true; data: T; error: null }
@@ -340,13 +342,13 @@ describe("V0.1 API smoke flow", () => {
     if (!queuedRun) throw new Error("Expected an idempotent decision run");
     expect(queuedRun.id).toBeTruthy();
     expect(queuedRun).toMatchObject({
-      strategyVersion: "managed-live-growth-skills-v9",
-      skillSetVersion: "managed-live-growth-skills-v9"
+      strategyVersion: "managed-live-growth-skills-v11",
+      skillSetVersion: "managed-live-growth-skills-v11"
     });
     expect(queuedRun.actionProposals).toHaveLength(0);
     const decisionRun = await completeDecisionRun(queuedRun.id, token);
     expect(decisionRun.status).toBe("SUCCEEDED");
-    expect(decisionRun.actionProposals.length).toBeGreaterThanOrEqual(2);
+    expect(decisionRun.actionProposals.length).toBeGreaterThanOrEqual(1);
     expect(decisionRun.actionProposals.every((proposal) => proposal.requiresApproval)).toBe(true);
     const diagnosisCase = await api<{ diagnosisCase: { id: string; status: string } | null }>(`/decision-runs/${decisionRun.id}`, token);
     expect(diagnosisCase.diagnosisCase).toMatchObject({ status: "DRAFT" });
@@ -374,9 +376,35 @@ describe("V0.1 API smoke flow", () => {
     });
     expect(unchangedEvidenceRun).toMatchObject({ id: decisionRun.id, reuseReason: "UNCHANGED_EVIDENCE" });
 
+    const reuseKey = `${decisionKey}-unchanged-evidence`;
+    const archivesBeforeRetry = await prisma.projectAnalysisArchive.count({ where: { collectionTaskId: task.id } });
+    const runsBeforeRetry = await prisma.decisionRun.count({ where: { collectionTaskId: task.id } });
+    const reusedRetries = await Promise.all(Array.from({ length: 3 }, () => api<{ id: string }>(`/collection-tasks/${task.id}/decision-runs`, token, {
+      method: "POST", headers: { "idempotency-key": reuseKey }, body: {}
+    })));
+    expect(reusedRetries.every((run) => run.id === decisionRun.id)).toBe(true);
+    expect(await prisma.projectAnalysisArchive.count({ where: { collectionTaskId: task.id } })).toBe(archivesBeforeRetry);
+    expect(await prisma.decisionRun.count({ where: { collectionTaskId: task.id } })).toBe(runsBeforeRetry);
+
+    const concurrentReuseKey = `${decisionKey}-concurrent-reuse`;
+    const firstReuses = await Promise.all(Array.from({ length: 3 }, () => api<{ id: string }>(`/collection-tasks/${task.id}/decision-runs`, token, {
+      method: "POST", headers: { "idempotency-key": concurrentReuseKey }, body: {}
+    })));
+    expect(firstReuses.every((run) => run.id === decisionRun.id)).toBe(true);
+    expect(await prisma.projectAnalysisArchive.count({ where: { collectionTaskId: task.id, archiveKey: `analysis:${task.id}:${concurrentReuseKey}` } })).toBe(1);
+    expect(await prisma.decisionRun.count({ where: { collectionTaskId: task.id } })).toBe(runsBeforeRetry);
+
     const latest = await api<{ id: string; actionProposals: Array<{ id: string }> }>(`/collection-tasks/${task.id}/decision-runs/latest`, token);
     expect(concurrentRuns.some((run) => run.id === latest.id)).toBe(true);
 
+    // The model now emits one plan. Create a separate lifecycle fixture so
+    // pagination and independent approval/observation transitions stay covered.
+    await prisma.actionProposal.create({ data: {
+      decisionRunId: decisionRun.id, projectId: project.id, collectionTaskId: task.id,
+      actionType: "CHECK_CREATIVE", title: "Independent lifecycle fixture", reason: "Verify the observation transition independently.",
+      riskLevel: "LOW", confidence: 0.8, requiresApproval: true, status: "PENDING_APPROVAL",
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000), dedupeKey: `${project.id}:${task.id}:CHECK_CREATIVE:lifecycle`
+    } });
     const projectProposals = await api<Array<{ id: string; status: string }>>(`/projects/${project.id}/action-proposals`, token);
     expect(projectProposals.length).toBeGreaterThanOrEqual(2);
     const firstProposalPage = await api<Array<{ id: string }>>(`/projects/${project.id}/action-proposals?limit=1`, token);
@@ -406,8 +434,22 @@ describe("V0.1 API smoke flow", () => {
         mode: "AI_SKILL_ORCHESTRATED",
         status: "PENDING",
         evidenceFingerprint: decisionRun.evidenceFingerprint,
-        strategyVersion: "managed-live-growth-skills-v1",
-        currentStage: "QUEUED"
+        strategyVersion: "managed-live-growth-skills-v10",
+        currentStage: "QUEUED",
+        inputJson: decisionRun.inputJson
+      }
+    });
+    const completedArchive = await prisma.projectAnalysisArchive.findFirstOrThrow({ where: { decisionRunId: decisionRun.id } });
+    await prisma.projectAnalysisArchive.create({
+      data: {
+        archiveKey: `failed-history-${failedRunFixture.id}`,
+        projectId: project.id,
+        collectionTaskId: task.id,
+        sessionId: completedArchive.sessionId,
+        decisionRunId: failedRunFixture.id,
+        status: "QUEUED",
+        metricsJson: completedArchive.metricsJson,
+        historyContextJson: completedArchive.historyContextJson
       }
     });
     await processNextDecisionRun({
@@ -415,17 +457,95 @@ describe("V0.1 API smoke flow", () => {
       transport: {
         provider: "deepseek",
         model: "deepseek-v4-flash",
-        async chat() {
-          throw new Error("synthetic provider failure");
+        async chat(request) {
+          if (request.messages.some((message) => message.role === "system" && message.content?.includes("诊断综合器"))) {
+            throw new Error("synthetic provider failure");
+          }
+          return createSyntheticDiagnosisTransport(syntheticDiagnosisCases[0]!).chat(request);
         }
       }
     });
-    const failedRun = await api<{ status: string; errorCode: string | null; finalResult: unknown; actionProposals: unknown[] }>(
+    const failedRun = await api<{ status: string; errorCode: string | null; currentStage: string | null; finalResult: unknown; trustedFacts: { target: { status: string }; cause: { status: string } } | null; actionProposals: unknown[] }>(
       `/decision-runs/${failedRunFixture.id}`,
       token
     );
-    expect(failedRun).toMatchObject({ status: "FAILED", errorCode: "AI_DIAGNOSIS_FAILED", finalResult: null });
+    expect(failedRun).toMatchObject({ status: "FAILED", errorCode: "AI_DIAGNOSIS_FAILED", currentStage: expect.stringContaining("FAILED:"), finalResult: null, trustedFacts: { cause: { status: "UNCONFIRMED" } } });
+    expect(failedRun.trustedFacts?.target.status).toBeTruthy();
     expect(failedRun.actionProposals).toHaveLength(0);
+    expect(failedRun.currentStage).toBe("FAILED:SYNTHESIZING_ACTION_PLAN");
+    expect(await prisma.diagnosisSkillExecution.count({ where: { decisionRunId: failedRunFixture.id, status: "SUCCEEDED" } })).toBeGreaterThan(1);
+    await expect(prisma.projectAnalysisArchive.findFirst({ where: { decisionRunId: failedRunFixture.id }, select: { status: true } })).resolves.toMatchObject({ status: "FAILED" });
+
+    for (const diagnosticCase of ["invalid", "repaired", "lease-lost"] as const) {
+      const diagnosticRun = await prisma.decisionRun.create({
+        data: {
+          projectId: project.id, collectionTaskId: task.id, mode: "AI_SKILL_ORCHESTRATED", status: "PENDING",
+          evidenceFingerprint: decisionRun.evidenceFingerprint, inputJson: decisionRun.inputJson,
+          strategyVersion: "validation-diagnostic-test", currentStage: "QUEUED"
+        }
+      });
+      const diagnosticArchive = await prisma.projectAnalysisArchive.create({
+        data: {
+          archiveKey: `diagnostic-${diagnosticRun.id}`, projectId: project.id, collectionTaskId: task.id,
+          sessionId: completedArchive.sessionId, decisionRunId: diagnosticRun.id, status: "QUEUED",
+          metricsJson: completedArchive.metricsJson, historyContextJson: completedArchive.historyContextJson
+        }
+      });
+      const base = createSyntheticDiagnosisTransport(syntheticDiagnosisCases[0]!);
+      let synthesisCalls = 0;
+      let validFinalResponse: Awaited<ReturnType<typeof base.chat>> | undefined;
+      await processNextDecisionRun({
+        workerId: `test-diagnostic-${diagnosticCase}`,
+        transport: {
+          ...base,
+          async chat(request) {
+            if (!request.messages.some((message) => message.role === "system" && message.content?.includes("诊断综合器"))) return base.chat(request);
+            // Repair's last user message contains validation feedback, not the
+            // original evidence catalog. Reuse its valid evidence-bound output.
+            validFinalResponse ??= await base.chat(request);
+            const response = validFinalResponse;
+            synthesisCalls++;
+            if (synthesisCalls > 1 && diagnosticCase === "repaired") return response;
+            if (synthesisCalls > 1 && diagnosticCase === "lease-lost") {
+              await prisma.decisionRun.update({ where: { id: diagnosticRun.id }, data: { leaseOwner: "replacement-worker" } });
+            }
+            const output = JSON.parse(response.message.content!) as DiagnosisFinalModelOutput;
+            output.experiments[0]!.steps = [synthesisCalls === 1 ? "提高预算后观察成交" : "降低预算；api_key=private-diagnostic-value"];
+            output.coreConclusion = "unrelated-output-not-for-diagnostic";
+            return { ...response, message: { ...response.message, content: JSON.stringify(output) } };
+          }
+        }
+      });
+      expect(synthesisCalls).toBe(2);
+      const diagnosticLogs = await prisma.auditLog.findMany({
+        where: { action: "AI_DIAGNOSIS_VALIDATION_FAILED", detailJson: { path: ["decisionRunId"], equals: diagnosticRun.id } }
+      });
+      if (diagnosticCase === "invalid") {
+        expect(diagnosticLogs).toHaveLength(1);
+        expect(diagnosticLogs[0]).toMatchObject({
+          projectId: project.id, taskId: task.id,
+          detailJson: {
+            stage: "SYNTHESIZING_ACTION_PLAN", finalErrorCode: "DIAGNOSIS_OUTPUT_INVALID",
+            validationDiagnostics: [
+              { path: "experiments.0.steps.0", stepText: "提高预算后观察成交", detectedVariables: ["预算"], textRedacted: false },
+              { path: "experiments.0.steps.0", stepText: "[REDACTED_SENSITIVE_STEP]", detectedVariables: ["预算"], textRedacted: true }
+            ]
+          }
+        });
+        expect(JSON.stringify(diagnosticLogs)).not.toMatch(/private-diagnostic-value|unrelated-output-not-for-diagnostic/);
+        await expect(prisma.decisionRun.findUniqueOrThrow({ where: { id: diagnosticRun.id } })).resolves.toMatchObject({ status: "FAILED", aiResultJson: null, finalResultJson: null });
+        await expect(prisma.projectAnalysisArchive.findUniqueOrThrow({ where: { id: diagnosticArchive.id } })).resolves.toMatchObject({ status: "FAILED" });
+        expect(await prisma.actionProposal.count({ where: { decisionRunId: diagnosticRun.id } })).toBe(0);
+      } else {
+        expect(diagnosticLogs).toHaveLength(0);
+        await expect(prisma.decisionRun.findUniqueOrThrow({ where: { id: diagnosticRun.id } })).resolves.toMatchObject({ status: diagnosticCase === "repaired" ? "SUCCEEDED" : "RUNNING" });
+        if (diagnosticCase === "lease-lost") {
+          await expect(prisma.projectAnalysisArchive.findUniqueOrThrow({ where: { id: diagnosticArchive.id } })).resolves.toMatchObject({ status: "QUEUED" });
+          // This isolated test owns the deliberately orphaned fixture.
+          await prisma.decisionRun.delete({ where: { id: diagnosticRun.id } });
+        }
+      }
+    }
 
     const terminalModelFailures = [
       { code: "DEEPSEEK_TIMEOUT", message: "DeepSeek 请求超时" },
@@ -588,6 +708,19 @@ describe("V0.1 API smoke flow", () => {
     expect(detail.executionLogs.length).toBeGreaterThan(0);
     expect(detail.outcomes.length).toBeGreaterThan(0);
 
+    const executionMemory = await buildDiagnosisContext(prisma, { projectId: project.id, collectionTaskId: task.id, scenario: "UNSPECIFIED" });
+    expect(executionMemory.manualActions).toEqual([expect.objectContaining({ actionProposalId: approveTarget.id, outcome: expect.objectContaining({ result: "IMPROVED" }) })]);
+    const isolatedMemory = await buildDiagnosisContext(prisma, { projectId: project.id, collectionTaskId: "other-task", scenario: "UNSPECIFIED" });
+    expect(isolatedMemory.manualActions).toEqual([]);
+    const newContextRun = await api<DecisionRunResponse>(`/collection-tasks/${task.id}/decision-runs`, token, { method: "POST", body: {} });
+    expect(newContextRun.id).not.toBe(decisionRun.id);
+    await completeDecisionRun(newContextRun.id, token);
+    const sceneRun = await api<DecisionRunResponse>(`/collection-tasks/${task.id}/decision-runs`, token, { method: "POST", body: { scenario: "POST_LIVE_REVIEW" } });
+    expect(sceneRun.id).not.toBe(newContextRun.id);
+    await completeDecisionRun(sceneRun.id, token);
+    const frozenScene = await prisma.decisionRun.findUniqueOrThrow({ where: { id: sceneRun.id }, select: { inputJson: true } });
+    expect(frozenScene.inputJson).toMatchObject({ diagnosisContext: { scenario: "POST_LIVE_REVIEW", manualActions: executionMemory.manualActions } });
+
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await api(`/collection-runs/${collectionRun.id}/failures`, token, {
         method: "POST",
@@ -668,7 +801,9 @@ describe("V0.1 API smoke flow", () => {
     expect(structuredSummary.structuredData).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "TASK_ROWS" })
     ]));
-  });
+    // This flow now also completes two new diagnoses to verify frozen execution
+    // memory and scenario reuse. Keep all assertions; allow their DB round trips.
+  }, 15_000);
 
   it("keeps the V0.1.1 reviewed metric loop before decision runs", async () => {
     const email = `v011-review-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
@@ -2354,6 +2489,7 @@ describe("V0.1 API smoke flow", () => {
         extensionVersion: "0.2.6",
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: "integration-build",
+        connectionSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2",
         pageType: "LIVE_DATA_SCREEN",
         routeKey: "LIVE_DATA_SCREEN",
@@ -2364,6 +2500,11 @@ describe("V0.1 API smoke flow", () => {
     });
     const liveStatus = await api<{ state: string; boundTaskId: string; currentUrl: string }>(`/collection-tasks/${taskA.id}/extension-status`, token);
     expect(liveStatus).toMatchObject({ state: "READY", boundTaskId: taskA.id, currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2" });
+    const scopedStatus = await api(`/collection-tasks/${taskA.id}/extension-status?connectionSessionId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`, token);
+    expect(scopedStatus).toMatchObject({ state: "READY", connectionSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+    const otherBrowser = await api(`/collection-tasks/${taskA.id}/extension-status?connectionSessionId=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb`, token);
+    expect(otherBrowser).toMatchObject({ state: "PAIRED_NOT_CONNECTED", boundTaskId: null });
+    await apiError(`/collection-tasks/${taskA.id}/extension-status?connectionSessionId=invalid`, token, {}, "VALIDATION_ERROR");
     await apiError("/extension/heartbeat", exchanged.token, {
       method: "POST",
       body: {
@@ -2519,12 +2660,16 @@ describe("V0.1 API smoke flow", () => {
       });
       expect(localPromotionPulse.pulseCount).toBe(2);
       expect(await prisma.dataSnapshot.count({ where: { taskId: task.id } })).toBe(0);
+      const historyAfterPulses = await api<{ sessions: Array<{ pointCount: number }>; defaultPeriodComparison: { status: string } }>(`/projects/${project.id}/history`, token);
+      expect(historyAfterPulses.sessions[0]?.pointCount).toBeGreaterThanOrEqual(2);
+      expect(historyAfterPulses.defaultPeriodComparison.status).toBe("INSUFFICIENT");
 
       const queued = await api<{ id: string; inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null; realtimeEvidenceItems?: Array<{ routeKey: string; pageType: string }> } }>(`/collection-tasks/${task.id}/decision-runs`, token, {
         method: "POST",
         body: {}
       });
       expect(queued.inputJson.metricLayer).toBe("REALTIME_API");
+      expect(await prisma.projectAnalysisArchive.findFirst({ where: { decisionRunId: queued.id }, select: { status: true, metricsJson: true } })).toMatchObject({ status: "QUEUED" });
       expect(queued.inputJson.realtimeEvidence).toMatchObject({
         routeKey: "LOCAL_PROMOTION_DASHBOARD",
         pageType: "LOCAL_PROMOTION_DASHBOARD"
@@ -2565,6 +2710,7 @@ describe("V0.1 API smoke flow", () => {
         inputJson: { metricLayer: string; realtimeEvidence?: { routeKey: string; pageType: string } | null; realtimeEvidenceItems?: Array<{ routeKey: string; pageType: string }> };
       }>(`/decision-runs/${queued.id}`, token);
       expect(completed).toMatchObject({ status: "SUCCEEDED", errorCode: null, errorMessage: null });
+      await expect(prisma.projectAnalysisArchive.findFirst({ where: { decisionRunId: queued.id }, select: { status: true } })).resolves.toMatchObject({ status: "SUCCEEDED" });
       expect(completed.inputJson.metricLayer).toBe("REALTIME_API");
       expect(completed.inputJson.realtimeEvidence).toMatchObject({
         routeKey: "LOCAL_PROMOTION_DASHBOARD",

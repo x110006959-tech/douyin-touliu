@@ -138,6 +138,15 @@ describe("local promotion internal API contract", () => {
       url: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=123&selected_advid=456"
     }).source).toBe("MISMATCH");
     expect(resolveLocalPromotionIdentity({
+      url: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=123&room_id=456&selected_advid=ALL&selected_aweme_id=789"
+    })).toMatchObject({
+      advid: "123",
+      roomId: "456",
+      selectedAdvid: null,
+      selectedAwemeId: "789",
+      source: "URL"
+    });
+    expect(resolveLocalPromotionIdentity({
       url: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?selected_advid=123&selected_advid=not-an-id"
     }).source).toBe("MISMATCH");
     expect(resolveLocalPromotionIdentity({

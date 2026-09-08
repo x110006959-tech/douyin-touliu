@@ -173,17 +173,27 @@ export function resolveLocalPromotionIdentity(input: {
     selectedAdvid: input.dom?.selectedAdvid || [],
     selectedAwemeId: input.dom?.selectedAwemeId || []
   };
+  // The platform uses selected_advid=ALL as a UI filter sentinel. It is not
+  // an advertising identity and must not invalidate the concrete advid.
+  const urlEvidenceInput = {
+    ...rawUrlEvidence,
+    selectedAdvid: removeAllSelectionSentinel(rawUrlEvidence.selectedAdvid)
+  };
+  const domEvidenceInput = {
+    ...rawDomEvidence,
+    selectedAdvid: removeAllSelectionSentinel(rawDomEvidence.selectedAdvid)
+  };
   const urlEvidence = {
-    advid: normalizeIdentity(rawUrlEvidence.advid),
-    roomId: normalizeIdentity(rawUrlEvidence.roomId),
-    selectedAdvid: normalizeIdentity(rawUrlEvidence.selectedAdvid),
-    selectedAwemeId: normalizeIdentity(rawUrlEvidence.selectedAwemeId)
+    advid: normalizeIdentity(urlEvidenceInput.advid),
+    roomId: normalizeIdentity(urlEvidenceInput.roomId),
+    selectedAdvid: normalizeIdentity(urlEvidenceInput.selectedAdvid),
+    selectedAwemeId: normalizeIdentity(urlEvidenceInput.selectedAwemeId)
   };
   const domEvidence = {
-    advid: normalizeIdentity(rawDomEvidence.advid),
-    roomId: normalizeIdentity(rawDomEvidence.roomId),
-    selectedAdvid: normalizeIdentity(rawDomEvidence.selectedAdvid),
-    selectedAwemeId: normalizeIdentity(rawDomEvidence.selectedAwemeId)
+    advid: normalizeIdentity(domEvidenceInput.advid),
+    roomId: normalizeIdentity(domEvidenceInput.roomId),
+    selectedAdvid: normalizeIdentity(domEvidenceInput.selectedAdvid),
+    selectedAwemeId: normalizeIdentity(domEvidenceInput.selectedAwemeId)
   };
   const combinedEvidence = {
     advid: normalizeIdentity([...urlEvidence.advid, ...domEvidence.advid]),
@@ -192,8 +202,11 @@ export function resolveLocalPromotionIdentity(input: {
     selectedAwemeId: normalizeIdentity([...urlEvidence.selectedAwemeId, ...domEvidence.selectedAwemeId])
   };
   const evidence = { url: urlEvidence, dom: domEvidence };
-  const hasInvalidEvidence = [...Object.values(rawUrlEvidence), ...Object.values(rawDomEvidence)]
-    .some((values) => values.some((value) => Boolean(value?.trim()) && !/^\d{1,64}$/.test(value.trim())));
+  const hasInvalidEvidence = [...Object.values(urlEvidenceInput), ...Object.values(domEvidenceInput)]
+    .some((values) => values.some((value) => {
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      return Boolean(trimmed) && !/^\d{1,64}$/.test(trimmed);
+    }));
   const sourceConflict = hasInvalidEvidence || Object.keys(urlEvidence).some((key) => {
     const urlValues = urlEvidence[key as keyof typeof urlEvidence];
     const domValues = domEvidence[key as keyof typeof domEvidence];
@@ -264,4 +277,8 @@ export const localPromotionInternalApiPromoteMetaRequestSchema = z.object({
 
 function normalizeIdentity(values: readonly (string | null | undefined)[]) {
   return [...new Set(values.map((value) => value?.trim() || "").filter((value) => /^\d{1,64}$/.test(value)))].slice(0, 2);
+}
+
+function removeAllSelectionSentinel(values: readonly (string | null | undefined)[]) {
+  return values.filter((value) => value?.trim() !== "ALL");
 }

@@ -228,6 +228,8 @@ describe("diagnosis skill registry", () => {
         routeMetric("gpm", 2_399.56, "LIVE_DATA_SCREEN"),
         routeMetric("spend", 7_674.39, "LOCAL_PROMOTION_DASHBOARD"),
         routeMetric("full_domain_pay_roi", 44.59, "LOCAL_PROMOTION_DASHBOARD"),
+        routeMetric("full_domain_gmv", 342205, "LOCAL_PROMOTION_DASHBOARD"),
+        routeMetric("full_domain_orders", 1200, "LOCAL_PROMOTION_DASHBOARD"),
         routeMetric("target_roi", 60, "LOCAL_PROMOTION_DASHBOARD")
       ],
       collectionQuality: {
@@ -240,6 +242,22 @@ describe("diagnosis skill registry", () => {
         missingRoutes: [],
         staleRoutes: [],
         blocksStrongActions: false
+      }
+    };
+    const historicalComparison: NonNullable<DecisionEngineInput["historyContext"]>["archiveComparison"] = {
+      kind: "ANALYSIS_ARCHIVE", status: "INSUFFICIENT", label: "本次与上次分析", baselineLabel: "上次", currentLabel: "本次",
+      baselineAt: capturedAt, currentAt: capturedAt, notices: ["只确认原始变化"],
+      rows: [{ routeKey: "LOCAL_PROMOTION_DASHBOARD", metricKey: "full_domain_pay_roi", metricName: "全域支付 ROI", unit: null,
+        baselineValue: 40, currentValue: 44.59, delta: 4.59, conclusion: "RAW_CHANGE", note: "原始数值变化，不作效率结论" }]
+    };
+    decisionInput.historyContext = { version: 1, capturedAt, archiveComparison: historicalComparison, periodComparison: { ...historicalComparison, kind: "PERIOD", rows: [] } };
+    decisionInput.diagnosisContext = {
+      version: 1, scenario: "POST_LIVE_REVIEW", manualActions: [],
+      recentTrend: {
+        status: "AVAILABLE", reason: "两个完整窗口已对齐", routeKey: "LOCAL_PROMOTION_DASHBOARD", scope: "FULL_DOMAIN",
+        baselineStartAt: capturedAt, baselineEndAt: capturedAt, currentStartAt: capturedAt, currentEndAt: capturedAt,
+        metrics: [{ metricKey: "full_domain_gmv", metricName: "全域成交金额", unit: "元", baselineValue: 100, currentValue: 120, delta: 20 }],
+        efficiency: { metricLabel: "同口径窗口产出比", gmvMetricKey: "full_domain_gmv", spendMetricKey: "spend", baselineValue: 10, currentValue: 12, delta: 2 }
       }
     };
     const evidenceCatalog = buildDiagnosisEvidenceCatalog(decisionInput);
@@ -260,8 +278,6 @@ describe("diagnosis skill registry", () => {
           facts: [],
           hypotheses: [],
           missingEvidence: [],
-          experiments: [],
-          candidateActions: [],
           confidence: 0.8
         },
         usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
@@ -292,6 +308,14 @@ describe("diagnosis skill registry", () => {
       expect.stringContaining("metric:target_roi:LOCAL_PROMOTION_DASHBOARD")
     ]));
     expect(capturedContexts.diagnose_live_room_conversion).not.toHaveProperty("targetRoi");
+    expect(capturedContexts.diagnose_live_room_conversion?.historyContext).toBeNull();
+    expect(capturedContexts.diagnose_live_room_conversion?.recentTrend).toBeNull();
+    expect(capturedContexts.diagnose_delivery_units?.recentTrend).toEqual(decisionInput.diagnosisContext.recentTrend);
+    expect(capturedEvidenceIds.diagnose_delivery_units?.join(" ")).toContain("metric:full_domain_gmv");
+    expect(capturedEvidenceIds.diagnose_delivery_units?.join(" ")).toContain("metric:full_domain_orders");
     expect(capturedContexts.diagnose_delivery_units).toMatchObject({ dimension: "DELIVERY", targetRoi: 60 });
+    expect(capturedEvidenceIds.diagnose_delivery_units).toContain("history:archiveComparison:0");
+    expect(capturedEvidenceIds.diagnose_live_room_conversion).not.toContain("history:archiveComparison:0");
+    expect(capturedContexts.diagnose_delivery_units?.historyContext).toEqual(decisionInput.historyContext);
   });
 });

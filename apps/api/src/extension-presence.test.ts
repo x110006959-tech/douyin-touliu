@@ -3,6 +3,38 @@ import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
 import { clearExtensionPresenceForTests, getExtensionStatus, recordExtensionPresence } from "./extension-presence.js";
 
 describe("extension task presence", () => {
+  it("keeps fresh platform evidence during task-page renewal but never revives stale collection state", () => {
+    vi.useFakeTimers();
+    const identity = { credentialId: "credential-1", accountProfileId: "account-1" };
+    const heartbeat = {
+      collectionTaskId: "task-1", extensionVersion: "0.2.6", bridgeProtocolVersion: extensionBridgeProtocolVersion,
+      connectionSessionId: "current-worker", buildFingerprint: "build-current",
+      currentUrl: "https://eos.douyin.com/dp/liveScreen", pageType: "LIVE_DATA_SCREEN" as const,
+      routeKey: "LIVE_DATA_SCREEN" as const, collectable: true, tabState: "VISIBLE" as const, observedAt: new Date().toISOString()
+    };
+    const taskHeartbeat = { ...heartbeat, currentUrl: "https://www.pxxis.cn/tasks/task-1", pageType: "TASK_TABLE" as const, collectable: false };
+    const input = { collectionTaskId: "task-1", taskTitle: "任务", accountProfileId: "account-1", activeCredentialIds: ["credential-1"], expectedVersion: "0.2.6", connectionSessionId: "current-worker" };
+    recordExtensionPresence({ ...identity, heartbeat });
+    vi.advanceTimersByTime(5_000);
+    recordExtensionPresence({ ...identity, heartbeat: taskHeartbeat });
+    expect(getExtensionStatus(input)).toMatchObject({ state: "READY", collectable: true, currentUrl: heartbeat.currentUrl });
+    vi.advanceTimersByTime(11_000);
+    recordExtensionPresence({ ...identity, heartbeat: taskHeartbeat });
+    expect(getExtensionStatus(input)).toMatchObject({ state: "PAGE_UNSUPPORTED", collectable: false });
+  });
+
+  it("does not reuse another worker's fresh page heartbeat after reload", () => {
+    const identity = { credentialId: "credential-1", accountProfileId: "account-1" };
+    const heartbeat = {
+      collectionTaskId: "task-1", extensionVersion: "0.2.6", bridgeProtocolVersion: extensionBridgeProtocolVersion,
+      connectionSessionId: "old-worker", buildFingerprint: "build-current",
+      currentUrl: "https://eos.douyin.com/dp/liveScreen", pageType: "LIVE_DATA_SCREEN" as const,
+      routeKey: "LIVE_DATA_SCREEN" as const, collectable: true, tabState: "VISIBLE" as const, observedAt: new Date().toISOString()
+    };
+    recordExtensionPresence({ ...identity, heartbeat });
+    recordExtensionPresence({ ...identity, heartbeat: { ...heartbeat, connectionSessionId: "new-worker", pageType: "TASK_TABLE", collectable: false } });
+    expect(getExtensionStatus({ collectionTaskId: "task-1", taskTitle: "任务", accountProfileId: "account-1", activeCredentialIds: ["credential-1"], expectedVersion: "0.2.6", connectionSessionId: "new-worker" })).toMatchObject({ state: "PAGE_UNSUPPORTED", collectable: false, connectionSessionId: "new-worker" });
+  });
   afterEach(() => {
     clearExtensionPresenceForTests();
     vi.useRealTimers();

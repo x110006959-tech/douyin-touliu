@@ -11,6 +11,7 @@ import {
   metricCategories,
   metricKeyCategories,
   type CollectionDashboardDTO,
+  type DiagnosisScenario,
   type MetricCategory,
   type MetricReviewStatus,
   type RealtimeMetricFrame,
@@ -65,6 +66,7 @@ export default function CollectionDashboardPage() {
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeMetricStreamStatus>("CONNECTING");
   const [decisionPreview, setDecisionPreview] = useState<DecisionPreview | null>(null);
   const [decisionRun, setDecisionRun] = useState<DecisionRun | null>(null);
+  const [diagnosisScenario, setDiagnosisScenario] = useState<DiagnosisScenario>("UNSPECIFIED");
   const [savedTargetRoi, setSavedTargetRoi] = useState("");
   const [targetRoiDraft, setTargetRoiDraft] = useState("");
   const [targetRoiSaveState, setTargetRoiSaveState] = useState<"IDLE" | "PENDING" | "SAVING" | "SAVED" | "ERROR">("IDLE");
@@ -396,7 +398,7 @@ export default function CollectionDashboardPage() {
         return;
       }
 
-      const nextRun = await createDecisionRun();
+      const nextRun = await createDecisionRun(diagnosisScenario);
       setMessage(decisionRunMessage(nextRun));
       scrollToDiagnosis();
     } catch (requestError) {
@@ -468,14 +470,14 @@ export default function CollectionDashboardPage() {
     return saved;
   }
 
-  async function runDecision() {
+  async function runDecision(scenario: DiagnosisScenario = "UNSPECIFIED") {
     if (!token) return;
     setBusy("decision");
     setError("");
     setMessage("");
     try {
       if (targetRoiDirty) await flushTargetRoiSave();
-      const nextRun = await createDecisionRun();
+      const nextRun = await createDecisionRun(scenario);
       setMessage(decisionRunMessage(nextRun));
       scrollToDiagnosis();
     } catch (requestError) {
@@ -485,13 +487,13 @@ export default function CollectionDashboardPage() {
     }
   }
 
-  async function createDecisionRun() {
+  async function createDecisionRun(scenario: DiagnosisScenario = "UNSPECIFIED") {
     if (!token) throw new Error("登录状态已失效，请重新登录。");
     decisionIdempotencyKey.current ||= createIdempotencyKey(`decision:${params.id}`);
     const nextDecisionRun = await apiFetch<DecisionRun>(`/collection-tasks/${params.id}/decision-runs`, token, {
       method: "POST",
       headers: { "idempotency-key": decisionIdempotencyKey.current },
-      body: "{}",
+      body: JSON.stringify({ scenario }),
     });
     decisionIdempotencyKey.current = "";
     setDecisionPreview(null);
@@ -786,6 +788,19 @@ export default function CollectionDashboardPage() {
         }
         action={
           <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
+            <label className="flex items-center gap-2 text-xs text-white">本次使用场景
+              <select
+                disabled={Boolean(busy)}
+                className="h-9 rounded-md bg-white px-2 text-slate-900"
+                value={diagnosisScenario}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "UNSPECIFIED" || value === "LIVE_MONITORING" || value === "POST_LIVE_REVIEW") setDiagnosisScenario(value);
+                }}
+              >
+                <option value="UNSPECIFIED">未指定</option><option value="LIVE_MONITORING">直播中</option><option value="POST_LIVE_REVIEW">场后复盘</option>
+              </select>
+            </label>
             <Button
               className="h-10 bg-white px-5 text-indigo-700 shadow-sm hover:bg-indigo-50"
               disabled={
@@ -1240,7 +1255,9 @@ export default function CollectionDashboardPage() {
               )
             : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">点击上方“确认可信数据并生成诊断”后，运行进度、诊断结论和建议会直接显示在这里。</p>}
           formalReady={formalReady}
-          onRunFormal={() => void runDecision()}
+          onRunFormal={(scenario) => void runDecision(scenario)}
+          scenario={diagnosisScenario}
+          onScenarioChange={setDiagnosisScenario}
           token={token}
           onRefresh={() => void load()}
         />

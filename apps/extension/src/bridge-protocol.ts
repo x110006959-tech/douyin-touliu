@@ -24,6 +24,7 @@ export type ExtensionBridgeResponse = {
   protocolVersion: number;
   extensionVersion: string;
   buildFingerprint: string;
+  connectionSessionId: string | null;
   paired: boolean;
   pendingConfirmation: boolean;
   boundTaskId: string | null;
@@ -143,24 +144,28 @@ export function sanitizeBridgeResponse(input: {
     : {};
   const config = result.config && typeof result.config === "object" ? result.config as Record<string, unknown> : {};
   const ok = result.ok === true;
+  const paired = result.paired === true || result.hasToken === true;
+  const workerChanged = (typeof result.buildFingerprint === "string" && result.buildFingerprint !== input.buildFingerprint)
+    || (typeof result.extensionVersion === "string" && result.extensionVersion !== input.extensionVersion);
   const errorCode = ok
     ? null
     : safeBridgeErrorCode(result.errorCode) || safeBridgeErrorCode(input.fallbackErrorCode) || "BRIDGE_REQUEST_FAILED";
   return {
     requestId: input.requestId,
-    ok,
+    ok: ok && !workerChanged,
     protocolVersion: extensionBridgeProtocolVersion,
     extensionVersion: input.extensionVersion,
     buildFingerprint: input.buildFingerprint,
-    paired: result.paired === true || result.hasToken === true || (ok && typeof config.accountProfileId === "string"),
+    connectionSessionId: typeof result.connectionSessionId === "string" ? result.connectionSessionId : null,
+    paired,
     pendingConfirmation: result.pendingConfirmation === true,
-    boundTaskId: typeof result.boundTaskId === "string"
+    boundTaskId: !paired ? null : typeof result.boundTaskId === "string"
       ? result.boundTaskId
       : typeof config.collectionTaskId === "string"
         ? config.collectionTaskId
         : null,
-    errorCode,
-    message: ok
+    errorCode: workerChanged ? "EXTENSION_CONTEXT_INVALIDATED" : errorCode,
+    message: workerChanged ? bridgeErrorMessage("EXTENSION_CONTEXT_INVALIDATED") : ok
       ? typeof result.message === "string" ? result.message : "插件后台连接正常"
       : bridgeErrorMessage(errorCode, input.fallbackMessage)
   };

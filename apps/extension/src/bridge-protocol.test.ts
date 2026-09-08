@@ -10,6 +10,17 @@ import {
 } from "./bridge-protocol";
 
 describe("extension web bridge protocol", () => {
+  it("does not infer a local credential from historical account configuration", () => {
+    expect(sanitizeBridgeResponse({ requestId: "stale-config", extensionVersion: "0.2.6", buildFingerprint: "build-a", runtimeResult: {
+      ok: true, config: { accountProfileId: "account-a", collectionTaskId: "task-a" }, hasToken: false
+    } })).toMatchObject({ paired: false, boundTaskId: null });
+  });
+
+  it("requires a page refresh when the worker and injected bridge builds differ", () => {
+    expect(sanitizeBridgeResponse({ requestId: "reload", extensionVersion: "0.2.6", buildFingerprint: "old-build", runtimeResult: {
+      ok: true, paired: true, boundTaskId: "task-a", buildFingerprint: "new-build", extensionVersion: "0.2.6"
+    } })).toMatchObject({ ok: false, errorCode: "EXTENSION_CONTEXT_INVALIDATED" });
+  });
   it("accepts only the product site and local development origins", () => {
     expect(isAllowedBridgeOrigin("https://www.pxxis.cn")).toBe(true);
     expect(isAllowedBridgeOrigin("http://127.0.0.1:3300", ["localhost", "127.0.0.1"])).toBe(true);

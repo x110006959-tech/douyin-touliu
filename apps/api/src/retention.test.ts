@@ -45,6 +45,9 @@ describe("data retention", () => {
     expect(dryRun.rawEvidence.snapshots.candidateCount).toBeGreaterThanOrEqual(501);
     expect(dryRun.rawEvidence.snapshots.processedCount).toBe(0);
     expect(dryRun.structuredData.actionOutcomes.candidateCount).toBe(1);
+    expect(dryRun.structuredData.projectHistoryMetricPoints.candidateCount).toBe(1);
+    expect(dryRun.structuredData.projectAnalysisArchives.candidateCount).toBe(1);
+    expect(dryRun.structuredData.projectHistorySessions.candidateCount).toBe(0);
     expect(dryRun.structuredData.securityMetrics.candidateCount).toBe(1);
     expect(await prisma.dataSnapshot.findUniqueOrThrow({ where: { id: fixture.expiredSnapshotId } })).toMatchObject({ rawDomText: "expired DOM" });
 
@@ -52,6 +55,9 @@ describe("data retention", () => {
     expect(report.rawEvidence.snapshots.processedCount).toBeGreaterThanOrEqual(501);
     expect(report.rawEvidence.snapshots.batchCount).toBeGreaterThanOrEqual(2);
     expect(report.rawEvidence.snapshots.largestBatchSize).toBe(500);
+    expect(report.structuredData.projectHistoryMetricPoints.processedCount).toBe(1);
+    expect(report.structuredData.projectAnalysisArchives.processedCount).toBe(1);
+    expect(report.structuredData.projectHistorySessions.processedCount).toBe(1);
 
     const expiredSnapshot = await prisma.dataSnapshot.findUniqueOrThrow({ where: { id: fixture.expiredSnapshotId } });
     expect(expiredSnapshot).toMatchObject({
@@ -81,6 +87,9 @@ describe("data retention", () => {
     expect(await prisma.actionProposal.findUnique({ where: { id: fixture.expiredProposalId } })).toBeNull();
     expect(await prisma.decisionRun.findUnique({ where: { id: fixture.expiredDecisionRunId } })).toBeNull();
     expect(await prisma.aiAnalysisTask.findUnique({ where: { id: fixture.expiredAnalysisId } })).toBeNull();
+    expect(await prisma.projectHistoryMetricPoint.findUnique({ where: { id: fixture.expiredHistoryPointId } })).toBeNull();
+    expect(await prisma.projectAnalysisArchive.findUnique({ where: { id: fixture.expiredHistoryArchiveId } })).toBeNull();
+    expect(await prisma.projectHistorySession.findUnique({ where: { id: fixture.expiredHistorySessionId } })).toBeNull();
     expect(await prisma.auditLog.findUnique({ where: { id: fixture.expiredAuditId } })).toBeNull();
     expect(await prisma.securityMetric.findUnique({ where: { id: fixture.expiredSecurityMetricId } })).toBeNull();
     expect(await prisma.securityMetric.findUnique({ where: { id: fixture.boundarySecurityMetricId } })).not.toBeNull();
@@ -214,6 +223,42 @@ async function createFixture() {
       createdAt: expiredAt
     }
   });
+  const expiredHistorySession = await prisma.projectHistorySession.create({
+    data: {
+      projectId: project.id,
+      status: "ARCHIVED",
+      startedAt: expiredAt,
+      lastActivityAt: expiredAt,
+      archivedAt: expiredAt,
+      archiveReason: "INACTIVITY"
+    }
+  });
+  const expiredHistoryPoint = await prisma.projectHistoryMetricPoint.create({
+    data: {
+      projectId: project.id,
+      collectionTaskId: task.id,
+      sessionId: expiredHistorySession.id,
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      pageType: "LOCAL_PROMOTION_DASHBOARD",
+      observedAt: expiredAt,
+      bucketAt: expiredAt,
+      sourceKind: "PULSE",
+      metricsJson: [{ metricKey: "spend", value: 10 }]
+    }
+  });
+  const expiredHistoryArchive = await prisma.projectAnalysisArchive.create({
+    data: {
+      archiveKey: `retention-history-${suffix}`,
+      projectId: project.id,
+      collectionTaskId: task.id,
+      sessionId: expiredHistorySession.id,
+      decisionRunId: expiredDecisionRun.id,
+      status: "SUCCEEDED",
+      archivedAt: expiredAt,
+      metricsJson: [],
+      historyContextJson: {}
+    }
+  });
   const expiredProposal = await prisma.actionProposal.create({
     data: {
       decisionRunId: expiredDecisionRun.id,
@@ -264,6 +309,9 @@ async function createFixture() {
     expiredOutcomeId: expiredOutcome.id,
     expiredProposalId: expiredProposal.id,
     expiredDecisionRunId: expiredDecisionRun.id,
+    expiredHistorySessionId: expiredHistorySession.id,
+    expiredHistoryPointId: expiredHistoryPoint.id,
+    expiredHistoryArchiveId: expiredHistoryArchive.id,
     expiredAnalysisId: expiredAnalysis.id,
     expiredAuditId: expiredAudit.id,
     expiredSecurityMetricId: expiredSecurityMetric.id,

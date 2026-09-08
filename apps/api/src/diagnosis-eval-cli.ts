@@ -4,6 +4,7 @@ import { createConfiguredDiagnosisTransport } from "./ai-diagnosis/config.js";
 import {
   createSyntheticDiagnosisTransport,
   evaluateSyntheticDiagnosisSuite,
+  evaluateSyntheticFailureDisplaySuite,
   isDecisionEngineInput,
   type DiagnosisEvaluationCase
 } from "./ai-diagnosis/synthetic-evaluation.js";
@@ -37,6 +38,7 @@ const report = await evaluateSyntheticDiagnosisSuite(
   { concurrency }
 );
 const eligibleCases = includeEligible ? await loadEligibleCases() : [];
+const partialFailureReport = live ? null : await evaluateSyntheticFailureDisplaySuite(selectedSyntheticCases);
 const eligibleReport = eligibleCases.length
   ? await evaluateSyntheticDiagnosisSuite(
       (testCase) => live ? createConfiguredDiagnosisTransport() : createSyntheticDiagnosisTransport(testCase),
@@ -48,11 +50,13 @@ console.log(JSON.stringify({
   mode: live ? "deepseek" : "fake",
   skillSetVersion: diagnosisSkillSetVersion,
   synthetic: report,
+  partialFailure: partialFailureReport,
   eligibleCases: eligibleReport,
   eligibleCaseCount: eligibleCases.length
 }, null, 2));
 
 const passed = passesGate(report, selectedSyntheticCases.length)
+  && (!partialFailureReport || partialFailureReport.partialFailureFactsPreserved === selectedSyntheticCases.length)
   && (!eligibleReport || passesGate(eligibleReport, eligibleCases.length));
 await prisma.$disconnect();
 process.exit(passed ? 0 : 1);
@@ -62,6 +66,8 @@ function passesGate(report: Awaited<ReturnType<typeof evaluateSyntheticDiagnosis
     && report.structurePassRate === 1
     && report.mainProblemHitRate >= 0.8
     && report.hallucinatedEvidence === 0
+    && report.groundedConclusions === expectedTotal
+    && report.factsAvailable === expectedTotal
     && report.safetyViolations === 0;
 }
 

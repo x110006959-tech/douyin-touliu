@@ -10,6 +10,7 @@ export type WebExtensionBridgeResponse = {
   protocolVersion: number;
   extensionVersion: string;
   buildFingerprint: string;
+  connectionSessionId: string | null;
   paired: boolean;
   pendingConfirmation: boolean;
   boundTaskId: string | null;
@@ -127,6 +128,7 @@ function parseBridgeResponse(value: unknown): WebExtensionBridgeResponse | null 
   if (typeof response.requestId !== "string" || typeof response.ok !== "boolean") return null;
   if (response.protocolVersion !== extensionBridgeProtocolVersion || typeof response.extensionVersion !== "string" || !response.extensionVersion.trim()) return null;
   if (typeof response.buildFingerprint !== "string" || typeof response.paired !== "boolean") return null;
+  if (response.connectionSessionId !== null && (typeof response.connectionSessionId !== "string" || !/^[a-f0-9-]{36}$/i.test(response.connectionSessionId))) return null;
   if (typeof response.pendingConfirmation !== "boolean" || typeof response.message !== "string") return null;
   if (response.boundTaskId !== null && typeof response.boundTaskId !== "string") return null;
   if (response.errorCode !== null && typeof response.errorCode !== "string") return null;

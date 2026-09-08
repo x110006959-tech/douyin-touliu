@@ -255,6 +255,8 @@ export function createExtensionProtectedRouter() {
   });
 
   router.get("/collection-tasks/:id/extension-status", requireHumanSession, async (req, res) => {
+    const session = extensionHeartbeatSchema.shape.connectionSessionId.safeParse(req.query.connectionSessionId);
+    if (!session.success) return sendError(res, 400, "VALIDATION_ERROR", "插件连接标识无效");
     const user = currentUser(req);
     const task = await prisma.collectionTask.findFirst({
       where: { id: req.params.id, project: { workspace: { ownerId: user.id } } },
@@ -275,6 +277,7 @@ export function createExtensionProtectedRouter() {
       taskTitle: task.pageTitle || task.sourceUrl || task.id,
       accountProfileId: task.project.accountProfileId,
       activeCredentialIds: credentials.map((credential) => credential.id),
+      connectionSessionId: session.data,
       expectedVersion: getBuildMetadata().extensionVersion
     }));
   });

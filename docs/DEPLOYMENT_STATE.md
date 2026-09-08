@@ -1,5 +1,134 @@
 # Deployment State
 
+## 2026-09-08 14:23 失败步骤诊断 v26 已部署本机
+
+- 用户明确要求部署。API/实际 Worker 使用 `pxxis-api:diagnosis-validation-v26-20260908`，镜像 ID `sha256:93a26d7d43d198db4765a805ffb2eb7c272323035ea6327fa06681d01ed6125d`；Web 保持 `pxxis-web:diagnosis-scenario-candidate-v24-20260906`，ID `sha256:0019e8a2e89e4e1f1a33be3f8c0fdd36cb8df42869f112ac947de7b25c561b70`。运行模块为 Prompt v28 / Orchestration v37 / SkillSet v11。
+- 部署前补齐脱敏防线：常见 PAT/云密钥、长不透明标识、账号/身份字段、联系方式和 URL 整条替换为固定占位；普通“保持预算不变 / 核对预算 / 提高预算”仍可用于判断误判。观察实验、ROI、证据和动作门禁均未放宽。
+- 源码全仓 734 项测试及 lint/typecheck/build/version/Schema/diff 通过，离线正常 24/24、综合失败事实保留 24/24；冻结 lockfile 构建候选。隔离候选 ready/version/login 均为 200，12 项本地与镜像制品哈希一致，候选数据库、容器和网络已清理。
+- 切换前、排空后、切换后活动/诊断/建议均为 0/31/20；应用配置、网络、HostConfig 与 Schema 一致。正式 4300 ready/version、3300 login 为 200，API healthy，API/Worker/Web 均 running、重启 0，Web 7 项内容核验通过。
+- `corepack pnpm runtime:verify` 退出 0，API/Worker 版本一致，无网络正常/失败各 24 例通过；删除本次 3 个旧应用容器和 1 个旧镜像标签。API/Worker 最近回退为 v25 `sha256:9af2a920eeb8052ab4ba1b9a58f66a7919de52ba4a7ca24ac500c0e050479e0d`，Web 回退仍为当前 v24；业务 PostgreSQL、数据卷、其他项目和运行中资源未改。
+- 部署脚本位于 `10_项目档案/project-001-字节投流/02_执行过程/2026-09-08_失败步骤诊断/deploy-v26.mjs`。没有 migration、配置、插件、Git/生产操作、真实模型请求或历史改写；部署后失败审计仍为 0。旧失败原文无法追回，下一次真实诊断必须由用户显式发起。
+
+## 2026-09-08 00:37 ROI 范围修复 v25 已部署本机
+
+- 用户明确要求部署。API/实际 Worker 使用 `pxxis-api:diagnosis-roi-scope-v25-20260908`，镜像 ID `sha256:9af2a920eeb8052ab4ba1b9a58f66a7919de52ba4a7ca24ac500c0e050479e0d`；Web 沿用 `pxxis-web:diagnosis-scenario-candidate-v24-20260906`，ID `sha256:0019e8a2e89e4e1f1a33be3f8c0fdd36cb8df42869f112ac947de7b25c561b70`。运行模块 Prompt v28 / Orchestration v36 / SkillSet v11。
+- API 使用现有 Dockerfile 与冻结 lockfile 构建成功。隔离候选 ready/version/login 均 200，Web 7 项文案、11 项源码构建/镜像制品哈希（含 ROI 校验）、正常/综合失败各 24 例通过；候选新数据库、匿名卷、容器及内部网络已清理，无主机端口、实际 Worker 或真实模型调用。
+- 原配置内存复用，Schema 哈希一致，无迁移；排空并成套替换应用容器，Web 使用同一已有镜像。切换前、排空后、切换后活动/诊断/建议均为 0/30/20，配置与网络一致。API healthy，三个服务 running/restarts=0，正式 4300 ready/version、3300 login 均为 200；实际 API 和 Worker 模块版本一致，未触发回退。
+- `corepack pnpm runtime:verify` 退出 0，运行检查及无网络正常/失败各 24 例通过，清理本次 3 个旧容器、2 个旧镜像标签。复核只保留当前应用容器与业务 PostgreSQL；最近 API/Worker 回退标签均指向原 v24 `sha256:45422162458d01790b5ce7e082d0eaa41e7a734e1141b59c5687e6041656dbae`，Web 回退指向当前同一 v24 镜像。未清理业务库、数据卷、其他项目或执行全局 prune。
+- 脚本和脱敏日志在 `10_项目档案/project-001-字节投流/02_执行过程/2026-09-08_ROI范围误拦截/`：`deploy-v25.mjs`、`api-image.log`、`candidate.log`、`deployment.log`、`runtime.log`。没有应用配置、接口、采集协议或生产环境变化，没有 Git 操作、自动诊断或历史改写；刷新网页即可，不需重载插件。新修复真实模型验收仍独立，旧失败记录不会因部署而变成功。
+
+## 2026-09-07 10:41 场景诊断 v24 已部署本机
+
+- 用户明确要求“部署”，直接启用已验证候选。API 与实际 Worker：`pxxis-api:diagnosis-scenario-candidate-v24-20260906`，ID `sha256:45422162458d01790b5ce7e082d0eaa41e7a734e1141b59c5687e6041656dbae`；Web：`pxxis-web:diagnosis-scenario-candidate-v24-20260906`，ID `sha256:0019e8a2e89e4e1f1a33be3f8c0fdd36cb8df42869f112ac947de7b25c561b70`。
+- 先核验镜像、Schema 及配置，关闭 Web/API 后确认活动诊断为 0，再替换 Worker。应用环境仅在内存复用；除镜像构建元数据外，应用配置、HostConfig、网络一致。切换前、排空后、切换后均为活动 0、诊断 27、建议 19，没有自动创建诊断或改写历史。
+- 正式 4300 `/ready`、`/version` 与 3300 `/login` 均为 200；API healthy，三个服务 running/restarts=0。API/Worker 实际模块一致为 Prompt v27 / Orchestration v35 / SkillSet v11，Web 7 项场景与分析文案通过。版本接口 productVersion 仍为 `0.2.6`；镜像身份以固定 ID 核验。
+- `corepack pnpm runtime:verify` 退出 0，再次核对健康与实际 Worker，并在无网络临时容器内完成正常 24/24、综合失败保留事实 24/24。自动清理本次 3 个旧应用容器和 1 个旧镜像标签；复核本项目仅保留当前 Web/API/Worker 及既有 PostgreSQL，无 next/before 应用容器。没有全局 prune、业务数据库/卷或其他项目清理。
+- 最近回退镜像：`pxxis-api:local-rollback` 与 `pxxis-api:local-worker-rollback` 均指向旧 API v23，ID `sha256:956a2c9fe9903df5b623e4e38d631129b5eeb8c8fe3a103f226922701efac858`；`pxxis-web:local-rollback` 指向旧 Web v22，ID `sha256:76f4657ff21382fee7b57f4cb791d58bde6aefd5fb3a2b13311d10b7af1e86c9`。本次未触发回退。
+- 部署脚本及脱敏日志：`10_项目档案/project-001-字节投流/02_执行过程/2026-09-06_场景诊断验收/deploy-v24.mjs`、`deployment.log`、`runtime.log`。脚本语法检查通过；沿用上一轮配置克隆与失败恢复能力。
+- 无 Schema、migration、应用配置、采集协议或生产环境变化，无 Git 操作。刷新网页即可使用，无需为此次 AI 改动重载插件；未调用真实模型，新场景实际分析质量需显式新建诊断后验收。运行检查仍提示既有 node_modules/lockfile 不同步警告，但检查退出 0；原候选冻结依赖构建已通过。旧 `.runtime-switch-v19` 文件此前删除被自动审批拒绝，仍保留，未重试或绕过。
+
+## 2026-09-06 17:23 分句校验 v23 已部署
+
+- API/Worker 镜像 `pxxis-api:diagnosis-uncertainty-v23-20260906`，ID `sha256:956a2c9fe9903df5b623e4e38d631129b5eeb8c8fe3a103f226922701efac858`；Web 仍用 v22 原制品。运行 Prompt v26 / Orchestration v34 / SkillSet v10。
+- 隔离候选 ready/version/login 200、Web 5 项文案、10 项本地/镜像哈希、正常/部分失败各 24 例通过；候选资源已清理。初次验证调用 Windows PowerShell 5 将 UTF-8 中文脚本错解，已将 JS 校验文案改为 Unicode 转义，复验成功，不改产品文案或镜像来规避检查。
+- 排空后成套替换原配置，Schema/环境及运行设置一致；活动诊断 0、诊断 26、建议 19 前后不变，三个服务重启 0，API healthy。用户的旧失败记录没有改写。
+- 部署后 `runtime:verify` 实际通过：正式 HTTP 200、API/Worker 模块一致、无网络 24+24 评测，再自动删除本次 3 个旧容器与 2 个旧标签。本次累计 21 个旧容器、45 个镜像标签，另删除已确认无引用的本轮中间镜像 `1355e5ba…`。再次执行清理为 0。
+- 回退镜像标签 API/Worker 指向上一轮 v22，Web 指向当前同一 v22 制品；不再保存退出的回退容器。数据库、卷、运行中与其他项目资源受保护。旧临时环境文件删除被策略拒绝，不属于已清理成果。
+- 新页面两条线路在切换后停止，缺少新鲜输入，真实模型尚待用户手动启动采集后验收。详细日志均在 `10_项目档案/project-001-字节投流/02_执行过程/2026-09-06_诊断闭环候选验证/uncertainty-*.log`。
+
+## 2026-09-06 旧 Docker 资源清理
+
+- 按用户明确要求，已删除本项目 18 个退出的旧 Web/API/Worker 容器与 43 个未引用的历史镜像标签。仅处理固定项目应用名称和仓库，无 `prune`、`rm -f`、卷/数据库清理；运行中、挂载资源及其他项目引用受保护。
+- v22 当前三个服务正常；不再保留以下历史条目中的已停止回退容器。最近回退制品保留为 `pxxis-api:local-rollback`、`pxxis-api:local-worker-rollback`、`pxxis-web:local-rollback`，本次对应 v21。后续成功切换后更新为最近一版，不累计旧容器。
+- 删除 `.runtime-switch-v19` 的旧临时环境文件被自动审批审查拒绝（策略阻止），文件未改。清理回归与实际日志见候选验证过程目录内 `cleanup.log`，新入口为 `corepack pnpm runtime:verify`。
+
+## 2026-09-06 16:43 诊断闭环 v22 本机成套部署（用户明确授权）
+
+- 用户要求“部署”后，直接采用下文已验证的 API/Web 候选镜像，API 和实际 Worker 共用 API 镜像。镜像标签仍为 `diagnosis-closure-candidate-v22-20260906`，API ID `sha256:8719cec23d5e54cbea901e739246cf5c65f169ce50c90877f7ec4d6509e5c80e`；Web ID `sha256:76f4657ff21382fee7b57f4cb791d58bde6aefd5fb3a2b13311d10b7af1e86c9`。不是重新构建的不同制品。
+- 原运行 Schema 与本地候选 Schema 哈希一致，无需迁移。切换前、关闭 Web/API 后再次排空、切换后，活动诊断均为 0，DecisionRun 25、ActionProposal 19；没有自动重跑历史或请求真实模型。
+- 先创建未启动的新容器，复用原应用配置并逐项核验，再停止 Web/API、检查队列、停止 Worker、保留旧容器并启动三个新容器。Env 仅在内存复用，不写明文配置文件。除镜像构建元数据外，应用配置、完整 HostConfig、网络均一致，默认 OomKillDisable 的 null/false 归一化比较。
+- 正式 `127.0.0.1:4300/ready`、`/version` 与 `127.0.0.1:3300/login` 均为 200；API healthy，三项服务 running/restartCount=0。API/Worker 实际模块均为 Prompt v25 / Orchestration v33 / SkillSet v10；Web 编译制品的 5 项新事实、趋势与失败展示文案通过。版本接口 `0.2.6` / `diagnosis-closure-candidate-v22-20260906`。
+- 三个旧 v21 容器停止保留，名称为原名加 `-before-diagnosis-closure-v22-20260906`：`pxxis-prelaunch-20260713-api-1`、`pxxis-local-ai-validation-worker`、`pxxis-prelaunch-20260713-web-1`。没有遗留 next 容器，PostgreSQL、数据卷及其他项目服务不变。
+- 实际切换脚本与脱敏日志在 `10_项目档案/project-001-字节投流/02_执行过程/2026-09-06_诊断闭环候选验证/deploy-v22.mjs`、`deployment.log`。脚本具有失败恢复原服务的路径，本次切换成功，未触发回退。
+- 本次只启用本机服务，无 Git 提交/推送、生产环境发布、Schema/配置/采集协议变更。用户刷新网页即可使用，不需为本次 AI 修复重载插件；真实模型和登录态业务页面仍需用户显式新建诊断验收，不能用健康检查代替。
+
+## 2026-09-06 诊断闭环候选验证，运行服务未切换
+
+- 仅构建并验证 `pxxis-api:diagnosis-closure-candidate-v22-20260906` 与 `pxxis-web:diagnosis-closure-candidate-v22-20260906`，源码 v25/v33/v10。现有 API/Worker/Web 仍为 `comparison-recovery-v21-20260905`，没有改运行配置或业务数据库。
+- 最终镜像 ID：API `8719cec23d5e54cbea901e739246cf5c65f169ce50c90877f7ec4d6509e5c80e`；Web `76f4657ff21382fee7b57f4cb791d58bde6aefd5fb3a2b13311d10b7af1e86c9`。最终隔离复验退出码 0，Web 编译制品的 5 项新展示文案核验通过。
+- 使用独立内部网络及全新临时 PostgreSQL 验证 HTTP server；不启动 Worker/历史生命周期。API ready/version、Web login 为 200；无网络镜像评测成功与综合失败各 24 例，9 项关键制品哈希一致。候选容器和测试卷已清理，保留镜像。
+- 正式切换、真实模型及登录态业务页面验收待后续明确指令。详细步骤与限制见 [闭环验收](./DIAGNOSIS_CLOSED_LOOP_ACCEPTANCE.md)。
+
+## 2026-09-05 18:38 无依据评价修复 v21 本机成套部署（用户明确授权）
+
+- 用户明确要求“部署”。以实际 v20 API/Worker、v18 Web 为基准，构建并同步切换至 `comparison-recovery-v21-20260905`；没有生产发布、Git 提交/推送、平台操作或真实模型请求。
+- API/Worker 镜像为 `pxxis-local-ai-validation:comparison-recovery-v21-20260905`，ID `sha256:d01d226294950d13ddef70f8b5c4e666e3338d44efab40bcc399e1f4e0b318c6`；Web 镜像为 `pxxis-prelaunch-20260713-web:comparison-recovery-v21-20260905`，ID `sha256:a8847d0e1b8d915c426f6edbde8431b247c84fade345614ae2e92f33cdd0290a`。沿用现有 Dockerfile 与冻结 lockfile，两个镜像构建成功。
+- 候选 API 4304 仅启动 HTTP server，不启动历史生命周期或 Worker；ready/version、候选 Web 3301 login 均为 200。编排、LLM tool-loop、诊断 Worker、诊断路由和 Prisma Schema 的镜像哈希与已验证本地制品一致；Web 编译产物含本轮具体评价/阈值失败提示。
+- API 镜像在 `--network none` 且未注入应用环境的临时容器中完成 24/24 合成结构与主问题命中，虚构证据 0、安全违规 0；确认 Prompt v24 / Orchestration v32。源码阶段 653 项测试与 lint/typecheck/build 已通过，本次部署未重复运行数据库测试。
+- 切换前活动诊断为 0，停止 Web/API 并排空后再次确认活动为 0，再停止 Worker。替换前后逐项核验端口、网络、命令、用户、健康检查、restart/init、资源、日志及安全配置；原应用环境仅在内存复用，排除镜像构建元数据后完全一致，没有新增明文环境文件。Docker 默认 OOM killer 设置旧值 null、新值 false 语义相同，明确归一化后比较；未关闭 OOM 保护。初次比较在停服务前发现这一默认表示差异并安全停止，处理后完成切换。
+- 正式 API 4300 `/ready`、`/version` 和 Web 3300 `/login` 均为 200；API health=healthy，三个服务 running、restartCount=0。运行 API 与 Worker 均导入核验 Prompt v24 / Orchestration v32，版本接口为 `0.2.6` / `comparison-recovery-v21-20260905`。切换前后活动 0、DecisionRun 23、ActionProposal 19。
+- 原容器停止保留：`pxxis-prelaunch-20260713-api-1-before-comparison-recovery-v21-20260905`、`pxxis-local-ai-validation-worker-before-comparison-recovery-v21-20260905`、`pxxis-prelaunch-20260713-web-1-before-comparison-recovery-v21-20260905`。两个候选确认无挂载后已停止移除，无本轮 next 遗留。
+- 不修改 Schema、应用配置、PostgreSQL 或数据卷，不执行 migration；本次 AI 修复无需重新上传或重载插件。用户刷新网页后，在确认可信数据后显式运行一次诊断验收；真实模型与登录态业务页面尚未验收。
+
+## 2026-09-05 12:09 审计修复 v20 本机部署（用户明确授权）
+
+- 用户回复“部署”后，以实际运行容器为基准核验：API/Worker 原为 `diagnosis-language-repair-v19-20260905`，Web 为 `project-history-v18-20260903`；旧文档 v18 服务端记录已过期。诊断 PENDING/RUNNING=0、DecisionRun=23、ActionProposal=19，历史 migration 已存在，本轮无需数据库迁移。
+- 使用现有 API Dockerfile 与冻结 lockfile 构建 `pxxis-local-ai-validation:audit-fixes-v20-20260905`，镜像 ID `sha256:36235ac404c84f9f0479d19fe2b774e000cb37f68083c26a0e8f3fc24afeb827`。无网络容器内 24/24 合成结构及核心命中通过，虚构证据/安全违规均为 0。
+- 候选 4304 的 ready/version 均为 200；候选只启动 HTTP server，不启动历史生命周期或 Worker。四个关键编译模块（编排、变量解析、历史比较、诊断路由）SHA-256 与本轮已验证的本地制品逐一相同。
+- 排空 API 并再次确认无活动诊断后，停止并保留原 API/Worker，再启动同镜像的新 API/Worker。应用环境在内存中复用，除镜像构建元数据外逐项一致；端口、网络、restart/init、资源、日志、安全选项均比对一致。没有落盘新的明文环境文件。
+- 正式 API `127.0.0.1:4300/ready` 与 `/version` 为 200，Docker health=healthy；API/Worker running、restartCount=0，均读取 Prompt v24 / Orchestration v31，并通过未知调整拒绝、明确否定和未到期窗口检查。Web 未变，3300 `/login` 为 200。切换后仍为活动 0、诊断 23、建议 19。
+- 回退容器：`pxxis-prelaunch-20260713-api-1-before-audit-fixes-v20-20260905`、`pxxis-local-ai-validation-worker-before-audit-fixes-v20-20260905`，均停止保留；候选 `pxxis-audit-v20-candidate` 确认无挂载后已清理。PostgreSQL、数据卷和插件未更新。
+- 本次只部署本机服务端，不涉及生产发布、Git 提交/推送、真实模型调用或平台操作。用户刷新网页即可使用修复；真实诊断仍由用户在确认数据后显式发起。
+
+## 2026-09-04 项目历史对比 v18 成套切换（用户已确认，本机）
+
+- 切换前确认 `PENDING/RUNNING=0`，并创建数据库备份 `.backups/pxxis-project-history-20260903T222315Z.dump`（485,949 bytes，SHA-256 `7fddb94b0bc230b1d0b691ded9e2ec91728cb647280ecb3b49aecec46983914e`）。随后通过 Prisma 正式应用 `20260903210000_project_history_comparison`，迁移记录和 3 张新表均已核验。
+- API/Worker 使用 `pxxis-local-ai-validation:project-history-v18-20260903`（`sha256:9ec50cea5217191223705ed2ff3a1b85166dcbcdab92fb84fd396661042a09c9`）；Web 使用 `pxxis-prelaunch-20260713-web:project-history-v18-20260903`（`sha256:5fe65c756b3e3a8f43796c5583c7e9ff7f9ac5065b32db8d1026b9e6e6027a8a`）。
+- 正式容器继续使用 4300/3300、本地后端网络、`unless-stopped` 和 init 配置；4300 `/ready` 成功，`/version` 返回 `0.2.6` / `project-history-v18-20260903`，3300 `/login` HTTP 200，Worker running。切换后 `PENDING/RUNNING=0`。
+- 旧 API、Worker、Web 停止保留为 `*-before-project-history-v18-20260903` 回退容器；候选容器已清理，临时环境文件已删除。没有生产部署、平台操作、业务数据清理、commit 或 push。
+- Extension 源码、协议和本地解包制品未改动，本功能不需要重新上传、重新安装或重载插件。
+
+## 2026-09-03 项目历史对比候选源码（未构建、未切换）
+
+- 工作树已完成并通过隔离数据库验证，但尚未构建 API、Worker 或 Web 候选镜像，也没有启动候选容器。当前 3300/4300/Worker 仍是下述 v17 运行态。
+- 该功能新增 Prisma migration `20260903210000_project_history_comparison`，会创建项目采集轮次、趋势点、分析存档并为 `DecisionRun` 增加输入指纹。没有对当前 PostgreSQL 运行 migration、`db push` 或任何业务写入。
+- 将来本机切换需要同时更新 API、Worker、Web，并在切换前确认无活动诊断、备份和应用 migration；不能只替换 Web，因为 API/Worker 和数据库结构共同参与归档及存档状态。
+- Extension 协议、源码和本地解包目录没有本次改动，项目历史对比不需要重新上传、安装或重载插件。没有发布、commit、push、真实模型调用或平台操作。
+
+## 2026-09-03 20:13 实验变量 v17 成套切换（用户已确认，本机）
+
+- 用户明确回复“是”后，API、Worker、Web 均已切换至下述已核验的 `diagnosis-experiment-scope-v17-20260903` 镜像，运行镜像 ID 与候选一致。端口仍为本机 API 4300、Web 3300；Worker 无对外端口。
+- API/Worker 运行模块均读取到 Prompt v23 / Orchestration v29；“优化商品讲解话术、预算等保持不变、观察商品成交”只识别话术，“优化话术并降价”识别两个变量。3300 `/login`、4300 `/ready` 和 `/version` 均为 200；Web 制品含具体实验失败说明及原有 `connectionSessionId` 恢复逻辑。
+- 原应用环境仅在进程内复用，没有输出或落盘明文配置；逐项比较应用环境、端口、网络、restart/init、资源、只读、日志与安全设置一致。三个新容器 running、restartCount=0；PostgreSQL 与数据卷未变。
+- 原容器均停止保留，分别为 `pxxis-prelaunch-20260713-api-1-before-diagnosis-experiment-scope-v17-20260903`、`pxxis-local-ai-validation-worker-before-diagnosis-experiment-scope-v17-20260903`、`pxxis-prelaunch-20260713-web-1-before-diagnosis-experiment-scope-v17-20260903`；无遗留 candidate/next 容器。
+- 切换前后 `PENDING/RUNNING=0`。最新运行仍为 `cmtkyn9aq000blr07zs55v12d`、FAILED，更新时间仍是 `2026-09-03T03:23:48.988Z`。没有自动模型调用、诊断入队、历史改写、Schema/migration/db push、插件上传、commit/push 或生产部署。
+- 用户只需刷新网页，再在已确认数据下显式重新运行以验收真实模型；本轮无需再次上传或重新加载采集插件。此前 Chrome 连接恢复的真实验收仍独立记录。
+
+## 2026-09-03 11:40 实验变量 v17 候选已核验（待授权切换）
+
+- API/Worker 共用镜像 `pxxis-local-ai-validation:diagnosis-experiment-scope-v17-20260903`，ID `sha256:618f3c275646772417db95a7bd42c877874160ca08634e5a575d6ea6b74f29a5`。
+- Web 镜像 `pxxis-prelaunch-20260713-web:diagnosis-experiment-scope-v17-20260903`，ID `sha256:b37c5d25ddefa343b080a91ffb3dad0cedb20276e4771f3ac7a7c6a78da6acbe`，构建 API 地址仍为 `http://127.0.0.1:4300`。
+- 候选 API 4304 `/ready`、`/version` 为 200；镜像内 Prompt v23 / Orchestration v29、24/24 无网络合成评测通过，合法控制只识别话术，真实“话术+降价”识别两个变量。候选 Web 无外网环境登录页 200，编译制品含具体实验错误文案及既有连接恢复逻辑。
+- 当前本机 Web/API 仍为连接恢复 v16，Worker v15。活动诊断为 0；本次失败仍为 FAILED、更新时间仍为 03:23:48.988Z。候选仅健康/版本检查，不创建诊断或消费队列。
+- 切换范围必须包含 API、Worker、Web；不改已有应用配置、数据卷、Schema、插件或生产归档。按项目操作边界，需用户确认本次本机切换；真实模型由用户在确认数据后显式触发，不能把合成结果当成实际验收。
+- 两个候选均确认无挂载后停止移除，镜像保留，没有遗留候选进程。
+
+## 2026-09-03 11:20 连接恢复 Web/API 成套切换（用户已确认，本机）
+
+- 用户明确确认后，`pxxis-prelaunch-20260713-api-1` 与 `pxxis-prelaunch-20260713-web-1` 已切换到下述已核验的 `connection-recovery-v16-20260903` 镜像，端口仍为本机 4300/3300。新镜像 ID 与候选记录一致。
+- 原应用环境仅在进程内复用，切换后逐项比较一致；没有生成明文配置文件。网络、启动命令、运行用户、端口、restart/init 等配置保持。
+- 3300 `/login`、4300 `/ready`、`/version` 为 HTTP 200，`gitSha=connection-recovery-v16-20260903`；运行 API 为 Bridge 9 / Collection 8；Web 编译制品核验到 `connectionSessionId` 与“当前任务连接尚未验证”。切换前后 `PENDING/RUNNING` 诊断均为 0。
+- 两个旧容器停止保留，名称分别为 `pxxis-prelaunch-20260713-api-1-before-connection-recovery-v16-20260903`、`pxxis-prelaunch-20260713-web-1-before-connection-recovery-v16-20260903`；无遗留 next/candidate 容器。Worker 继续使用 v15，PostgreSQL、数据卷、Schema、历史诊断、生产环境、Git 未变。
+- 本地插件文件已更新，用户仅需在 Chrome 对原目录重新加载，再刷新任务页与目标后台页；指纹为 `71da1f485d4f`，不需重新上传或卸载。Chrome 重载与配对恢复尚待用户实际验收。
+
+## 2026-09-03 连接恢复候选制品（未切换 3300/4300）
+
+- API 镜像 `pxxis-local-ai-validation:connection-recovery-v16-20260903`，镜像 ID `8a090cb47093e4839fce3e3b8de683c85819c518f6a65916526d1991e3704b04`；候选 4304 `/ready`、`/version` 返回 200，`gitSha=connection-recovery-v16-20260903`，Bridge `9` / Collection `8`。
+- Web 镜像 `pxxis-prelaunch-20260713-web:connection-recovery-v16-20260903`，镜像 ID `deb2f23aa654c97a36b9830852eb4ef5152da483eb011482504758056858a39c`，构建目标 API 为 `http://127.0.0.1:4300`；无外网候选容器内 `/login` 返回 200。
+- 本地解包插件路径不变，指纹 `71da1f485d4f`，Bridge `9` / Collection `8`；生产 ZIP、版本号和发布标签未修改。
+- 两个候选已确认无挂载后停止并移除，镜像保留用于经授权切换。候选 API 只核验健康/版本，未触发诊断、配对或采集；测试在独立 PostgreSQL 完成。
+- 当前用户端仍运行 Web `decision-experiment-view-v14-20260901` 与 API/Worker `decision-experiment-transaction-v15-20260902`；未修改其环境、容器、数据库、端口和生产部署。待用户明确授权后同时替换本机 Web/API；不应单独要求用户先重载 Bridge 9 插件。
+
 > 当前部署/本机运行态结论以 [NOW.md](./NOW.md) 为准；本文件保留每次切换的完整历史，不得以较早镜像记录推断当前容器。
 
 ## 2026-09-02 v0.2.6 发布完成（非生产部署）
@@ -698,3 +827,9 @@
 - 已删除 10 个本项目已退出、无数据卷或宿主机挂载的较早 Web/API/Worker 回退容器；保留当前运行中的 Web、API、Worker、PostgreSQL，以及紧邻当前版本的一整套回退容器。
 - 清理后 Web `127.0.0.1:3300`、API `127.0.0.1:4300/ready`、`/version` 均返回 HTTP 200；Web/API/PostgreSQL healthy，Worker running。
 - 未删除镜像、Docker 数据卷、数据库或业务数据，未重建服务、执行 migration、修改配置、发布、部署或切换外部流量。
+
+## 2026-09-02 本机 Docker 历史容器清理（非部署）
+
+- 按用户要求删除 21 个已退出、无数据卷或宿主机挂载的本项目 Web/API/Worker 历史回退和候选容器；当前本项目已退出容器数为 0。
+- 运行中的 Web、API、Worker 与 PostgreSQL 未重建或切换。Web `127.0.0.1:3300`、API `127.0.0.1:4300/ready`、`/version` 实测均返回 HTTP 200。
+- 镜像、数据卷、数据库、业务数据、网络、其他项目容器、配置、迁移、生产部署和外部流量均未改动。

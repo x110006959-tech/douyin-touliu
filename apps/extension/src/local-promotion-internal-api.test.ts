@@ -158,6 +158,26 @@ describe("local promotion internal API adapter", () => {
     ]);
   });
 
+  it("uses the concrete advid when the platform sets the ALL selection sentinel", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(pageMetricsResponse())
+      .mockResolvedValueOnce(promoteMetaResponse())
+      .mockResolvedValueOnce(statQueryResponse("group_total_data"))
+      .mockResolvedValueOnce(statQueryResponse("roi2_promotion"));
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await collectLocalPromotionInternalApi({
+      enabled: true,
+      url: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2?advid=123&room_id=456&selected_aweme_id=789&selected_advid=ALL"
+    });
+
+    expect(result.metrics.map((metric) => metric.key)).toEqual([...localPromotionApiMetricKeys]);
+    expect(fetch).toHaveBeenNthCalledWith(1,
+      `https://localads.chengzijianzhan.cn/api/lamp/pc/v2/statistics/data/pageMetrics?frameId=${localPromotionInternalApiFrameId}&advid=123`,
+      expect.objectContaining({ method: "GET", credentials: "include", cache: "no-store" })
+    );
+  });
+
   it("does not issue requests without a trusted advertising identity", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

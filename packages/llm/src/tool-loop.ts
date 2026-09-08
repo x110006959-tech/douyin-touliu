@@ -95,6 +95,12 @@ export async function completeJsonWithRepair<T>(input: {
   messages: ChatMessage[];
   parse(value: unknown): T;
   repairInstruction: string;
+  /**
+   * Optional final, deterministic recovery for a narrowly scoped validation
+   * failure. The recovered value is always sent through `parse` again, so this
+   * hook cannot bypass the caller's schema or safety checks.
+   */
+  repairAfterValidation?: (value: unknown, issue: string) => unknown;
   maxTokens?: number;
   thinking?: "enabled" | "disabled";
   signal?: AbortSignal;
@@ -131,7 +137,20 @@ export async function completeJsonWithRepair<T>(input: {
   addUsage(usage, repair.usage);
   const repaired = parseJson(repair.message.content, input.parse);
   if (repaired.ok) return { value: repaired.value, usage };
-  throw new LlmTransportError("DIAGNOSIS_OUTPUT_INVALID", `模型结构化诊断在一次修复后仍不合法：${repaired.issue}`, false);
+  let finalIssue = repaired.issue;
+  if (input.repairAfterValidation && repair.message.content) {
+    let recovered: unknown;
+    try {
+      recovered = JSON.parse(repair.message.content) as unknown;
+      recovered = input.repairAfterValidation(recovered, repaired.issue);
+      const recoveredParsed = parseJson(JSON.stringify(recovered) ?? null, input.parse);
+      if (recoveredParsed.ok) return { value: recoveredParsed.value, usage };
+      finalIssue = recoveredParsed.issue;
+    } catch (error) {
+      finalIssue = validationIssue(error, recovered);
+    }
+  }
+  throw new LlmTransportError("DIAGNOSIS_OUTPUT_INVALID", `模型结构化诊断在一次修复后仍不合法：${finalIssue}`, false);
 }
 
 function parseJson<T>(content: string | null, parse: (value: unknown) => T): { ok: true; value: T } | { ok: false; issue: string } {

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { actionTypes, actionOutcomeResults } from "./action-types.js";
+import { diagnosisContextSchema, type DiagnosisContext } from "./diagnosis-context.js";
+export * from "./action-types.js";
+export * from "./diagnosis-context.js";
 import { snapshotSafetyLimits } from "./safety.js";
 import { collectionRouteKeys } from "./collection-routes.js";
 import { decisionTableInputSchema, type DecisionTableInput } from "./decision-tables.js";
@@ -6,6 +10,7 @@ import { metricValidationStatuses, type VisibleMetric } from "./metric-value.js"
 import { collectionRouteDiagnosticSchema } from "./collection-diagnostics.js";
 import { structuredCollectionDataSchema } from "./collection-records.js";
 import { realtimeEvidenceRouteMatchesSource, realtimeEvidenceSummarySchema, type RealtimeEvidenceSummary } from "./realtime-evidence.js";
+import { projectHistoryDecisionContextSchema } from "./project-history.js";
 import { metricKeys, recordableMetricKeys } from "./metric-keys.js";
 import {
   captureTabStates,
@@ -30,6 +35,7 @@ export * from "./live-screen-internal-api.js";
 export * from "./local-promotion-internal-api.js";
 export * from "./realtime-evidence.js";
 export * from "./dashboard-overview.js";
+export * from "./project-history.js";
 export { metricKeys } from "./metric-keys.js";
 export const businessTypes = ["DOUYIN_LOCAL_LIFE"] as const;
 export const subjectTypes = [
@@ -70,34 +76,6 @@ export const routeVerificationStatuses = ["VERIFIED", "MANUAL_PENDING"] as const
 export const collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"] as const;
 export const riskLevels = ["LOW", "MEDIUM", "HIGH"] as const;
 export const analysisStatuses = ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"] as const;
-export const actionTypes = [
-  "OBSERVE",
-  "INCREASE_BUDGET",
-  "DECREASE_BUDGET",
-  "KEEP_BUDGET",
-  "FINE_TUNE_TARGETING",
-  "DECREASE_BID",
-  "PAUSE_TASK",
-  "ADJUST_ROI_TARGET",
-  "CHECK_LIVE_ROOM",
-  "CHECK_CREATIVE",
-  "CHECK_AUDIENCE",
-  "VERIFY_ACTIVITY",
-  "APPLY_ACTIVITY",
-  "OPTIMIZE_SCRIPT",
-  "REPAIR_REPUTATION",
-  "STRENGTHEN_SHELF",
-  "CHECK_INVENTORY_BOOKING",
-  "OPTIMIZE_POI_SEARCH",
-  "REPLACE_CREATOR",
-  "UNIFY_CREATOR_SCRIPT",
-  "ADJUST_SERVICE_PROVIDER_SOP",
-  "RENEGOTIATE_SERVICE_FEE",
-  "REUSE_MATERIAL",
-  "ALLOCATE_HIGH_VERIFY_STORES",
-  "CALIBRATE_SUBJECT",
-  "REQUEST_MANUAL_REVIEW"
-] as const;
 export const actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "OBSERVING", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"] as const;
 export const approvalDecisions = ["APPROVE", "REJECT", "APPROVED", "REJECTED", "OBSERVE"] as const;
 export const executionModes = ["MANUAL"] as const;
@@ -107,7 +85,6 @@ export const dataReviewStatuses = ["REVIEWED", "UNREVIEWED"] as const;
 export const metricLayers = ["REVIEWED_METRIC", "REALTIME_API"] as const;
 export const metricCategories = ["ROI", "COST", "CONVERSION", "TRAFFIC", "LIVE_ROOM", "FULL_DOMAIN", "SERVICE_PROVIDER", "RISK", "ACTIVITY", "TIMING", "UNKNOWN"] as const;
 export const observationWindows = ["30m", "2h", "1d", "custom"] as const;
-export const actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"] as const;
 export const extensionConnectionStates = [
   "UNPAIRED",
   "PAIRED_NOT_CONNECTED",
@@ -122,7 +99,7 @@ export const extensionConnectionStates = [
 ] as const;
 // Bump alongside a local acceptance build whenever the task page must reject
 // a previously loaded unpacked extension before it can report a fresh capture.
-export const extensionBridgeProtocolVersion = 8 as const;
+export const extensionBridgeProtocolVersion = 9 as const;
 // Bump this whenever the extension-to-API capture write contract changes.
 // Unlike the Web Bridge protocol, this protects the persisted evidence path.
 export const extensionCollectionProtocolVersion = 8 as const;
@@ -314,6 +291,9 @@ export const metricKeyLabels: Record<MetricKey, string> = {
   gross_profit_roi: "毛利 ROI",
   pay_roi: "支付 ROI",
   full_domain_pay_roi: "全域支付 ROI",
+  full_domain_gmv: "全域成交金额",
+  full_domain_orders: "全域成交订单数",
+  full_domain_product_clicks: "全域商品点击次数",
   target_roi: "目标 ROI",
   spend: "消耗",
   daily_budget: "日预算",
@@ -367,6 +347,9 @@ export const metricKeyCategories: Record<MetricKey, MetricCategory> = {
   gross_profit_roi: "ROI",
   pay_roi: "ROI",
   full_domain_pay_roi: "FULL_DOMAIN",
+  full_domain_gmv: "FULL_DOMAIN",
+  full_domain_orders: "FULL_DOMAIN",
+  full_domain_product_clicks: "FULL_DOMAIN",
   target_roi: "ROI",
   spend: "COST",
   daily_budget: "COST",
@@ -420,6 +403,9 @@ export const metricAliases: Record<MetricKey, readonly string[]> = {
   gross_profit_roi: ["gross_profit_roi", "毛利 ROI", "毛利ROI", "核销毛利 ROI", "核销毛利ROI"],
   pay_roi: ["pay_roi", "支付 ROI", "支付ROI", "付款 ROI", "付款ROI", "整体支付 ROI", "整体支付ROI"],
   full_domain_pay_roi: ["full_domain_pay_roi", "全域支付 ROI", "全域支付ROI", "全域 ROI", "全域ROI"],
+  full_domain_gmv: ["full_domain_gmv", "全域成交金额", "全域成交金额(元)", "全域GMV", "全域 GMV"],
+  full_domain_orders: ["full_domain_orders", "全域成交订单数", "全域支付订单数"],
+  full_domain_product_clicks: ["full_domain_product_clicks", "全域商品点击次数", "全域商品点击"],
   target_roi: ["target_roi", "目标 ROI", "目标ROI"],
   spend: ["spend", "消耗", "广告消耗", "今日消耗", "投放消耗"],
   daily_budget: ["daily_budget", "日预算", "预算"],
@@ -718,6 +704,7 @@ export type CollectionSnapshotPayload = {
 };
 
 export type ExtensionHeartbeatPayload = {
+  connectionSessionId?: string;
   collectionTaskId: string;
   extensionVersion: string;
   bridgeProtocolVersion?: number;
@@ -732,6 +719,7 @@ export type ExtensionHeartbeatPayload = {
 };
 
 export type ExtensionStatusDTO = {
+  connectionSessionId?: string | null;
   state: ExtensionConnectionState;
   installedDetectedByWeb: boolean;
   paired: boolean;
@@ -968,6 +956,7 @@ export type DecisionDataQuality = {
   collectionQuality?: import("./collection-routes.js").CollectionQuality;
 };
 
+
 export type DecisionEngineInput = {
   projectId?: string;
   collectionTaskId?: string;
@@ -989,6 +978,8 @@ export type DecisionEngineInput = {
   collectionQuality?: import("./collection-routes.js").CollectionQuality;
   realtimeEvidence?: RealtimeEvidenceSummary;
   realtimeEvidenceItems?: RealtimeEvidenceSummary[];
+  historyContext?: import("./project-history.js").ProjectHistoryDecisionContext;
+  diagnosisContext?: DiagnosisContext;
 };
 
 export type ActionProposalDTO = {
@@ -1166,6 +1157,7 @@ export const selectExtensionTaskSchema = z.object({
 });
 
 export const extensionHeartbeatSchema = z.object({
+  connectionSessionId: z.string().uuid().optional(),
   collectionTaskId: z.string().min(1, "插件尚未绑定采集任务"),
   extensionVersion: z.string().trim().min(1).max(50),
   bridgeProtocolVersion: z.number().int().min(1).max(100).optional(),
@@ -1407,7 +1399,9 @@ export const decisionEngineInputSchema = z.object({
     blocksStrongActions: z.boolean()
   }).optional(),
   realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
-  realtimeEvidenceItems: z.array(realtimeEvidenceSummarySchema).max(4).optional()
+  realtimeEvidenceItems: z.array(realtimeEvidenceSummarySchema).max(4).optional(),
+  historyContext: projectHistoryDecisionContextSchema.optional(),
+  diagnosisContext: diagnosisContextSchema.optional()
 }).superRefine((input, context) => {
   const items = input.realtimeEvidenceItems?.length
     ? input.realtimeEvidenceItems

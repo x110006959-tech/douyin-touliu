@@ -69,6 +69,8 @@ let currentPagePulse: PopupState["livePulse"] = undefined;
 let currentPagePulseRoute: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD" | null = null;
 let popupRenderGeneration = 0;
 let livePulseActionInFlight = false;
+let renderedBindingKey = "";
+let lastBindingCheckAt = 0;
 
 type PopupPulse = LivePulseDisplayState & {
   routeKey?: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD";
@@ -102,6 +104,7 @@ type PopupState = {
 
 type PopupRuntimeResponse = PopupState & {
   ok?: boolean;
+  errorCode?: string;
   error?: unknown;
   state?: PopupState;
   config?: ExtensionConfig;
@@ -173,6 +176,8 @@ async function render() {
   // may write controls; an older verification response must not roll the
   // button back to the state it observed before the user's click.
   if (renderGeneration !== popupRenderGeneration) return;
+  renderedBindingKey = bindingKey(state);
+  lastBindingCheckAt = Date.now();
 
   els.currentUrl.textContent = url || "无法读取，请重新打开插件";
   const currentPageType = pageTypeLabel(pageContext?.pageType || currentActivity?.pageType || inferPageTypeFromUrl(url));
@@ -218,7 +223,7 @@ async function render() {
       : pairingVerified
         ? "已向本机 API 校验"
         : "本机 API 校验失败";
-  toggle(els.pairingPanel, !hasToken || (hasTask && !pairingVerified));
+  toggle(els.pairingPanel, Boolean(state) && (!hasToken || verification?.errorCode === "PAIRING_REQUIRED"));
   // A new task pairing still requires an explicit confirmation when the account is already paired.
   toggle(els.pairingConfirmationPanel, Boolean(pendingPairing));
   toggle(els.taskPanel, hasToken && !hasTask);
@@ -255,7 +260,7 @@ async function render() {
   } else if (!hasTask) {
     setStatus("账号已配对，请选择采集任务", "warning");
   } else if (!pairingVerified) {
-    setStatus(chineseError(verification?.error, "本机 API 未确认当前账号与任务，请重新配对"), "error");
+    setStatus(chineseError(verification?.error, "本地凭证已保留，等待服务恢复后重新校验"), "error");
   } else if (!collectable) {
     setStatus("请打开巨量本地推数据页或直播数据大屏", "warning");
   } else if (isExactLiveScreen && pageContext?.livePulseFailureCode === "ROOM_ID_UNAVAILABLE") {
@@ -271,6 +276,10 @@ async function render() {
 
 let livePulseStatusRefreshInFlight = false;
 
+function bindingKey(state: PopupState | null) {
+  return JSON.stringify([state?.hasToken, state?.config, state?.pendingPairingConfirmation]);
+}
+
 async function refreshLivePulseStatus() {
   if (document.visibilityState !== "visible" || livePulseStatusRefreshInFlight || livePulseActionInFlight) return;
   const refreshGeneration = popupRenderGeneration;
@@ -278,6 +287,10 @@ async function refreshLivePulseStatus() {
   try {
     const [state, tab] = await Promise.all([runtimeMessage({ type: MESSAGE.GET_STATE }), activeTab()]);
     if (livePulseActionInFlight || refreshGeneration !== popupRenderGeneration) return;
+    if (bindingKey(state) !== renderedBindingKey || (state?.hasToken && !livePulsePairingVerified && Date.now() - lastBindingCheckAt >= 5_000)) {
+      await render();
+      return;
+    }
     const routeKey = pulseRouteForUrl(tab?.url || "");
     if (routeKey !== currentPagePulseRoute) {
       await render();

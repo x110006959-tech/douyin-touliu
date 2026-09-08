@@ -31,6 +31,9 @@ type StructuredDataReport = Record<
   | "executionLogs"
   | "actionProposals"
   | "decisionRuns"
+  | "projectHistoryMetricPoints"
+  | "projectAnalysisArchives"
+  | "projectHistorySessions"
   | "aiAnalysisTasks"
   | "auditLogs"
   | "securityMetrics",
@@ -212,6 +215,38 @@ async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, b
       where: { id: { in: ids }, actionProposals: { none: {} } }
     }))).count
   });
+  const projectHistoryMetricPoints = await executeOperation({
+    mode,
+    batchSize,
+    count: () => client.projectHistoryMetricPoint.count({ where: { observedAt: { lt: cutoff } } }),
+    selectIds: async () => (await client.projectHistoryMetricPoint.findMany({
+      where: { observedAt: { lt: cutoff } }, orderBy: [{ observedAt: "asc" }, { id: "asc" }], take: batchSize, select: { id: true }
+    })).map((row) => row.id),
+    process: async (ids) => (await client.$transaction((tx) => tx.projectHistoryMetricPoint.deleteMany({ where: { id: { in: ids } } }))).count
+  });
+  const projectAnalysisArchives = await executeOperation({
+    mode,
+    batchSize,
+    count: () => client.projectAnalysisArchive.count({ where: { archivedAt: { lt: cutoff } } }),
+    selectIds: async () => (await client.projectAnalysisArchive.findMany({
+      where: { archivedAt: { lt: cutoff } }, orderBy: [{ archivedAt: "asc" }, { id: "asc" }], take: batchSize, select: { id: true }
+    })).map((row) => row.id),
+    process: async (ids) => (await client.$transaction((tx) => tx.projectAnalysisArchive.deleteMany({ where: { id: { in: ids } } }))).count
+  });
+  const projectHistorySessions = await executeOperation({
+    mode,
+    batchSize,
+    count: () => client.projectHistorySession.count({
+      where: { archivedAt: { lt: cutoff }, metricPoints: { none: {} }, analysisArchives: { none: {} } }
+    }),
+    selectIds: async () => (await client.projectHistorySession.findMany({
+      where: { archivedAt: { lt: cutoff }, metricPoints: { none: {} }, analysisArchives: { none: {} } },
+      orderBy: [{ archivedAt: "asc" }, { id: "asc" }], take: batchSize, select: { id: true }
+    })).map((row) => row.id),
+    process: async (ids) => (await client.$transaction((tx) => tx.projectHistorySession.deleteMany({
+      where: { id: { in: ids }, metricPoints: { none: {} }, analysisArchives: { none: {} } }
+    }))).count
+  });
   const aiAnalysisTasks = await executeOperation({
     mode,
     batchSize,
@@ -252,6 +287,9 @@ async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, b
     executionLogs,
     actionProposals,
     decisionRuns,
+    projectHistoryMetricPoints,
+    projectAnalysisArchives,
+    projectHistorySessions,
     aiAnalysisTasks,
     auditLogs,
     securityMetrics

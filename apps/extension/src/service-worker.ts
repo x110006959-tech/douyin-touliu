@@ -117,6 +117,23 @@ let livePulseStorageHydrated = false;
 let livePulseStorageHydration: Promise<void> | null = null;
 let livePulseStorageWriteQueue: Promise<void> = Promise.resolve();
 let latestLivePulseOutcome: LivePulseOutcome | null = null;
+const connectionSessionId = crypto.randomUUID();
+let bindingQueue: Promise<unknown> = Promise.resolve();
+
+function updateBinding<T>(operation: () => Promise<T>) {
+  const result = bindingQueue.then(operation);
+  bindingQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+async function bridgeBindingResponse(operation: () => Promise<object>) {
+  try {
+    const result = await updateBinding(operation);
+    return { ...await getBridgeStatus(), ...result };
+  } catch {
+    return { ok: false, errorCode: "BRIDGE_REQUEST_FAILED" };
+  }
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
@@ -194,7 +211,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: "配对校验只能在插件 Popup 中完成。" });
       return false;
     }
-    void verifyBoundContext().then(sendResponse);
+    void updateBinding(verifyBoundContext).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
@@ -202,11 +219,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
-    void syncCurrentTaskFromBridge(sender).then(sendResponse);
+    void bridgeBindingResponse(() => syncCurrentTaskFromBridge(sender)).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
-    void pairTaskFromWeb(message.payload || {}, sender).then(sendResponse);
+    void bridgeBindingResponse(() => pairTaskFromWeb(message.payload || {}, sender)).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
@@ -218,7 +235,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: "配对确认只能在插件 Popup 中完成。" });
       return false;
     }
-    void confirmPairing(sender).then(sendResponse);
+    void updateBinding(() => confirmPairing(sender)).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.CANCEL_PAIRING) {
@@ -234,7 +251,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: "任务切换只能在插件 Popup 中完成。" });
       return false;
     }
-    void selectTask(message.payload || {}).then(sendResponse);
+    void updateBinding(() => selectTask(message.payload || {})).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.CLEAR_PAIRING) {
@@ -242,7 +259,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: "解除配对只能在插件 Popup 中完成。" });
       return false;
     }
-    void clearPairing().then(sendResponse);
+    void updateBinding(clearPairing).then(sendResponse);
     return true;
   }
   if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
@@ -440,8 +457,17 @@ async function exchangePairingConfirmation(
         error: response.status === 429 ? "配对请求过于频繁，请稍后重试。" : "配对码错误、已使用或已过期，请在任务页重新生成。"
       };
     }
-    const token = body?.data?.token as string | undefined;
-    if (!token) return { ok: false, errorCode: "PAIRING_RESPONSE_INVALID", error: "服务器未返回有效插件凭证，请重新配对。" };
+    const token: unknown = body?.data?.token;
+    if (typeof token !== "string" || !token.trim()) return { ok: false, errorCode: "PAIRING_RESPONSE_INVALID", error: "服务器未返回有效插件凭证，请重新配对。" };
+    const suggestedTaskId = expectedTaskId || (typeof body?.data?.suggestedTask?.id === "string" ? body.data.suggestedTask.id : undefined);
+    // The code is already consumed. Persist the credential before any further
+    // network request so a restart or failed heartbeat can resume verification.
+    await chrome.storage.local.set({
+      [STORAGE.TOKEN]: token,
+      [STORAGE.CONFIG]: { apiBaseUrl: confirmation.apiBaseUrl, collectionTaskId: suggestedTaskId },
+      [STORAGE.CONTEXT]: null
+    });
+    await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
     const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
       headers: extensionContextRequestHeaders(token)
     });
@@ -457,7 +483,6 @@ async function exchangePairingConfirmation(
     if (!protocolCheck.ok) return { ok: false, errorCode: protocolCheck.code, error: protocolErrorMessage(protocolCheck.code) };
     const context = parseExtensionContext(contextBody.data);
     if (!context) return { ok: false, errorCode: "INVALID_CONTEXT", error: "服务器返回的账号上下文无效，已停止配对。" };
-    const suggestedTaskId = expectedTaskId || body?.data?.suggestedTask?.id as string | undefined;
     const suggestedProject = suggestedTaskId
       ? context.account.projects.find((project) => project.tasks.some((task) => task.id === suggestedTaskId))
       : undefined;
@@ -479,6 +504,7 @@ async function exchangePairingConfirmation(
     };
     const pulseConflict = await pairingPulseConflict(config.collectionTaskId);
     if (pulseConflict) return pulseConflict;
+    await chrome.storage.local.set({ [STORAGE.CONFIG]: config, [STORAGE.CONTEXT]: context });
     const heartbeat = taskPageUrl
       ? await reportExtensionHeartbeatForCredentials({
           apiBaseUrl: confirmation.apiBaseUrl,
@@ -494,10 +520,8 @@ async function exchangePairingConfirmation(
         error: /超时/.test(heartbeatError) ? "任务页心跳响应超时，请检查本机 API 后重试。" : "任务页心跳未被服务端确认，请检查本机 API 后重试。"
       };
     }
-    await chrome.storage.local.set({ [STORAGE.TOKEN]: token, [STORAGE.CONFIG]: config, [STORAGE.CONTEXT]: context });
-    await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
     await appendLog("extension.paired", { accountProfileId: context.account.id, expiresAt: body?.data?.expiresAt });
-    return { ok: true, config, context };
+    return { ok: true, paired: true, config, context };
   } catch (error: unknown) {
     return isRequestTimeout(error)
       ? { ok: false, errorCode: "PAIRING_API_TIMEOUT", error: "诊断服务响应超时，请检查本机 API 后重试。" }
@@ -680,12 +704,13 @@ async function getBridgeStatus() {
     ok: true,
     paired,
     pendingConfirmation: Boolean((local[STORAGE.PENDING_PAIRING_CONFIRMATION] as PendingPairingConfirmation | undefined)?.expiresAt && new Date((local[STORAGE.PENDING_PAIRING_CONFIRMATION] as PendingPairingConfirmation).expiresAt).getTime() > Date.now()),
-    boundTaskId: config.collectionTaskId || null,
+    boundTaskId: paired ? config.collectionTaskId || null : null,
+    connectionSessionId,
     protocolVersion: extensionBridgeProtocolVersion,
     extensionVersion: chrome.runtime.getManifest().version,
     buildFingerprint: __PXXIS_EXTENSION_BUILD__,
     message: paired
-      ? config.collectionTaskId ? "插件已配对并绑定当前任务" : "插件已配对，尚未选择采集任务"
+      ? config.collectionTaskId ? "插件已有本地凭证，正在核对任务连接" : "插件已有本地凭证，尚未选择采集任务"
       : "插件运行正常，尚未配对"
   };
 }
@@ -1840,6 +1865,7 @@ async function reportExtensionHeartbeatForCredentials(
         extensionVersion: chrome.runtime.getManifest().version,
         bridgeProtocolVersion: extensionBridgeProtocolVersion,
         buildFingerprint: __PXXIS_EXTENSION_BUILD__,
+        connectionSessionId,
         currentUrl: activity.currentUrl,
         pageType: activity.pageType,
         routeKey: activity.routeKey,
@@ -1946,7 +1972,7 @@ function routeLabel(routeKey: CollectionRouteKey) {
   return collectionRouteLabels[routeKey] || routeKey;
 }
 
-async function refreshBoundContext(timeoutMs = extensionRequestTimeoutMs): Promise<{ ok: true; context: ExtensionContext } | { ok: false; error: string }> {
+async function refreshBoundContext(timeoutMs = extensionRequestTimeoutMs): Promise<{ ok: true; context: ExtensionContext } | { ok: false; error: string; errorCode?: string }> {
   const api = await apiContext();
   if (!api.ok) return api;
   try {
@@ -1958,7 +1984,7 @@ async function refreshBoundContext(timeoutMs = extensionRequestTimeoutMs): Promi
       const message = body && typeof body === "object" && "error" in body
         ? (body as { error?: { message?: unknown } }).error?.message
         : null;
-      return { ok: false, error: typeof message === "string" ? message : "无法刷新当前账号信息，请重新配对后重试。" };
+      return { ok: false, errorCode: contextRefreshErrorCode(response.status), error: typeof message === "string" ? message : "无法刷新当前账号信息，请检查服务后重试。" };
     }
     const payload = body && typeof body === "object" && "data" in body
       ? (body as { data?: unknown }).data

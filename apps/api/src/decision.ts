@@ -150,10 +150,18 @@ export function buildDecisionInput(task: {
   const baseCollectionQuality = collectionRun
     ? assessCollectionRunQuality(collectionRun.requiredRoutesJson, collectionRun.snapshots, collectionRun.routeHealth)
     : undefined;
-  const reviewedEvidenceMetrics = useReviewedEvidence ? reviewedMetricsToVisibleMetrics(latestReviewedMetrics).map((metric) => ({
-    ...metric,
-    value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value
-  })) : [];
+  const routeKeyBySnapshotId = new Map(reviewSnapshots.map((snapshot) => [
+    snapshot.id,
+    normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)
+  ]));
+  const reviewedEvidenceMetrics = useReviewedEvidence ? selectedReviewedMetrics(latestReviewedMetrics).flatMap((reviewedMetric) => {
+    const routeKey = reviewedMetric.snapshotId ? routeKeyBySnapshotId.get(reviewedMetric.snapshotId) : undefined;
+    return reviewedMetricsToVisibleMetrics([reviewedMetric]).map((metric) => ({
+      ...metric,
+      value: metricValueToRuleNumber(metric, metricValueSemantic(String(metric.key))) ?? metric.value,
+      rawEvidence: routeKey && routeKey !== "UNKNOWN" ? { ...(metric.rawEvidence || { sourceType: metric.metricSource || "UNKNOWN" }), routeKey } : metric.rawEvidence
+    }));
+  }) : [];
   const realtimeMetrics = realtimeDecisionEvidences.flatMap((evidence) => evidence.metrics);
   const taskTargetRoi = targetRoiFromMetrics(task.reviewedMetrics || []);
   const taskTargetRoiMetric = targetRoiVisibleMetric(task.reviewedMetrics || []);

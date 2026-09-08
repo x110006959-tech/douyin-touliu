@@ -8,6 +8,8 @@ const businessTextReplacements: Array<[RegExp, string]> = [
   [/历史同场景/g, "近期历史"],
   [/同场景/g, "近期"],
   [/full_domain_pay_roi/gi, "全域支付 ROI"],
+  [/full_domain_gmv/gi, "全域成交金额"],
+  [/full_domain_orders/gi, "全域成交订单数"],
   [/product_conversion_rate/gi, "商品转化率"],
   [/target_roi/gi, "目标 ROI"],
   [/pay_roi/gi, "支付 ROI"],
@@ -42,6 +44,11 @@ export function humanizeBusinessText(value: string) {
 }
 
 export function humanizeDiagnosisFailure(errorCode?: string | null, errorMessage?: string | null) {
+  const experimentFailure = diagnosisExperimentFailureReason(errorMessage);
+  if (experimentFailure) return `${experimentFailure}本次未生成建议，已采集数据仍保留。`;
+  if (errorCode === "DIAGNOSIS_BENCHMARK_UNSUPPORTED" || errorMessage?.includes("DIAGNOSIS_BENCHMARK_UNSUPPORTED")) {
+    return "AI 使用了当前证据无法支持的好坏评价或行业阈值，自动纠正后仍不符合要求。本次未生成建议，已采集数据仍保留。";
+  }
   if (errorMessage?.includes("DIAGNOSIS_DETERMINISTIC_CONFLICT")) {
     return "AI 对指标关系的表述未通过证据一致性检查，本次已安全停止。当前数据没有被改动，请重新运行诊断。";
   }
@@ -52,4 +59,13 @@ export function humanizeDiagnosisFailure(errorCode?: string | null, errorMessage
     return "AI 输出在自动纠正后仍未满足诊断要求，本次未生成建议，请重新运行。";
   }
   return errorMessage || "诊断未完成，请重新运行。";
+}
+
+export function diagnosisExperimentFailureReason(errorMessage?: string | null): string | null {
+  if (!errorMessage?.includes("DIAGNOSIS_EXPERIMENT_INVALID")) return null;
+  if (/一个经营变量|一个调整变量|singleVariable 只能/.test(errorMessage)) {
+    return "验证方案被判定为同时调整多个经营变量，无法单独判断哪项调整有效。";
+  }
+  if (errorMessage.includes("观察实验")) return "观察方案中包含了经营调整，未通过只读检查。";
+  return "验证方案的动作关联、观察条件或停止标准未通过实验设计检查。";
 }

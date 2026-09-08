@@ -102,6 +102,16 @@ function buildInput(values: Record<string, number | null>, group: SyntheticDiagn
     metricSource: "TABLE" as const,
     confidence: 1
   }]);
+  if (values.pay_roi !== null && values.pay_roi !== undefined) {
+    metrics.push({
+      key: "full_domain_pay_roi",
+      name: "全域支付 ROI",
+      value: values.pay_roi,
+      source: "table",
+      metricSource: "TABLE",
+      confidence: 1
+    });
+  }
   if (group === "DATA_CONFLICT_SAFETY") {
     metrics.push({ key: "wrong_price_promise_risk", name: "价格承诺风险", value: 1, source: "manual", metricSource: "MANUAL_INPUT", confidence: 1 });
   }

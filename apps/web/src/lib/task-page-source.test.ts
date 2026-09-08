@@ -50,7 +50,12 @@ const actionProposalSource = readFileSync(
 describe("task page acceptance guard", () => {
   it("shows a single asynchronous AI diagnosis with policy adjudication", () => {
     expect(taskPageSource).toContain("<DiagnosisComparison");
-    expect(taskPageSource).toContain("onRunFormal={() => void runDecision()}");
+    expect(taskPageSource).toContain("onRunFormal={(scenario) => void runDecision(scenario)}");
+    expect(diagnosisComparisonSource).toContain("目标是否达成");
+    expect(diagnosisComparisonSource).toContain("趋势能否判断");
+    expect(diagnosisComparisonSource).toContain("原因是否确认");
+    expect(diagnosisComparisonSource).toContain("事实已确认，AI 建议未完成");
+    expect(diagnosisComparisonSource).not.toContain("结论置信度");
     expect(diagnosisComparisonSource).toContain("DeepSeek + 业务 Skills");
     expect(diagnosisComparisonSource).toContain("本轮经营判断");
     expect(diagnosisComparisonSource).toContain("这组数据已经说明什么");
@@ -182,7 +187,7 @@ describe("task page acceptance guard", () => {
     expect(taskPageSource).toContain("beginPairingAttempt();");
     expect(taskPageSource).toContain("acceptPairingResponse(paired);");
     expect(extensionTaskStatusSource).toContain("lastSyncFailure.current = null;");
-    expect(extensionTaskStatusSource).toContain("automaticallySyncedTaskId.current = taskId;");
+    expect(extensionTaskStatusSource).toContain("synchronizedSession.current = response.connectionSessionId;");
     expect(extensionTaskStatusSource).toContain("connectionRefreshGeneration.current += 1;");
     expect(extensionTaskStatusSource).toContain("connectionRefreshGeneration.current !== refreshGeneration");
     expect(taskPageSource).toContain("插件已自动连接当前任务，正在打开采集看板。");
@@ -195,11 +200,9 @@ describe("task page acceptance guard", () => {
       taskPageSource.indexOf("const connectionReadyForTask"),
       taskPageSource.indexOf("useEffect(() =>", taskPageSource.indexOf("const connectionReadyForTask"))
     );
-    expect(readinessSource).toContain("webBridge.response?.ok");
-    expect(readinessSource).toContain("webBridge.response.boundTaskId === task.id");
-    expect(readinessSource).toContain("extensionStatus?.paired");
-    expect(readinessSource).toContain("extensionStatus.boundTaskId === task.id");
-    expect(readinessSource).toContain("extensionStatus.lastHeartbeatAt");
+    expect(readinessSource).toContain("isCurrentExtensionConnected(params.id, webBridge, extensionStatus)");
+    expect(taskPageSource).toContain("const extensionServerVerified = connectionReadyForTask");
+    expect(taskPageSource).toContain("const extensionConnected = connectionReadyForTask");
 
     const pairingSource = taskPageSource.slice(
       taskPageSource.indexOf("async function createTaskPairingCode"),
@@ -209,18 +212,19 @@ describe("task page acceptance guard", () => {
     expect(pairingSource).toContain("pairingRecoveryPending.current = true");
   });
 
-  it("synchronizes a paired plugin once on entry and allows a forced manual retry", () => {
+  it("recovers a paired plugin through the shared session policy and allows a forced retry", () => {
     expect(extensionTaskStatusSource).toContain("syncExtensionCurrentTask");
-    expect(extensionTaskStatusSource).toContain("automaticallySyncedTaskId.current !== taskId");
-    expect(extensionTaskStatusSource).toContain("automaticallySyncedTaskId.current = taskId");
+    expect(extensionTaskStatusSource).toContain("shouldRecoverExtensionTask");
+    expect(extensionTaskStatusSource).toContain("if (response.ok) synchronizedSession.current = response.connectionSessionId");
     expect(extensionTaskStatusSource).toContain("forceTaskSync = true");
     expect(extensionTaskStatusSource).toContain("await synchronizeCurrentTask()");
     expect(extensionTaskStatusSource).toContain('"SERVICE_UPDATE_REQUIRED", "EXTENSION_UPDATE_REQUIRED"');
   });
 
-  it("uses a read-only five-second status refresh after the one-time automatic sync", () => {
+  it("retries connection recovery every five seconds before reading scoped server status", () => {
     expect(extensionTaskStatusSource).toContain("void refresh(true)");
-    expect(extensionTaskStatusSource).toContain("window.setInterval(() => void refresh(false), 5_000)");
+    expect(extensionTaskStatusSource).toContain("window.setInterval(() => void refresh(true), 5_000)");
+    expect(extensionTaskStatusSource).toContain("?connectionSessionId=");
     expect(extensionTaskStatusSource).toContain("forceTaskSync: false");
   });
 
@@ -238,7 +242,7 @@ describe("task page acceptance guard", () => {
     expect(taskPageSource).toContain("needsPairingAction ? <Button");
     expect(taskPageSource).toContain("webBridgeSupportsPairing");
     expect(taskPageSource).toContain("pairingRetryErrorCodes");
-    expect(taskPageSource).toContain('"PAIRING_API_TIMEOUT"');
+    expect(taskPageSource).toContain('"PAIRING_CREDENTIAL_REJECTED"');
     expect(taskPageSource).toContain('"HEARTBEAT_FAILED"');
     expect(taskPageSource).toContain("!manualOnly && webBridgeSupportsPairing");
     expect(taskPageSource).toContain("ACTIVE_PULSE_STOP_REQUIRED");

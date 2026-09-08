@@ -4,6 +4,7 @@ import { sanitizeErrorForLog } from "./http-security.js";
 import { prisma } from "./prisma.js";
 import { flushSecurityMetrics } from "./security-metrics.js";
 import { closeAllSseConnections } from "./sse-limits.js";
+import { startProjectHistoryLifecycle } from "./project-history.js";
 
 ensureEmailDeliveryConfigured();
 
@@ -12,11 +13,15 @@ let shuttingDown = false;
 const server = createServer({ isDraining: () => shuttingDown }).listen(port, () => {
   console.log(`Douyin local-life diagnosis API listening on http://localhost:${port}`);
 });
+const stopProjectHistoryLifecycle = startProjectHistoryLifecycle({
+  onError: (error) => console.error("Project history lifecycle failed", sanitizeErrorForLog(error))
+});
 
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   closeAllSseConnections();
+  await stopProjectHistoryLifecycle();
   await closeServerWithinGracePeriod();
   await flushSecurityMetrics().catch((error: unknown) => console.error("Security metric flush failed", sanitizeErrorForLog(error)));
   await prisma.$disconnect();

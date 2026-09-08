@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   buildDiagnosisEvidenceCatalog,
   createDiagnosisSkillPlan,
+  getDiagnosisScenarioStrategy,
   diagnosisSkillRegistry,
   releasedDiagnosisRoutes,
   type DiagnosisSkillPlan,
@@ -16,9 +17,10 @@ import {
 } from "@douyin-local-life/llm";
 import {
   diagnosisActionTypes,
+  diagnosisDomainAnalysisOutputSchema,
   diagnosisExperimentV2Schema,
+  diagnosisFinalModelOutputSchema,
   diagnosisFinalResultSchema,
-  diagnosisSkillOutputSchema,
   type DiagnosisEvidence,
   type DiagnosisFinalResult,
   type DiagnosisSkillExecutionStatus,
@@ -30,61 +32,66 @@ import {
 import type { CollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
 import { decisionEngineInputSchema, type DecisionEngineInput } from "@douyin-local-life/shared";
 import type { DiagnosisCaseRetrievalHints } from "../diagnosis-cases.js";
+import { changedExperimentVariables, experimentVariableNames } from "./experiment-variables.js";
+import { hasKnownRoiContradiction, hasUnsupportedBenchmark, hasUnsupportedQualitativeComparison } from "./comparison-language.js";
+import { observationValidationDiagnostic, type ObservationValidationDiagnostic } from "./validation-diagnostic.js";
 
-export const diagnosisPromptVersion = "managed-live-growth-prompt-v22";
-export const diagnosisOrchestrationVersion = "server-determined-skill-plan-v28";
+export const diagnosisPromptVersion = "managed-live-growth-prompt-v28";
+export const diagnosisOrchestrationVersion = "server-determined-skill-plan-v37";
 // Kept for historical record compatibility. The formal path no longer consumes
 // model-selected tool rounds or tool-call quota.
 export const legacyDiagnosisOrchestrationLimits = { maxRounds: 8, maxToolCalls: 12 } as const;
-const domainSkillOutputSchema = diagnosisSkillOutputSchema.omit({ skillId: true, skillVersion: true });
+const domainSkillOutputSchema = diagnosisDomainAnalysisOutputSchema;
+const experimentDesignInstruction = "singleVariable 只写实际调整对象，如‘商品讲解话术’。steps 把调整、保持不变、观察结果分句写清；‘只优化商品讲解话术；保持预算、出价和优惠不变；观察商品成交’只调整话术，‘优化话术并降低价格’改变了两个变量，必须拆成独立实验。不要为凑齐实验而增加调整；无法给出符合证据和单变量要求的实验时返回 experiments:[]，并删除其关联 candidateActions，不得伪造实验或改写事实。";
+const unsupportedComparisonRepairInstruction = "如果 validationIssue 包含 DIAGNOSIS_BENCHMARK_UNSUPPORTED，只修正触发门禁的可见文案，保留合法 evidenceIds、维度、主问题标签和已被证据支持的事实，不要新增数字、证据或推断。逐项检查 coreConclusion、statement、title、conclusion、missingEvidence、steps、singleVariable、controlScope、observationWindow、completionCriteria、abortCriteria、interferenceFactors、reason、expectedImpact、refusalReason；在没有明确目标、同口径历史对比或输入内基准时，删除‘良好、较好、较高、较低、有限、优秀、偏弱、健康、行业平均’等比较性评价。能引用输入事实时改写为可核对的当前事实；没有足够依据时改写为‘当前证据不足，暂不能判断……’，不得猜测或补充阈值。若某个假设、实验或候选动作无法改成合规文案，就删除该项及其依赖项，返回空数组也可以；不要把修复说明写入 JSON。";
 const domainOutputInstruction = [
   "分析输入数据，不得复制或回显输入对象。",
   "面向本地生活代直播经营人员表达，按‘流量进入→直播承接→商品点击与成交→投放产出’组织结论；不要展示分析过程。",
   "事实陈述、标题、结论、原因和步骤只能使用中文业务名称，不得出现 impressions、ctr、pay_roi、target_roi、live_viewers、metric:、route: 等内部字段或证据 ID；证据 ID 只能放在 evidenceIds 字段。",
   "严禁把培训材料、单个案例或模型常识中的数字当作通用行业阈值。输入没有明确目标、同口径历史对比或行业基准证据时，不得使用‘行业平均/行业均值/健康水平/健康区间/通常应达到’等判断，只能说明当前事实及还不能判断什么。",
   "没有目标、同口径历史或输入内基准时，不得使用‘良好、较高、较低、有限、优秀、偏弱’等比较性评价。数值低于明确目标时只能说明目标差距，不能据此断定具体原因。",
+  "缺口和假设要明确区分未知与断言：允许‘缺少行业基准，无法判断当前承接效率是否较低’，不允许‘缺少历史，但当前承接效率较低’。不要在缺口中夹带好坏结论或编造阈值。",
   "不得自行用口径不同的指标相除来创造点击率、转化率或 ROI；只使用输入已有指标和 deterministicContext 明确给出的派生结果。",
   "不得把不同采集路线的观看人数、点击次数、订单数拼成漏斗，也不得仅凭数字逐级递减声称存在流失或转化偏低。",
-  "经营框架只用于组织建议：好商品、好内容/直播承接与广告流量应协同，投放动作要与蓄水、促成交、复盘阶段匹配；框架不能替代证据。",
+  "经营框架只用于组织事实与待验证假设：好商品、好内容/直播承接与广告流量应协同；框架不能替代证据，也不能直接生成行动方案。",
   "missingEvidence 只保留会改变经营决定的关键缺口；同一类历史对比不得按观看、点击、成交等指标重复列出，也不要要求‘同直播类型’。需要历史趋势时合并成一句‘缺少近期历史趋势，暂不能判断当前表现是在改善还是回落’。",
-  "返回 JSON 顶层必须且只能包含：applicable、refused、refusalReason、facts、hypotheses、missingEvidence、experiments、candidateActions、confidence。",
+  "返回 JSON 顶层必须且只能包含：applicable、refused、refusalReason、facts、hypotheses、missingEvidence、confidence。",
   "refusalReason 必须是字符串或 null；所有集合字段都必须是数组，没有内容时返回空数组。",
   "facts 每项严格为 {statement,evidenceIds}；statement 必须是非空字符串，evidenceIds 至少包含一个输入中的真实 id。",
   "hypotheses 每项严格为 {id,dimension,title,conclusion,supportingEvidenceIds,conflictingEvidenceIds,missingEvidence,confidence}。",
   "hypotheses 中 supportingEvidenceIds、conflictingEvidenceIds、missingEvidence 必须始终是数组，即使只有一项或没有内容。",
-  "experiments 每项严格为 {id,title,hypothesisId,steps,verifyMetrics,stopConditions,evidenceIds,experimentType,actionType,singleVariable,controlScope,observationWindow,baselineMetrics,completionCriteria,abortCriteria,interferenceFactors}；verifyMetrics 和 baselineMetrics 都只能是指标名称字符串数组，不得输出对象。",
-  "实验必须一次只观察或改变一个变量。OBSERVATION 的 actionType 只能为 null 或只读核对类动作且步骤不得包含调整动作；MANUAL_CHANGE 必须填写唯一 actionType，并由同一 experimentId 的 candidateAction 关联。completionCriteria 是何时完成，abortCriteria 是指标恶化、数据失真或风险上升时何时立即停止，stopConditions 必须与 abortCriteria 相同，两者不得混写。baselineMetrics 不得为空；如没有单独名称，逐字复制 verifyMetrics，例如 baselineMetrics:[\"商品点击次数\",\"成交人数\"]。",
-  "candidateActions 每项严格为 {actionType,title,reason,expectedImpact,riskLevel,confidence,evidenceIds,experimentId}，evidenceIds 至少包含一个真实 id。",
   "所有 confidence 都必须是 0 到 1 的 JSON number，禁止使用字符串或百分号。",
-  "保持聚焦：facts 最多 3 条、hypotheses 最多 2 条、experiments 最多 2 条、candidateActions 最多 2 条。",
-  "任何事实、实验或动作若没有合法 evidence id 就不要生成该项，绝不能使用空 evidenceIds。",
+  "保持聚焦：facts 最多 3 条、hypotheses 最多 2 条；任何事实或假设若没有合法 evidence id 就不要生成，绝不能使用空 evidenceIds。",
   "hypotheses.dimension 只能是 DATA、TRAFFIC、LIVE_ROOM、PRODUCT、DELIVERY、ACTIVITY_COMPLIANCE。",
-  `candidateActions.actionType 只能是：${diagnosisActionTypes.join("、")}。`,
-  "不得返回 outputContract、deterministicContext、evidence、analysis、reasoning 或 result 包装层。只返回最终 JSON 对象。"
+  "不得返回 experiments、candidateActions、stopConditions、abortCriteria、outputContract、deterministicContext、evidence、analysis、reasoning 或 result 包装层。只返回最终 JSON 对象。"
 ].join("\n");
 const finalOutputInstruction = [
-  "返回 JSON 顶层必须且只能包含：schemaVersion、coreConclusion、mainProblemTag、confidence、factSnapshot、hypotheses、missingEvidence、experiments、stopConditions、candidateActions。",
+  experimentDesignInstruction,
+  "返回 JSON 顶层必须且只能包含：schemaVersion、coreConclusion、mainProblemTag、confidence、factSnapshot、hypotheses、missingEvidence、experiments、candidateActions。",
   "schemaVersion 固定为 ai-diagnosis-result-v1；所有集合字段都必须是数组。",
   "mainProblemTag 必须与输入 decisionBrief.mainProblemTag 完全一致；综合器只能展开依据，不得重新改判。",
   "factSnapshot 每项严格为 {statement,evidenceIds}，evidenceIds 至少一个；hypotheses 每项严格为 {id,dimension,title,conclusion,supportingEvidenceIds,conflictingEvidenceIds,missingEvidence,confidence}。",
   "hypotheses 中 supportingEvidenceIds、conflictingEvidenceIds、missingEvidence 必须始终是数组。",
-  "experiments 每项严格为 {id,title,hypothesisId,steps,verifyMetrics,stopConditions,evidenceIds,experimentType,actionType,singleVariable,controlScope,observationWindow,baselineMetrics,completionCriteria,abortCriteria,interferenceFactors}；verifyMetrics 和 baselineMetrics 都只能是指标名称字符串数组，不得输出对象；candidateActions 每项严格为 {actionType,title,reason,expectedImpact,riskLevel,confidence,evidenceIds,experimentId}。",
-  "实验必须一次只观察或改变一个变量。OBSERVATION 的 actionType 只能为 null 或只读核对类动作且步骤不得包含调整动作；MANUAL_CHANGE 必须填写唯一 actionType，并由同一 experimentId 的 candidateAction 关联。completionCriteria 是完成标准，abortCriteria 是风险止损标准，stopConditions 必须与 abortCriteria 相同，两者不得混写。baselineMetrics 不得为空；如没有单独名称，逐字复制 verifyMetrics，例如 baselineMetrics:[\"商品点击次数\",\"成交人数\"]。",
+  "experiments 每项严格为 {id,title,hypothesisId,steps,verifyMetrics,evidenceIds,experimentType,actionType,singleVariable,controlScope,observationWindow,baselineMetrics,completionCriteria,abortCriteria,interferenceFactors}；verifyMetrics 和 baselineMetrics 都只能是指标名称字符串数组，不得输出对象；candidateActions 每项严格为 {actionType,title,reason,expectedImpact,riskLevel,confidence,evidenceIds,experimentId}。",
+  "实验必须一次只观察或改变一个变量。OBSERVATION 的 actionType 只能为 null 或只读核对类动作且步骤不得包含调整动作；MANUAL_CHANGE 必须填写唯一 actionType，并由同一 experimentId 的 candidateAction 关联。每个 candidateAction 的 experimentId 必须对应本轮一个实验，不能为 null。completionCriteria 是完成标准，abortCriteria 是唯一风险止损标准且至少一项；不得输出 stopConditions，也不得把完成条件写进 abortCriteria。baselineMetrics 不得为空；如没有单独名称，逐字复制 verifyMetrics，例如 baselineMetrics:[\"商品点击次数\",\"成交人数\"]。",
   "所有 confidence 都必须是 0 到 1 的 JSON number，禁止使用字符串或百分号。",
   "面向本地生活经营人员直接给答案，不展示分析过程。coreConclusion 用 2 至 3 句说明‘当前结果、最确定的问题或判断边界、第一步怎么做’，不得罗列内部字段名。",
   "事实、假设、动作与步骤使用中文业务名称；impressions、ctr、pay_roi、target_roi、live_viewers、metric:、route: 等内部字段或证据 ID 只能出现在 evidenceIds 中，不得写进可见文案。",
   "严禁把培训材料、单个案例或模型常识中的数字当作通用行业阈值。没有明确目标、同口径历史对比或行业基准证据时，不得声称某项指标低于行业平均、健康水平或通常标准，也不得据此判定优劣。",
   "没有目标、同口径历史或输入内基准时，不得使用‘良好、较高、较低、有限、优秀、偏弱’等比较性评价。实际 ROI 低于目标只证明结果未达标，coreConclusion 不得直接把降低出价、改定向、改预算写成第一步；具体动作只能作为候选并交给服务端规则裁决。",
   "不得自行用口径不同的指标相除来创造点击率、转化率或 ROI；只能复述输入已有指标及 deterministicSignals 明确给出的结果。",
-  "全域支付 ROI 与目标 ROI 同时存在时，必须直接说明是否达标；不得再声称缺少支付金额、客单价、目标 ROI 或无法计算实际 ROI。",
+  "全域支付 ROI 与目标 ROI 同时存在时，必须直接说明是否达标；普通支付 ROI 不能替代全域支付 ROI 与目标比较。目标达成只说明目标结果，不能据此断言订单正常、整体经营健康或具体原因已确认。",
   "不得把不同采集路线的观看人数、点击次数、订单数拼成漏斗，也不得仅凭数字逐级递减声称存在流失或转化偏低。",
   "把本地生活经营方法论转成少量可执行建议：优先说明商品/优惠承接、内容与直播节奏、广告流量与成交目标如何协同；每条建议必须对应本轮证据和人工验证方式。",
   "missingEvidence 只保留会改变经营决定的关键缺口，最多 3 条；同一类历史对比不得按观看、点击、成交等指标重复列出，也不要要求‘同直播类型’。需要历史趋势时合并成一句‘缺少近期历史趋势，暂不能判断当前表现是在改善还是回落’。",
-  "保持聚焦：factSnapshot 最多 5 条、hypotheses 最多 3 条、experiments 最多 3 条、candidateActions 最多 3 条、missingEvidence 最多 3 条。",
+  "保持聚焦：factSnapshot 最多 5 条、hypotheses 最多 3 条、experiments 最多 1 条、candidateActions 最多 1 条、missingEvidence 最多 3 条。没有依据时允许不新增调整并输出空实验和动作。",
+  "hypotheses 是给经营人员看的待验证分析，不是数据清单：用结论说明事实对本次直播意味着什么，保留替代解释，并在 missingEvidence 写明哪项核对可以区分原因。不要重复事实卡，也不要把缺数据包装成已发现的经营问题。hypotheses 的标题和结论不能夹带调整指令，操作只放在最终唯一实验与候选动作中。",
+  "diagnosisContext 是服务端冻结的使用场景、完整窗口趋势和本任务人工执行记录。场景仅是用户用途，不是开播或下播证据。直播中优先检查数据新鲜度、近期变化和下次检查条件；场后优先说明可用范围、目标结果与下一场验证问题。",
+  "人工审批不等于执行，执行不等于有效。manualActions 中 outcome 为 null 时，优先明确记录哪条已执行动作的结果、需要哪些数据及能回答的问题，不重复建议执行该动作。拒绝建议不构成长期规则。",
   "不得为了产生问题而强行诊断。deterministicSignals 全部健康且无风险时，mainProblemTag 必须优先考虑 HEALTHY。",
   "核心标签按直接证据和因果上游确定：missingCoreMetrics 非空时必须选 DATA_READINESS；否则 traffic.weak 时优先 TRAFFIC；product.weak 时必须优先 PRODUCT，即使同时出现其下游 liveRoom.weak；只有商品不弱而成交承接弱时选 LIVE_ROOM；高消耗且 ROI 低于目标、且更上游信号不弱时选 DELIVERY_ROI；明确合规风险且数据完整时选 ACTIVITY_COMPLIANCE。",
   "MULTI_FACTOR 仅用于两个互不解释、证据同等直接的独立主因；不得用它回避上述优先级，也不得把上游问题及其下游结果重复算成两个主因。",
-  "事实、实验和候选动作没有合法 evidence id 时不得生成；stopConditions 至少一项。",
+  "事实、实验和候选动作没有合法 evidence id 时不得生成；每个实验的 abortCriteria 至少一项。",
   "mainProblemTag 只能是 HEALTHY、DATA_READINESS、TRAFFIC、LIVE_ROOM、PRODUCT、DELIVERY_ROI、ACTIVITY_COMPLIANCE、MULTI_FACTOR。",
   `candidateActions.actionType 只能是：${diagnosisActionTypes.join("、")}。`,
   "不得返回 outputContract、evidenceIds、skillOutputs、analysis、reasoning 或 result 包装层。只返回最终 JSON 对象。"
@@ -118,6 +125,8 @@ export async function orchestrateDiagnosis(input: {
   transport: ChatTransport;
   signal?: AbortSignal;
   onSkillEvent?: (event: SkillExecutionEvent) => Promise<void>;
+  onValidationDiagnostic?: (diagnostic: ObservationValidationDiagnostic) => void;
+  onStage?: (stage: "SYNTHESIZING_JUDGMENT" | "SYNTHESIZING_ACTION_PLAN") => Promise<void>;
 }): Promise<{
   result: DiagnosisFinalResult;
   evidenceCatalog: DiagnosisEvidence[];
@@ -126,8 +135,10 @@ export async function orchestrateDiagnosis(input: {
 }> {
   const availableRoutes = releasedDiagnosisRoutes(input.decisionInput);
   const expectedPlan = createDiagnosisSkillPlan(input.decisionInput);
+  const scenarioStrategy = getDiagnosisScenarioStrategy(input.decisionInput.diagnosisContext?.scenario);
   assertFixedSkillPlan(input.skillPlan, expectedPlan);
   const evidenceCatalog = buildDiagnosisEvidenceCatalog(input.decisionInput);
+  const deterministicSignals = buildDeterministicDiagnosticSignals(evidenceCatalog, input.decisionInput);
   const validEvidenceIds = new Set(evidenceCatalog.map((item) => item.id));
   const allowedEvidenceIds = [...validEvidenceIds];
   const skillInput: DiagnosisSkillInput = {
@@ -145,6 +156,14 @@ export async function orchestrateDiagnosis(input: {
     async completeSkill(request) {
       const skillValidEvidenceIds = new Set(request.evidence.map((item) => item.id));
       const skillAllowedEvidenceIds = [...skillValidEvidenceIds];
+      const parseDomainOutput = (value: unknown) => {
+        const parsed = domainSkillOutputSchema.parse(normalizeDiagnosisModelOutput(value));
+        assertDomainReferences(parsed, skillValidEvidenceIds);
+        const scoped = projectDomainResult(parsed, request.deterministicContext.dimension);
+        assertDomainResultConsistency(scoped, request.deterministicContext.dimension);
+        assertBusinessFacingLanguage(scoped);
+        return scoped;
+      };
       const completion = await completeJsonWithRepair({
         transport: input.transport,
         messages: [
@@ -158,16 +177,9 @@ export async function orchestrateDiagnosis(input: {
             })
           }
         ],
-        parse: (value) => {
-          const parsed = domainSkillOutputSchema.parse(normalizeDiagnosisModelOutput(value));
-          assertDomainReferences(parsed, skillValidEvidenceIds);
-          const scoped = projectDomainResult(parsed, request.deterministicContext.dimension);
-          assertDomainResultConsistency(scoped, request.deterministicContext.dimension);
-          assertExperimentDesign(scoped);
-          assertBusinessFacingLanguage(scoped);
-          return scoped;
-        },
-        repairInstruction: `上次输出不符合领域 Skill 契约。evidenceIds 必须从以下唯一合法列表逐字复制，不得改写、缩写或猜测：${JSON.stringify(skillAllowedEvidenceIds)}。baselineMetrics 与 verifyMetrics 只能填非空指标名称字符串数组，绝不能填对象；没有单独基线名称时，逐字复制 verifyMetrics。不得回显输入或增加包装层。${domainOutputInstruction}`,
+        parse: parseDomainOutput,
+        repairInstruction: `上次输出不符合领域 Skill 契约。evidenceIds 必须从以下唯一合法列表逐字复制，不得改写、缩写或猜测：${JSON.stringify(skillAllowedEvidenceIds)}。领域 Skill 只能输出事实、假设与缺口，禁止输出 experiments、candidateActions、stopConditions 或 abortCriteria。不得回显输入或增加包装层。${unsupportedComparisonRepairInstruction}${domainOutputInstruction}`,
+        repairAfterValidation: (value, issue) => neutralizeUnsupportedComparisonLanguage(value, issue, parseDomainOutput),
         maxTokens: 2_048,
         thinking: "disabled",
         signal: input.signal
@@ -236,8 +248,8 @@ export async function orchestrateDiagnosis(input: {
   }
 
   const skillOutputs = [...outputs.values()];
-  const deterministicSignals = buildDeterministicDiagnosticSignals(evidenceCatalog);
   const serverMainProblemTag = determineMainProblemTag(deterministicSignals);
+  await input.onStage?.("SYNTHESIZING_JUDGMENT");
   const decisionBrief = await completeJsonWithRepair({
     transport: input.transport,
     messages: [
@@ -250,7 +262,8 @@ export async function orchestrateDiagnosis(input: {
           "服务端顺序为：missingCoreMetrics 非空选 DATA_READINESS；否则 traffic.weak 选 TRAFFIC；否则 product.weak 选 PRODUCT；否则 liveRoom.weak 选 LIVE_ROOM；否则 delivery.weak 选 DELIVERY_ROI；否则 activityCompliance.risk 选 ACTIVITY_COMPLIANCE；其余才选 HEALTHY。",
           "HEALTHY 在第一阶段只表示‘当前证据未发现断流、零成交、低于明确目标或合规异常’，不代表达到行业优秀水平；comparisonGaps 必须在最终综合中保留为判断边界。",
           "不得用 MULTI_FACTOR 回避上述顺序；只有上述信号无法覆盖且存在两个互不解释的直接主因时才可使用 MULTI_FACTOR。",
-          "不得输出 analysis、reasoning 或包装层。"
+          "不得输出 analysis、reasoning 或包装层。",
+          scenarioStrategy.synthesisInstruction
         ].join("\n")
       },
       {
@@ -259,6 +272,8 @@ export async function orchestrateDiagnosis(input: {
           evidenceIds: evidenceCatalog.map((item) => item.id),
           serverMainProblemTag,
           deterministicSignals,
+          diagnosisContext: input.decisionInput.diagnosisContext || null,
+          historyContext: input.decisionInput.historyContext || null,
           skillFindings: skillOutputs.map((output) => ({
             skillId: output.skillId,
             facts: output.facts,
@@ -282,18 +297,37 @@ export async function orchestrateDiagnosis(input: {
   });
   addUsage(usage, decisionBrief.usage);
   assertBriefReferences(decisionBrief.value.evidenceIds, validEvidenceIds);
+  const parseFinalOutput = (value: unknown) => {
+    const modelOutput = diagnosisFinalModelOutputSchema.parse(normalizeDiagnosisModelOutput(value));
+    const parsed = withCompatibilityStopConditions(modelOutput);
+    z.literal(decisionBrief.value.mainProblemTag).parse(parsed.mainProblemTag);
+    assertFinalReferences(parsed, validEvidenceIds);
+    try {
+      assertExperimentDesign(parsed);
+    } catch (error) {
+      if (error instanceof DiagnosisOrchestrationError && error.validationDiagnostic) {
+        input.onValidationDiagnostic?.(error.validationDiagnostic);
+      }
+      throw error;
+    }
+    assertBusinessFacingLanguage(parsed);
+    assertDeterministicResultConsistency(parsed, deterministicSignals);
+    return parsed;
+  };
+  await input.onStage?.("SYNTHESIZING_ACTION_PLAN");
   const synthesis = await completeJsonWithRepair({
     transport: input.transport,
     messages: [
       {
         role: "system",
         content: [
-          "你是代直播增长诊断综合器。只综合 Skill 的结构化结果，不发明新事实。",
+          "你是代直播增长诊断综合器。只综合 Skill 结构化结果与服务端冻结的诊断上下文，不发明新事实。",
           "你的读者是本地生活商家和代运营人员。最终结果应像一份简短经营判断，而不是模型分析记录、审计日志或指标字典。",
           "每个事实、假设、实验和候选动作必须引用 evidence id；同时保留支持、冲突与缺失证据。",
           "候选动作只供服务端规则裁决和人工审批，不得声称已操作平台。",
           "输出 schemaVersion 固定为 ai-diagnosis-result-v1，只返回 JSON 对象，不输出隐藏推理。",
-          finalOutputInstruction
+          finalOutputInstruction,
+          scenarioStrategy.synthesisInstruction
         ].join("\n")
       },
       {
@@ -301,21 +335,16 @@ export async function orchestrateDiagnosis(input: {
         content: JSON.stringify({
           evidenceIds: evidenceCatalog.map((item) => item.id),
           deterministicSignals,
+          diagnosisContext: input.decisionInput.diagnosisContext || null,
+          historyContext: input.decisionInput.historyContext || null,
           decisionBrief: decisionBrief.value,
           skillOutputs
         })
       }
     ],
-    parse: (value) => {
-      const parsed = diagnosisFinalResultSchema.parse(normalizeDiagnosisModelOutput(value));
-      z.literal(decisionBrief.value.mainProblemTag).parse(parsed.mainProblemTag);
-      assertFinalReferences(parsed, validEvidenceIds);
-      assertExperimentDesign(parsed);
-      assertBusinessFacingLanguage(parsed);
-      assertDeterministicResultConsistency(parsed, deterministicSignals);
-      return parsed;
-    },
-    repairInstruction: `上次综合输出未通过结构、证据或确定性事实契约。mainProblemTag 必须是 ${decisionBrief.value.mainProblemTag}。${deterministicRepairContext(deterministicSignals)}所有 evidence id 必须从以下唯一合法列表逐字复制：${JSON.stringify(allowedEvidenceIds)}。baselineMetrics 与 verifyMetrics 只能填非空指标名称字符串数组，绝不能填对象；没有单独基线名称时，逐字复制 verifyMetrics。不得回显输入或增加包装层，不要新增证据。${finalOutputInstruction}`,
+    parse: parseFinalOutput,
+    repairInstruction: `上次综合输出未通过结构、证据或确定性事实契约。mainProblemTag 必须是 ${decisionBrief.value.mainProblemTag}。${deterministicRepairContext(deterministicSignals)}所有 evidence id 必须从以下唯一合法列表逐字复制：${JSON.stringify(allowedEvidenceIds)}。baselineMetrics 与 verifyMetrics 只能填非空指标名称字符串数组，绝不能填对象；没有单独基线名称时，逐字复制 verifyMetrics。每个实验只输出 abortCriteria，禁止输出 stopConditions；abortCriteria 不得为空，也不得混入完成条件。不得回显输入或增加包装层，不要新增证据。${unsupportedComparisonRepairInstruction}${finalOutputInstruction}`,
+    repairAfterValidation: (value, issue) => neutralizeUnsupportedComparisonLanguage(value, issue, parseFinalOutput),
     maxTokens: 4_096,
     thinking: "disabled",
     signal: input.signal
@@ -326,9 +355,23 @@ export async function orchestrateDiagnosis(input: {
 }
 
 export class DiagnosisOrchestrationError extends Error {
-  constructor(public readonly code: string, message: string) {
+  constructor(public readonly code: string, message: string, public readonly validationDiagnostic?: ObservationValidationDiagnostic) {
     super(message);
   }
+}
+
+function withCompatibilityStopConditions(value: z.infer<typeof diagnosisFinalModelOutputSchema>): DiagnosisFinalResult {
+  const experiments = value.experiments.map((experiment) => ({
+    ...experiment,
+    // New model responses have one risk field. The legacy field is generated
+    // from it only after parsing, so it cannot override or conceal a conflict.
+    stopConditions: uniqueStrings(experiment.abortCriteria)
+  }));
+  return diagnosisFinalResultSchema.parse({
+    ...value,
+    experiments,
+    stopConditions: uniqueStrings(experiments.flatMap((experiment) => experiment.abortCriteria))
+  });
 }
 
 function assertFixedSkillPlan(actual: DiagnosisSkillPlan, expected: DiagnosisSkillPlan) {
@@ -347,20 +390,24 @@ function summarizeSkillInput(input: DiagnosisSkillInput, routes: readonly Collec
     .map((item) => item.id);
   return {
     businessMode: input.businessMode,
+    scenario: input.decisionInput.diagnosisContext?.scenario || "UNSPECIFIED",
+    scenarioStrategyTitle: getDiagnosisScenarioStrategy(input.decisionInput.diagnosisContext?.scenario).title,
     routes,
     selectedEvidenceIds
   };
 }
 
 function assertDomainReferences(result: z.infer<typeof domainSkillOutputSchema>, validIds: Set<string>) {
-  const references = [
-    ...result.facts.flatMap((item) => item.evidenceIds),
-    ...result.hypotheses.flatMap((item) => [...item.supportingEvidenceIds, ...item.conflictingEvidenceIds]),
-    ...result.experiments.flatMap((item) => item.evidenceIds),
-    ...result.candidateActions.flatMap((item) => item.evidenceIds)
-  ];
-  const invalid = references.filter((id) => !validIds.has(id));
-  if (invalid.length) throw new DiagnosisOrchestrationError("DIAGNOSIS_EVIDENCE_INVALID", `领域 Skill 引用无效证据：${[...new Set(invalid)].join("、")}`);
+  result.facts.forEach((item, index) => assertEvidenceList(item.evidenceIds, validIds, `facts.${index}.evidenceIds`));
+  result.hypotheses.forEach((item, index) => {
+    assertEvidenceList(item.supportingEvidenceIds, validIds, `hypotheses.${index}.supportingEvidenceIds`);
+    assertEvidenceList(item.conflictingEvidenceIds, validIds, `hypotheses.${index}.conflictingEvidenceIds`);
+  });
+}
+
+function assertEvidenceList(ids: string[], validIds: Set<string>, path: string) {
+  const index = ids.findIndex((id) => !validIds.has(id));
+  if (index >= 0) throw new DiagnosisOrchestrationError("DIAGNOSIS_EVIDENCE_INVALID", `${path}.${index}：引用不在本次合法证据清单内`);
 }
 
 function assertDomainResultConsistency(
@@ -385,38 +432,32 @@ function projectDomainResult(
   const hypotheses = result.hypotheses.filter((item) => item.dimension === expectedDimension);
   if (hypotheses.length === result.hypotheses.length) return result;
 
-  // The server owns domain routing. If a model adds an out-of-scope hypothesis,
-  // retain only the assigned domain and remove dependent experiments/actions
-  // instead of asking the paid model to repair the same boundary repeatedly.
-  const hypothesisIds = new Set(hypotheses.map((item) => item.id));
-  const experiments = result.experiments.filter((item) => hypothesisIds.has(item.hypothesisId));
-  const experimentIds = new Set(experiments.map((item) => item.id));
-  const candidateActions = result.candidateActions.filter(
-    (item) => item.experimentId != null && experimentIds.has(item.experimentId)
-  );
-
+  // The server owns domain routing. Retain only the assigned domain rather
+  // than asking a paid model to repair an out-of-scope hypothesis.
   return {
     ...result,
-    hypotheses,
-    experiments,
-    candidateActions
+    hypotheses
   };
 }
 
 function assertFinalReferences(result: DiagnosisFinalResult, validIds: Set<string>) {
-  const references = [
-    ...result.factSnapshot.flatMap((item) => item.evidenceIds),
-    ...result.hypotheses.flatMap((item) => [...item.supportingEvidenceIds, ...item.conflictingEvidenceIds]),
-    ...result.experiments.flatMap((item) => item.evidenceIds),
-    ...result.candidateActions.flatMap((item) => item.evidenceIds)
-  ];
-  const invalid = references.filter((id) => !validIds.has(id));
-  if (invalid.length) throw new DiagnosisOrchestrationError("DIAGNOSIS_EVIDENCE_INVALID", `综合诊断引用无效证据：${[...new Set(invalid)].join("、")}`);
+  const hypothesisIds = new Set(result.hypotheses.map((item) => item.id));
+  for (const [index, experiment] of result.experiments.entries()) {
+    if (!hypothesisIds.has(experiment.hypothesisId)) {
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `experiments.${index}.hypothesisId：实验必须关联本轮真实存在的假设`);
+    }
+  }
+  result.factSnapshot.forEach((item, index) => assertEvidenceList(item.evidenceIds, validIds, `factSnapshot.${index}.evidenceIds`));
+  result.hypotheses.forEach((item, index) => {
+    assertEvidenceList(item.supportingEvidenceIds, validIds, `hypotheses.${index}.supportingEvidenceIds`);
+    assertEvidenceList(item.conflictingEvidenceIds, validIds, `hypotheses.${index}.conflictingEvidenceIds`);
+  });
+  result.experiments.forEach((item, index) => assertEvidenceList(item.evidenceIds, validIds, `experiments.${index}.evidenceIds`));
+  result.candidateActions.forEach((item, index) => assertEvidenceList(item.evidenceIds, validIds, `candidateActions.${index}.evidenceIds`));
 }
 
 function assertBriefReferences(references: string[], validIds: Set<string>) {
-  const invalid = references.filter((id) => !validIds.has(id));
-  if (invalid.length) throw new DiagnosisOrchestrationError("DIAGNOSIS_EVIDENCE_INVALID", `核心裁决引用无效证据：${[...new Set(invalid)].join("、")}`);
+  assertEvidenceList(references, validIds, "evidenceIds");
 }
 
 const observationActionTypes = new Set([
@@ -430,60 +471,75 @@ const observationActionTypes = new Set([
 ]);
 
 function assertExperimentDesign(result: Pick<DiagnosisFinalResult, "experiments" | "candidateActions">) {
-  for (const experimentValue of result.experiments) {
+  const experimentIds = new Set(result.experiments.map((experiment) => experiment.id));
+  const unlinkedAction = result.candidateActions.find((candidate) => !candidate.experimentId || !experimentIds.has(candidate.experimentId));
+  if (unlinkedAction) {
+    throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "candidateActions.0.experimentId：候选动作必须关联本轮已验证实验，不能脱离风险止损条件单独提交");
+  }
+  for (const [experimentIndex, experimentValue] of result.experiments.entries()) {
+    const path = `experiments.${experimentIndex}`;
     const parsed = diagnosisExperimentV2Schema.safeParse(experimentValue);
     if (!parsed.success) {
-      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "实验缺少单变量、基线、观察窗口、完成标准、止损标准或干扰因素");
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.${parsed.error.issues[0]?.path.join(".") || "design"}：实验缺少单变量、基线、观察窗口、完成标准、止损标准或干扰因素`);
     }
     const experiment = parsed.data;
+    if (new Set(experiment.abortCriteria).size !== experiment.abortCriteria.length) {
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.abortCriteria：每条风险止损条件只能生成一次`);
+    }
     const linkedActions = result.candidateActions.filter((candidate) => candidate.experimentId === experiment.id);
     if (experiment.actionType && linkedActions.some((candidate) => candidate.actionType !== experiment.actionType)) {
-      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "实验动作类型与关联候选动作不一致");
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.actionType：实验动作类型与关联候选动作不一致`);
     }
     if (experiment.experimentType === "MANUAL_CHANGE") {
       if (!experiment.actionType || linkedActions.length !== 1 || linkedActions[0]?.actionType !== experiment.actionType) {
-        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "人工调整实验必须且只能关联一个同类型候选动作");
+        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.actionType：人工调整实验必须且只能关联一个同类型候选动作`);
       }
       if (observationActionTypes.has(experiment.actionType)) {
-        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "只读核对动作不能标记为人工调整实验");
+        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.experimentType：只读核对动作不能标记为人工调整实验`);
       }
-      assertSingleChangedVariable(experiment.singleVariable, experiment.steps);
+      assertSingleChangedVariable(experiment.singleVariable, experiment.steps, path);
     } else {
       if (experiment.actionType && !observationActionTypes.has(experiment.actionType)) {
-        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "观察实验只能关联只读核对类动作");
+        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.actionType：观察实验只能关联只读核对类动作`);
       }
-      if (/(?:降低|提高|增加|减少|调整|修改|暂停|更换|替换).{0,12}(?:出价|预算|定向|人群|商品|价格|优惠|脚本|内容)/.test(experiment.steps.join("；"))) {
-        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "观察实验不得夹带经营设置调整");
+      const changes = changedExperimentVariables(experiment.steps);
+      if (changes.length) {
+        const change = changes[0]!;
+        throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.steps.${change.stepIndex}：观察实验不得夹带经营设置调整（${change.unresolvedAdjustment ? "调整对象不明确" : change.variables.join("、")}）`,
+          observationValidationDiagnostic(experimentIndex, experiment.steps[change.stepIndex]!, change));
       }
-    }
-    if (!sameStringSet(experiment.stopConditions, experiment.abortCriteria)) {
-      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "stopConditions 必须只承载并逐项对应 abortCriteria 风险止损条件");
     }
     if (experiment.completionCriteria.some((item) => experiment.abortCriteria.includes(item))) {
-      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "实验完成标准与风险止损标准不得相同");
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.completionCriteria：实验完成标准与风险止损标准不得相同`);
+    }
+    if (experiment.abortCriteria.some((item) => /(?:完成|达成|结束观察|复盘完成)/.test(item))) {
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.abortCriteria：只能描述风险止损、数据失真或恶化条件，不能混入完成条件`);
+    }
+    if (experiment.completionCriteria.some((item) => /(?:停止|恶化|数据失真|风险上升)/.test(item))) {
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.completionCriteria：只能描述完成条件，不能混入风险止损条件`);
     }
   }
 }
 
-function assertSingleChangedVariable(singleVariable: string, steps: string[]) {
+function assertSingleChangedVariable(singleVariable: string, steps: string[], path: string) {
   if (/(?:或|以及|同时|、|\/)/.test(singleVariable)) {
-    throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "人工调整实验的 singleVariable 只能描述一个变量");
+    throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.singleVariable：只能描述一个调整变量`);
   }
-  const text = `${singleVariable}；${steps.join("；")}`;
-  const categories = [
-    /(?:出价|竞价)/,
-    /(?:定向|人群)/,
-    /预算/,
-    /(?:脚本|内容|话术|讲解)/,
-    /(?:商品|价格|优惠)/
-  ].filter((pattern) => pattern.test(text));
-  if (categories.length > 1) {
-    throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", "人工调整实验一次只能改变一个经营变量");
+  const declaredVariables = experimentVariableNames(singleVariable);
+  const changes = changedExperimentVariables(steps);
+  const unresolved = changes.find((change) => change.unresolvedAdjustment);
+  if (unresolved) {
+    throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.steps.${unresolved.stepIndex}：调整对象不明确，请在调整语句中直接写明唯一经营变量，不使用代词或省略对象。`);
+  }
+  const variables = new Set([...declaredVariables, ...changes.flatMap((change) => change.variables)]);
+  if (variables.size > 1) {
+    const locations = changes.map((change) => `${path}.steps.${change.stepIndex}（${change.variables.join("、")}）`);
+    throw new DiagnosisOrchestrationError("DIAGNOSIS_EXPERIMENT_INVALID", `${path}.singleVariable 与调整步骤涉及 ${[...variables].join("、")}；人工调整实验一次只能改变一个经营变量。${locations.join("；")}。请拆分实验并分别关联动作，保持不变的条件不算调整。`);
   }
 }
 
-function sameStringSet(left: string[], right: string[]) {
-  return left.length === right.length && left.every((item) => right.includes(item));
+function uniqueStrings(items: string[]) {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
 }
 
 const businessNarrativeKeys = new Set([
@@ -504,31 +560,92 @@ const businessNarrativeKeys = new Set([
   "expectedImpact",
   "refusalReason"
 ]);
+const unsupportedBroadHealthClaim = /(?:整体经营|经营整体|整体|订单|成交)[^，。；！？\n]{0,16}?(?:健康|正常)/;
+
+function hasUnsupportedBroadHealthClaim(text: string) {
+  return text.split(/[，。；！？\n]|但是|但/u).some((clause) => {
+    const match = unsupportedBroadHealthClaim.exec(clause);
+    return match !== null && !/(?:不能|无法|不足以|尚不能|未能|不代表)/.test(clause.slice(0, match.index));
+  });
+}
 
 function assertBusinessFacingLanguage(value: unknown) {
   const narratives = collectBusinessNarratives(value);
   const internalField = /(?:^|[^A-Za-z_])(impressions|ctr|pay_roi|target_roi|live_viewers|metric:|route:)(?:$|[^A-Za-z_])/i;
-  const unsupportedBenchmark = /行业(?:平均|均值|基准)|健康(?:水平|区间|标准)|通常.{0,20}(?:%|以上|以下|达到)/;
-  const unsupportedQualitativeComparison = /(?:表现|效率|时长|转化率|成交|承接).{0,16}(?:良好|较好|较高|较低|有限|优秀|偏弱)/;
   const internalExample = narratives.find((item) => internalField.test(item));
   if (internalExample) {
     throw new DiagnosisOrchestrationError("DIAGNOSIS_BUSINESS_LANGUAGE_INVALID", "可见诊断文案包含内部字段名或证据 ID");
   }
-  const benchmarkExample = narratives.find((item) => unsupportedBenchmark.test(item));
+  const benchmarkExample = narratives.find(hasUnsupportedBenchmark);
   if (benchmarkExample) {
     throw new DiagnosisOrchestrationError("DIAGNOSIS_BENCHMARK_UNSUPPORTED", "可见诊断文案使用了未经本轮证据支持的行业阈值");
   }
-  const qualitativeExample = narratives.find((item) => (
-    unsupportedQualitativeComparison.test(item)
-    && !/(?:目标|历史|平均|均值|对比|基准)/.test(item)
-  ));
+  const qualitativeExample = narratives.find(hasUnsupportedQualitativeComparison);
   if (qualitativeExample) {
     throw new DiagnosisOrchestrationError("DIAGNOSIS_BENCHMARK_UNSUPPORTED", "可见诊断文案在没有目标、历史或基准时使用了比较性好坏判断");
+  }
+  if (narratives.some(hasUnsupportedBroadHealthClaim)) {
+    throw new DiagnosisOrchestrationError("DIAGNOSIS_BENCHMARK_UNSUPPORTED", "单项指标或目标达成不能证明订单正常、整体经营正常或健康");
   }
   const unsupportedDerivedCalculation = /(?:客单价|转化率|点击率|ROI).{0,40}\d[\d,.]*\s*[\/÷]\s*\d/;
   if (narratives.some((item) => unsupportedDerivedCalculation.test(item))) {
     throw new DiagnosisOrchestrationError("DIAGNOSIS_DERIVED_METRIC_UNSUPPORTED", "可见诊断文案包含未经确定性上下文允许的自行派生计算");
   }
+}
+
+function neutralizeUnsupportedComparisonLanguage(
+  value: unknown,
+  issue: string,
+  validate: (value: unknown) => Record<string, unknown>
+): unknown {
+  if (!issue.includes("DIAGNOSIS_BENCHMARK_UNSUPPORTED")) return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const isFinalSynthesisOutput = Object.hasOwn(record, "experiments") || Object.hasOwn(record, "candidateActions");
+  // Numeric benchmarks and operational conditions cannot be made safe by
+  // deleting words. Leave them to the model's single repair and full validation.
+  if (collectBusinessNarratives(value).some(hasUnsupportedBenchmark)) return value;
+  const protectedNarratives = collectBusinessNarratives({
+    experiments: record.experiments,
+    candidateActions: record.candidateActions,
+    stopConditions: record.stopConditions,
+    missingEvidence: record.missingEvidence
+  });
+  if (protectedNarratives.some((text) => hasUnsupportedQualitativeComparison(text) || hasUnsupportedBroadHealthClaim(text))) return value;
+  const rewritten = rewriteBusinessNarratives(record, neutralizeComparisonText);
+  // Validate before withdrawing proposals, so removal cannot mask another
+  // violation in their evidence, calculations, or operational conditions.
+  const validated = validate(rewritten);
+  if (!isFinalSynthesisOutput) return validated;
+  // A withdrawn assessment must not continue to authorize a proposed experiment
+  // or action. Convert the server-derived legacy field back to the model
+  // contract before the mandatory final validation, so recovery cannot smuggle
+  // stopConditions into a new model response.
+  const { stopConditions: _legacyStopConditions, ...modelOutput } = validated;
+  return { ...modelOutput, experiments: [], candidateActions: [] };
+}
+
+function rewriteBusinessNarratives(record: Record<string, unknown>, rewrite: (text: string) => string): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).map(([key, child]) => {
+    if (businessNarrativeKeys.has(key) && typeof child === "string") return [key, rewrite(child)];
+    const visit = (item: unknown): unknown => item && typeof item === "object" && !Array.isArray(item)
+      ? rewriteBusinessNarratives(item as Record<string, unknown>, rewrite)
+      : item;
+    return [key, Array.isArray(child) ? child.map(visit) : visit(child)];
+  }));
+}
+
+function neutralizeComparisonText(text: string) {
+  if (hasUnsupportedBroadHealthClaim(text)) {
+    text = text.split(/([，。；！？\n]|但是|但)/u).map((clause) => hasUnsupportedBroadHealthClaim(clause)
+      ? clause.replace(/((?:整体经营|经营整体|整体|订单|成交)[^，。；！？\n]{0,16}?)(?:健康|正常)/g, "$1状态尚未确认")
+      : clause).join("");
+  }
+  if (!hasUnsupportedQualitativeComparison(text)) return text;
+  // Keep subjects, numbers, units and neighboring facts intact. Only withdraw
+  // the unsupported qualitative verdict; never synthesize a numeric threshold.
+  return text.replace(/((?:表现|效率|时长|转化率|成交|承接)[^，。；！？\n]{0,16}?)(?:良好|较好|较高|较低|有限|优秀|偏弱)/g,
+    "$1暂不能判断优劣");
 }
 
 export function determineMainProblemTag(
@@ -548,7 +665,7 @@ export function buildDecisionRunDeterministicReview(inputValue: unknown, finalRe
   const result = diagnosisFinalResultSchema.safeParse(finalResultValue);
   if (!input.success || !result.success) return null;
 
-  const signals = buildDeterministicDiagnosticSignals(buildDiagnosisEvidenceCatalog(input.data as DecisionEngineInput));
+  const signals = buildDeterministicDiagnosticSignals(buildDiagnosisEvidenceCatalog(input.data as DecisionEngineInput), input.data);
   const expectedMainProblemTag = determineMainProblemTag(signals);
   if (result.data.mainProblemTag === expectedMainProblemTag) return null;
 
@@ -575,13 +692,9 @@ function assertDeterministicResultConsistency(
   }
   const narratives = collectBusinessNarratives(result);
   if (signals.delivery.payRoi !== null && signals.delivery.targetRoi !== null) {
-    const contradictsKnownRoi = narratives.find((item) => (
-      /缺少.{0,24}(?:支付金额|客单价|目标\s*ROI)/.test(item)
-      || /(?:无法|不能).{0,32}(?:计算|判断).{0,20}(?:实际\s*)?ROI/.test(item)
-      || /(?:无法|不能).{0,32}ROI.{0,20}(?:达标|目标)/.test(item)
-    ));
+    const contradictsKnownRoi = narratives.find(hasKnownRoiContradiction);
     if (contradictsKnownRoi) {
-      throw new DiagnosisOrchestrationError("DIAGNOSIS_DETERMINISTIC_CONFLICT", "已有实际支付 ROI 与目标 ROI，不得声称缺少支付金额、客单价、目标或无法判断是否达标");
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_DETERMINISTIC_CONFLICT", "已有累计全域支付 ROI 与目标 ROI，不得声称缺少这两个值或无法判断本次是否达标；近期趋势、原因和不同区间或计划的 ROI 应分别表述");
     }
     const decisionReferences = [
       ...result.factSnapshot.flatMap((item) => item.evidenceIds),
@@ -593,29 +706,38 @@ function assertDeterministicResultConsistency(
       throw new DiagnosisOrchestrationError("DIAGNOSIS_DETERMINISTIC_CONFLICT", "投放结论必须同时引用实际支付 ROI 与目标 ROI 证据");
     }
   }
+  if (signals.delivery.fullDomainPayRoi === null && signals.delivery.ordinaryPayRoi !== null && signals.delivery.targetRoi !== null) {
+    const ordinaryRoiAsTarget = narratives.find((item) => /(?:支付|ROI).{0,30}(?:达标|达到.{0,12}目标|低于.{0,12}目标|未达标)/.test(item));
+    if (ordinaryRoiAsTarget) {
+      throw new DiagnosisOrchestrationError("DIAGNOSIS_DETERMINISTIC_CONFLICT", "普通支付 ROI 不能替代全域支付 ROI 与目标进行达标比较");
+    }
+  }
   const unsupportedTraffic = !signals.traffic.weak && result.hypotheses.some((item) => (
     item.dimension === "TRAFFIC" && [item.title, item.conclusion].some(isAffirmativeUnsupportedFunnelClaim)
   ));
   const unsupportedLiveRoom = !signals.liveRoom.weak && result.hypotheses.some((item) => (
     item.dimension === "LIVE_ROOM" && [item.title, item.conclusion].some(isAffirmativeUnsupportedFunnelClaim)
   ));
-  if (unsupportedTraffic || unsupportedLiveRoom) {
+  const unsupportedCoreConclusion = !signals.traffic.weak && !signals.liveRoom.weak && !signals.product.weak
+    && isAffirmativeUnsupportedFunnelClaim(result.coreConclusion);
+  if (unsupportedTraffic || unsupportedLiveRoom || unsupportedCoreConclusion) {
     throw new DiagnosisOrchestrationError("DIAGNOSIS_DETERMINISTIC_CONFLICT", "不同路线或口径的观看、点击、订单数字不能仅凭递减关系判定流失或转化偏低");
   }
 }
 
 function isAffirmativeUnsupportedFunnelClaim(text: string) {
   const unsupportedClaim = /转化效率.{0,12}(?:偏低|偏弱)|存在.{0,8}流失|逐级递减|承接环节.{0,8}(?:异常|问题)/;
-  if (!unsupportedClaim.test(text)) return false;
   const explicitlyUncertain = /(?:无法|不能|难以|尚不能|暂不能|不足以).{0,40}(?:判断|确认|说明|证明).{0,40}(?:是否)?(?:存在)?(?:流失|转化.{0,8}(?:偏低|偏弱)|承接.{0,8}(?:异常|问题))/;
   const explicitlyUnsupported = /(?:尚无|没有|缺少).{0,24}(?:证据|数据).{0,20}(?:表明|证明|判断|确认).{0,30}(?:流失|转化.{0,8}(?:偏低|偏弱)|承接.{0,8}(?:异常|问题))/;
-  return !explicitlyUncertain.test(text) && !explicitlyUnsupported.test(text);
+  // An uncertainty in one clause cannot excuse an affirmative claim elsewhere.
+  return text.split(/[，,。；;！？!?\n]/).some((clause) => unsupportedClaim.test(clause)
+    && !explicitlyUncertain.test(clause) && !explicitlyUnsupported.test(clause));
 }
 
 function deterministicRepairContext(signals: ReturnType<typeof buildDeterministicDiagnosticSignals>) {
   if (signals.delivery.payRoi === null || signals.delivery.targetRoi === null) return "";
   const comparison = signals.delivery.weak ? "低于" : "不低于";
-  return `服务端已确认实际支付 ROI 为 ${signals.delivery.payRoi}，目标 ROI 为 ${signals.delivery.targetRoi}，实际值${comparison}目标；必须直接使用这两个同口径值，不得要求支付金额或客单价。`;
+  return `服务端已确认全域支付 ROI 为 ${signals.delivery.payRoi}，目标 ROI 为 ${signals.delivery.targetRoi}，实际值${comparison}目标；必须直接使用这两个同口径值判断本次是否达标，不需要另补支付金额或客单价。累计达标结果、近期变化趋势、具体原因和区间或计划 ROI 是不同问题；窗口零消耗时允许明确区间 ROI 无法计算，但不得据此否认已知累计结果。`;
 }
 
 function collectBusinessNarratives(value: unknown): string[] {
@@ -718,7 +840,10 @@ function normalizeExperimentBaselineMetrics(value: Record<string, unknown>): Rec
   return fallback.length ? { ...value, baselineMetrics: [...new Set(fallback)] } : value;
 }
 
-export function buildDeterministicDiagnosticSignals(evidence: DiagnosisEvidence[]) {
+export function buildDeterministicDiagnosticSignals(
+  evidence: DiagnosisEvidence[],
+  input?: Pick<DecisionEngineInput, "historyContext" | "diagnosisContext">
+) {
   const metricEvidence = (key: string, routeKey?: CollectionRouteKey) => {
     const matches = evidence.filter((item) => item.kind === "METRIC" && item.metricKey === key);
     if (!routeKey) return matches[0];
@@ -743,26 +868,24 @@ export function buildDeterministicDiagnosticSignals(evidence: DiagnosisEvidence[
   const orders = metric("orders");
   const gpm = metric("gpm");
   const spend = metric("spend", "LOCAL_PROMOTION_DASHBOARD");
-  const payRoi = metric("pay_roi", "LOCAL_PROMOTION_DASHBOARD");
+  const ordinaryPayRoi = metric("pay_roi", "LOCAL_PROMOTION_DASHBOARD");
   const fullDomainPayRoi = metric("full_domain_pay_roi", "LOCAL_PROMOTION_DASHBOARD");
-  // The dashboard target is defined against the local-promotion full-domain result.
-  // Fall back to the narrower payment ROI only when the full-domain metric is absent.
-  const effectivePayRoi = fullDomainPayRoi ?? payRoi;
-  const effectivePayRoiEvidence = fullDomainPayRoi !== null
-    ? metricEvidence("full_domain_pay_roi", "LOCAL_PROMOTION_DASHBOARD")
-    : metricEvidence("pay_roi", "LOCAL_PROMOTION_DASHBOARD");
+  // The target is defined against the full-domain result. A narrower ordinary
+  // payment ROI can be displayed as its own fact, but can never substitute for
+  // the full-domain ROI in a target comparison.
+  const fullDomainPayRoiEvidence = metricEvidence("full_domain_pay_roi", "LOCAL_PROMOTION_DASHBOARD");
   const targetRoi = metric("target_roi", "LOCAL_PROMOTION_DASHBOARD");
   const targetRoiEvidence = metricEvidence("target_roi", "LOCAL_PROMOTION_DASHBOARD");
   const product = productRowSignals(evidence);
   const missingCoreMetrics = [
     ...(hasRoute("LIVE_TRAFFIC_TAB") ? [["impressions", impressions], ["ctr", ctr]] as const : []),
     ...(hasRoute("LIVE_DATA_SCREEN") ? [["live_viewers", liveViewers], ["orders", orders], ["gpm", gpm]] as const : []),
-    ...(hasRoute("LOCAL_PROMOTION_DASHBOARD") ? [["spend", spend], ["full_domain_pay_roi", effectivePayRoi]] as const : []),
+    ...(hasRoute("LOCAL_PROMOTION_DASHBOARD") ? [["spend", spend], ["full_domain_pay_roi", fullDomainPayRoi]] as const : []),
     ...(hasRoute("LIVE_PRODUCT_TAB") ? [["product_detail", product.evidenceId]] as const : [])
   ].flatMap(([key, value]) => value === null ? [String(key)] : []);
   const comparisonGaps = [
     ...((hasRoute("LOCAL_PROMOTION_DASHBOARD") && targetRoi === null) ? ["缺少本场明确的投放目标 ROI，当前只能展示实际产出，不能判定是否达标"] : []),
-    ...((hasRoute("LIVE_DATA_SCREEN") || hasRoute("LOCAL_PROMOTION_DASHBOARD")) ? ["缺少近期历史趋势，暂不能判断当前表现是在改善还是回落"] : []),
+    ...trendComparisonGap(input, hasRoute("LIVE_DATA_SCREEN") || hasRoute("LOCAL_PROMOTION_DASHBOARD")),
     ...(!hasRoute("LIVE_TRAFFIC_TAB") ? ["缺少流量来源与曝光进房明细，不能定位自然流量和商业流量的具体差异"] : []),
     ...(!hasRoute("LIVE_PRODUCT_TAB") ? ["缺少商品明细，不能定位具体商品的曝光、点击与成交承接"] : [])
   ];
@@ -775,7 +898,7 @@ export function buildDeterministicDiagnosticSignals(evidence: DiagnosisEvidence[
     || (hasRoute("LIVE_DATA_SCREEN") && liveViewers === 0);
   const liveRoomWeak = liveViewers !== null && liveViewers > 0 && (orders === 0 || gpm === 0);
   const productWeak = product.clickRate === 0 || product.orderRate === 0;
-  const deliveryRoiWeak = effectivePayRoi !== null && targetRoi !== null && effectivePayRoi < targetRoi;
+  const deliveryRoiWeak = fullDomainPayRoi !== null && targetRoi !== null && fullDomainPayRoi < targetRoi;
   return {
     missingCoreMetrics,
     comparisonGaps,
@@ -785,15 +908,39 @@ export function buildDeterministicDiagnosticSignals(evidence: DiagnosisEvidence[
     delivery: {
       weak: deliveryRoiWeak,
       spend,
-      payRoi: effectivePayRoi,
+      // payRoi is retained for old consumers but now always means the
+      // full-domain value in this deterministic comparison.
+      payRoi: fullDomainPayRoi,
+      fullDomainPayRoi,
+      ordinaryPayRoi,
       targetRoi,
-      payRoiEvidenceId: effectivePayRoiEvidence?.id ?? null,
+      payRoiEvidenceId: fullDomainPayRoiEvidence?.id ?? null,
       targetRoiEvidenceId: targetRoiEvidence?.id ?? null
     },
     activityCompliance: { risk: complianceRisk },
     healthyBaselineSatisfied: missingCoreMetrics.length === 0
       && !trafficWeak && !liveRoomWeak && !productWeak && !deliveryRoiWeak && !complianceRisk
   };
+}
+
+function trendComparisonGap(
+  input: Pick<DecisionEngineInput, "historyContext" | "diagnosisContext"> | undefined,
+  relevant: boolean
+) {
+  if (!relevant) return [];
+  const recentTrend = input?.diagnosisContext?.recentTrend;
+  if (recentTrend?.status === "AVAILABLE") return [];
+  if (recentTrend?.status === "INSUFFICIENT") return [recentTrend.reason];
+
+  const comparisons = [input?.historyContext?.archiveComparison, input?.historyContext?.periodComparison]
+    .filter((comparison): comparison is NonNullable<typeof comparison> => Boolean(comparison));
+  if (comparisons.some((comparison) => comparison.status !== "INSUFFICIENT")) {
+    return ["已有历史对比，但本次未冻结两个完整的 15 分钟窗口，暂不能判断近期表现是在改善还是回落"];
+  }
+  const recordedReason = comparisons.flatMap((comparison) => comparison.notices).find(Boolean);
+  return [recordedReason
+    ? `现有历史记录不足以形成近期趋势判断：${recordedReason}`
+    : "本次未冻结可比较的近期历史趋势，暂不能判断当前表现是在改善还是回落"];
 }
 
 function productRowSignals(evidence: DiagnosisEvidence[]) {

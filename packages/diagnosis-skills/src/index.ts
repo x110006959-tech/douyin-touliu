@@ -2,6 +2,7 @@ import { z } from "zod";
 import { decisionEngineInputSchema, type DecisionEngineInput, type MetricKey, type VisibleMetric } from "@douyin-local-life/shared";
 import {
   diagnosisEvidenceSchema,
+  diagnosisDomainAnalysisOutputSchema,
   diagnosisSkillIds,
   diagnosisSkillOutputSchema,
   type DiagnosisEvidence,
@@ -10,8 +11,10 @@ import {
   type DiagnosisSkillOutput
 } from "@douyin-local-life/shared/diagnosis";
 import type { CollectionRouteKey } from "@douyin-local-life/shared/collection-routes";
+import { getDiagnosisScenarioStrategy } from "./scenario-strategy.js";
+export { getDiagnosisScenarioStrategy } from "./scenario-strategy.js";
 
-export const diagnosisSkillSetVersion = "managed-live-growth-skills-v9";
+export const diagnosisSkillSetVersion = "managed-live-growth-skills-v11";
 
 export type DiagnosisTokenUsage = {
   inputTokens: number;
@@ -61,7 +64,7 @@ export const diagnosisSkillInputSchema = z.object({
   })).max(3)
 });
 
-const domainOutputSchema = diagnosisSkillOutputSchema.omit({ skillId: true, skillVersion: true });
+const domainOutputSchema = diagnosisDomainAnalysisOutputSchema;
 
 export type DiagnosisSkillDefinition = {
   id: DiagnosisSkillId;
@@ -88,7 +91,7 @@ type DomainSpec = {
 const domainSpecs: DomainSpec[] = [
   {
     id: "diagnose_traffic_acquisition",
-    version: "1.0.0",
+    version: "1.3.0",
     title: "流量获取诊断",
     dimension: "TRAFFIC",
     routes: ["LIVE_TRAFFIC_TAB", "LIVE_DATA_SCREEN"],
@@ -97,7 +100,7 @@ const domainSpecs: DomainSpec[] = [
   },
   {
     id: "diagnose_live_room_conversion",
-    version: "1.1.0",
+    version: "1.3.0",
     title: "直播间承接诊断",
     dimension: "LIVE_ROOM",
     routes: ["LIVE_DATA_SCREEN"],
@@ -106,7 +109,7 @@ const domainSpecs: DomainSpec[] = [
   },
   {
     id: "diagnose_product_structure",
-    version: "1.0.0",
+    version: "1.3.0",
     title: "商品结构诊断",
     dimension: "PRODUCT",
     routes: ["LIVE_PRODUCT_TAB"],
@@ -115,16 +118,16 @@ const domainSpecs: DomainSpec[] = [
   },
   {
     id: "diagnose_delivery_units",
-    version: "1.0.0",
+    version: "1.3.0",
     title: "投流单元诊断",
     dimension: "DELIVERY",
     routes: ["LOCAL_PROMOTION_DASHBOARD", "TASK_TABLE"],
-    metricKeys: ["spend", "daily_budget", "remaining_budget", "orders", "pay_roi", "full_domain_pay_roi", "verify_roi", "target_roi", "cpa", "target_cpa"],
-    method: "对照本地推总览、任务列表、任务明确目标与单元差异；全域支付 ROI 与目标 ROI 同时存在时必须直接比较，不得再声称缺少支付金额、客单价或目标。没有目标或同口径历史数据时只展示实际消耗与产出，不判定 ROI 高低。预算、暂停和目标调整只可作为待规则裁决的人工候选动作。"
+    metricKeys: ["spend", "daily_budget", "remaining_budget", "orders", "pay_roi", "full_domain_pay_roi", "full_domain_gmv", "full_domain_orders", "verify_roi", "target_roi", "cpa", "target_cpa"],
+    method: "对照本地推总览、任务列表、任务明确目标与单元差异；全域支付 ROI 与目标 ROI 同时存在时必须直接比较，不得再声称缺少支付金额、客单价或目标。没有目标或同口径历史数据时只展示实际消耗与产出，不判定 ROI 高低。只提交投放领域事实、假设与缺口，所有实验和候选动作交给最终综合阶段。"
   },
   {
     id: "diagnose_activity_and_compliance",
-    version: "1.1.0",
+    version: "1.3.0",
     title: "活动权益与合规诊断",
     dimension: "ACTIVITY_COMPLIANCE",
     routes: ["LIVE_DATA_SCREEN", "LIVE_PRODUCT_TAB", "LOCAL_PROMOTION_DASHBOARD"],
@@ -136,7 +139,7 @@ const domainSpecs: DomainSpec[] = [
 
 export const auditDataReadinessSkill: DiagnosisSkillDefinition = {
   id: "audit_data_readiness",
-  version: "1.0.0",
+  version: "1.1.0",
   title: "诊断数据就绪审计",
   businessModes: ["MANAGED_LIVE_GROWTH"],
   applicableRoutes: [],
@@ -156,7 +159,7 @@ export const auditDataReadinessSkill: DiagnosisSkillDefinition = {
     const evidenceIds = readinessEvidence.map((item) => item.id);
     const output: DiagnosisSkillOutput = {
       skillId: "audit_data_readiness",
-      skillVersion: "1.0.0",
+      skillVersion: "1.1.0",
       applicable: true,
       refused: blocking.length > 0,
       refusalReason: blocking.length ? blocking.join("；") : null,
@@ -173,7 +176,7 @@ export const auditDataReadinessSkill: DiagnosisSkillDefinition = {
 
 export const retrieveSimilarCasesSkill: DiagnosisSkillDefinition = {
   id: "retrieve_similar_cases",
-  version: "1.0.0",
+  version: "1.1.0",
   title: "相似案例检索",
   businessModes: ["MANAGED_LIVE_GROWTH"],
   applicableRoutes: [],
@@ -190,7 +193,7 @@ export const retrieveSimilarCasesSkill: DiagnosisSkillDefinition = {
     return {
       output: diagnosisSkillOutputSchema.parse({
         skillId: "retrieve_similar_cases",
-        skillVersion: "1.0.0",
+        skillVersion: "1.1.0",
         applicable: cases.length > 0,
         refused: false,
         refusalReason: null,
@@ -219,11 +222,9 @@ export const diagnosisSkillRegistry = new Map<DiagnosisSkillId, DiagnosisSkillDe
  */
 export function createDiagnosisSkillPlan(input: DecisionEngineInput): DiagnosisSkillPlan {
   const availableRoutes = new Set(releasedDiagnosisRoutes(input));
+  const strategy = getDiagnosisScenarioStrategy(input.diagnosisContext?.scenario);
   const domainSkillIds = isFormalDiagnosisEvidenceLayer(input)
-    ? [...diagnosisSkillRegistry.values()]
-      .filter((skill) => isDomainSkillId(skill.id))
-      .filter((skill) => skill.applicableRoutes.some((route) => availableRoutes.has(route)))
-      .map((skill) => skill.id as DiagnosisDomainSkillId)
+    ? strategy.domainOrder.filter((id) => diagnosisSkillRegistry.get(id)!.applicableRoutes.some((route) => availableRoutes.has(route)))
     : [];
   return {
     auditSkillId: "audit_data_readiness",
@@ -267,7 +268,10 @@ export function buildDiagnosisEvidenceCatalog(input: DecisionEngineInput, simila
       label: metric.name || String(metric.key),
       value: primitiveMetricValue(metric.value),
       routeKey,
-      metricKey: String(metric.key)
+      metricKey: String(metric.key),
+      capturedAt: input.collectionQuality?.routes.find((route) => route.routeKey === routeKey)?.lastCollectedAt || null,
+      semanticScope: readMetricScopeText(metric.rawEvidence, "semanticScope"),
+      observationPeriod: readMetricScopeText(metric.rawEvidence, "timeRange")
     });
   });
   input.tables.forEach((table, tableIndex) => {
@@ -285,6 +289,51 @@ export function buildDiagnosisEvidenceCatalog(input: DecisionEngineInput, simila
   });
   for (const item of similarCases) {
     evidence.push({ id: `case:${item.id}`, kind: "CASE", label: "工作区相似案例", value: item.summary });
+  }
+  const context = input.diagnosisContext;
+  for (const comparisonKey of ["archiveComparison", "periodComparison"] as const) {
+    const historical = input.historyContext?.[comparisonKey];
+    for (const [index, row] of (historical?.rows || []).entries()) {
+      evidence.push({
+        id: `history:${comparisonKey}:${index}`,
+        kind: "POLICY",
+        label: `${historical?.label}：${row.metricName}`,
+        value: `${row.baselineValue ?? "未知"} → ${row.currentValue ?? "未知"}；${row.note}`,
+        routeKey: row.routeKey,
+        metricKey: row.metricKey
+      });
+    }
+  }
+  if (context?.recentTrend.status === "AVAILABLE") {
+    for (const metric of context.recentTrend.metrics) {
+      evidence.push({
+        id: `history:recent-trend:${metric.metricKey}`,
+        kind: "POLICY",
+        label: `最近两个完整 15 分钟窗口：${metric.metricName}`,
+        value: `前窗口 ${metric.baselineValue}，最近窗口 ${metric.currentValue}，变化 ${metric.delta}`,
+        routeKey: context.recentTrend.routeKey || undefined,
+        metricKey: metric.metricKey
+      });
+    }
+    if (context.recentTrend.efficiency) {
+      evidence.push({
+        id: "history:recent-trend:efficiency",
+        kind: "POLICY",
+        label: context.recentTrend.efficiency.metricLabel,
+        value: `前窗口 ${context.recentTrend.efficiency.baselineValue}，最近窗口 ${context.recentTrend.efficiency.currentValue}，变化 ${context.recentTrend.efficiency.delta}`,
+        routeKey: context.recentTrend.routeKey || undefined
+      });
+    }
+  }
+  for (const action of context?.manualActions || []) {
+    evidence.push({
+      id: `manual-action:${action.actionProposalId}`,
+      kind: "POLICY",
+      label: "同一任务人工执行记录",
+      value: action.outcome
+        ? `${action.actionTitle || action.actionType} 已人工执行，人工记录结果：${action.outcome.result}；不等于已证实因果效果`
+        : `${action.actionTitle || action.actionType} 已人工执行，尚未记录复盘结果`
+    });
   }
   return z.array(diagnosisEvidenceSchema).parse(evidence);
 }
@@ -317,10 +366,6 @@ export function requiredDomainSkills(availableRoutes: CollectionRouteKey[], hasS
   return ids;
 }
 
-function isDomainSkillId(skillId: DiagnosisSkillId): skillId is DiagnosisDomainSkillId {
-  return skillId !== "audit_data_readiness" && skillId !== "retrieve_similar_cases";
-}
-
 function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
   return {
     id: spec.id,
@@ -332,10 +377,14 @@ function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
     outputSchema: diagnosisSkillOutputSchema,
     async execute(rawInput, model) {
       const input = parseInput(rawInput);
+      const strategy = getDiagnosisScenarioStrategy(input.decisionInput.diagnosisContext?.scenario);
       const selected = input.evidenceCatalog.filter((item) =>
         (item.kind === "METRIC" && item.routeKey && spec.routes.includes(item.routeKey) && spec.metricKeys.includes(item.metricKey as MetricKey))
         || (item.kind === "TABLE_ROW" && item.routeKey && spec.routes.includes(item.routeKey) && matchesTableKeywords(item, spec.tableKeywords))
         || (item.kind === "ROUTE" && item.routeKey && spec.routes.includes(item.routeKey))
+        || (item.kind === "POLICY" && (item.id.startsWith("manual-action:")
+          || (item.id.startsWith("history:") && item.routeKey && spec.routes.includes(item.routeKey)
+            && (item.metricKey ? spec.metricKeys.includes(item.metricKey as MetricKey) : spec.dimension === "DELIVERY"))))
       );
       const routeAvailable = spec.routes.some((route) => input.availableRoutes.includes(route));
       if (!routeAvailable || !selected.some((item) => item.kind === "METRIC" || item.kind === "TABLE_ROW")) {
@@ -363,10 +412,16 @@ function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
           `你是“${spec.title}”业务诊断 Skill。`,
           `你只能分析 ${spec.dimension} 维度，hypotheses.dimension 只能填写 ${spec.dimension}，不得代替其他领域下结论。`,
           spec.method,
+          strategy.domainQuestions[spec.id],
+          "每条假设应解释本领域事实对经营判断意味着什么、存在什么替代解释、哪项证据可以区分；不要只换句话重复数值。若现有证据只足以确认结果，则直接说明边界，不为凑数量虚构原因。假设仅分析原因，不写调整指令。",
+          "输入来源仅限本次已复核的本领域证据，以及服务端冻结的近期趋势或同任务人工执行摘要；使用场景只是用户说明，不是开播或下播事实。",
+          "允许结论仅限事实、可检验假设和会改变判断的证据缺口。实验、动作、预算调整、暂停或执行方案只能由最终综合阶段生成，本 Skill 一律不得输出。",
+          "禁止推断：不得把 ROI 达标扩展为订单正常或整体经营健康；不得把普通支付 ROI 当作全域支付 ROI 与目标比较；不得把人工审批当作执行、把人工执行当作有效。",
+          "缺失处理：没有同口径趋势、拆解或执行结果时明确写出不能判断的边界；不要用常识、行业阈值或其他路线数据补齐。失败示例：仅凭在线人数为零推断已经下播，仅凭 ROI 达标断定整体经营健康，或把不同路线的金额和消耗相除。",
           "采用本地生活经营视角：商品与优惠、内容/直播承接、广告流量需要协同，按蓄水、促成交、复盘阶段组织建议；这套框架不能替代本轮数据证据。",
           "培训材料与案例中的数值只适用于其原始行业、客户和场次，不得复用为当前任务的通用阈值。",
           "只能引用输入 evidence 的 id；必须同时寻找支持证据、冲突证据和缺失证据。",
-          "建议只能是人工实验或系统枚举内候选动作，不得声称已经操作平台。",
+          "顶层只能输出 applicable、refused、refusalReason、facts、hypotheses、missingEvidence、confidence；不要输出 experiments、candidateActions、stopConditions、abortCriteria 或任何包装层。",
           "输出必须符合给定 JSON 结构，不得包含隐藏推理。"
         ].join("\n"),
         evidence: selected,
@@ -374,15 +429,47 @@ function createDomainSkill(spec: DomainSpec): DiagnosisSkillDefinition {
           dimension: spec.dimension,
           dataReviewStatus: input.decisionInput.dataReviewStatus,
           reviewCoverage: input.decisionInput.reviewCoverage || null,
+          diagnosisScenario: input.decisionInput.diagnosisContext?.scenario || "UNSPECIFIED",
+          analysisQuestion: strategy.domainQuestions[spec.id],
+          recentTrend: scopedRecentTrend(input.decisionInput, spec),
+          historyContext: scopedHistoryContext(input.decisionInput, spec),
+          manualActions: input.decisionInput.diagnosisContext?.manualActions || [],
           ...(spec.dimension === "DELIVERY" ? { targetRoi: input.decisionInput.targetRoi ?? null } : {})
         }
       });
-      const parsed = domainOutputSchema.parse(response.output);
-      const output = diagnosisSkillOutputSchema.parse({ skillId: spec.id, skillVersion: spec.version, ...parsed });
+      const parsed = diagnosisDomainAnalysisOutputSchema.parse(response.output);
+      const output = diagnosisSkillOutputSchema.parse({
+        skillId: spec.id,
+        skillVersion: spec.version,
+        ...parsed,
+        experiments: [],
+        candidateActions: []
+      });
       assertEvidenceReferences(output, new Set(selected.map((item) => item.id)));
       return { output, usage: response.usage };
     }
   };
+}
+
+function scopedRecentTrend(input: DecisionEngineInput, spec: DomainSpec) {
+  const trend = input.diagnosisContext?.recentTrend;
+  if (!trend?.routeKey || !spec.routes.includes(trend.routeKey)) return null;
+  return { ...trend, metrics: trend.metrics.filter((metric) => spec.metricKeys.includes(metric.metricKey)), efficiency: spec.dimension === "DELIVERY" ? trend.efficiency : null };
+}
+
+function scopedHistoryContext(input: DecisionEngineInput, spec: DomainSpec) {
+  const context = input.historyContext;
+  if (!context) return null;
+  const filterComparison = (comparison: typeof context.archiveComparison) => {
+    const rows = comparison.rows.filter((row) => spec.routes.includes(row.routeKey) && spec.metricKeys.includes(row.metricKey));
+    return rows.length === comparison.rows.length ? comparison : {
+      ...comparison, rows, status: "INSUFFICIENT" as const, notices: ["仅保留本领域指标，请按各行口径与判断边界解释，不沿用其他领域的总体结论。"]
+    };
+  };
+  const archiveComparison = filterComparison(context.archiveComparison);
+  const periodComparison = filterComparison(context.periodComparison);
+  if (!archiveComparison.rows.length && !periodComparison.rows.length) return null;
+  return { ...context, archiveComparison, periodComparison };
 }
 
 function matchesTableKeywords(evidence: DiagnosisEvidence, keywords: string[] | undefined) {
@@ -406,6 +493,12 @@ function assertEvidenceReferences(output: DiagnosisSkillOutput, validEvidenceIds
   ];
   const invalid = referenced.filter((id) => !validEvidenceIds.has(id));
   if (invalid.length) throw new Error(`DIAGNOSIS_EVIDENCE_INVALID:${[...new Set(invalid)].join(",")}`);
+}
+
+function readMetricScopeText(raw: unknown, key: "semanticScope" | "timeRange") {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = (raw as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : null;
 }
 
 function readMetricRoute(metric: VisibleMetric): CollectionRouteKey | null {

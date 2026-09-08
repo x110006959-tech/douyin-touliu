@@ -13,6 +13,8 @@ import { prisma } from "../prisma.js";
 import { prepareActionProposals, proposalExpiresAfterMs, proposalLifecyclePolicy } from "../proposal-lifecycle.js";
 import { sanitizeDerivedPersistedJson } from "../persisted-input.js";
 import { latestRealtimeMetricFrames } from "../realtime-signals.js";
+import { markProjectAnalysisArchiveRunStatus } from "../project-history.js";
+import type { ObservationValidationDiagnostic } from "./validation-diagnostic.js";
 import {
   aiDiagnosisConfigurationIssue,
   aiDiagnosisEnabled,
@@ -109,9 +111,17 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
   const startedAt = Date.now();
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), aiDiagnosisTimeoutMs());
+  let lastStage = "VERIFYING_EVIDENCE";
+  const validationDiagnostics: ObservationValidationDiagnostic[] = [];
+  let auditActor: { userId: string; workspaceId: string } | undefined;
+  const advanceStage = async (stage: string) => {
+    lastStage = stage;
+    await updateStage(run.id, workerId, stage);
+  };
   try {
     const task = await getTaskForDecision(run.collectionTaskId);
     if (!task) throw new DiagnosisWorkerError("TASK_NOT_FOUND", "诊断任务已不存在");
+    auditActor = { userId: task.userId, workspaceId: task.project.workspaceId };
     if (decisionEvidenceFingerprint(task) !== run.evidenceFingerprint) throw new DecisionEvidenceChangedError();
     const decisionInput: DecisionEngineInput = storedDecisionInput(run)
       || buildDecisionInput(task, { realtimeFrames: latestRealtimeMetricFrames(task.id) });
@@ -119,20 +129,31 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
     if (!readiness.ready) throw new DiagnosisWorkerError("DECISION_NOT_READY", readiness.blockingReasons.join("；"));
     const transport = configuredTransport || createConfiguredDiagnosisTransport();
     const skillPlan = createDiagnosisSkillPlan(decisionInput);
-    await updateStage(run.id, workerId, "ORCHESTRATING_SKILLS");
+    await advanceStage("ORCHESTRATING_SKILLS");
     const orchestration = await orchestrateDiagnosis({
       decisionInput,
       skillPlan,
       transport,
       signal: timeout.signal,
-      onSkillEvent: (event) => persistSkillEvent(run.id, workerId, event)
+      onValidationDiagnostic: (diagnostic) => {
+        // Local revalidation may report the same failure again. Keep only a
+        // bounded sequence of distinct checks, not an apparent extra model run.
+        if (JSON.stringify(validationDiagnostics.at(-1)) === JSON.stringify(diagnostic)) return;
+        if (validationDiagnostics.length === 3) validationDiagnostics.shift();
+        validationDiagnostics.push(diagnostic);
+      },
+      onSkillEvent: async (event) => {
+        lastStage = `SKILL:${event.skillId}:${event.status}`;
+        await persistSkillEvent(run.id, workerId, event);
+      },
+      onStage: advanceStage
     });
+    await advanceStage("APPLYING_POLICY");
     const guarded = guardAiCandidateActions({
       decisionInput,
       candidates: orchestration.result.candidateActions,
       validEvidenceIds: new Set(orchestration.evidenceCatalog.map((item) => item.id))
     });
-    await updateStage(run.id, workerId, "APPLYING_POLICY");
 
     await prisma.$transaction(async (tx) => {
       const currentRun = await tx.decisionRun.findFirst({ where: { id: run.id, status: "RUNNING", leaseOwner: workerId } });
@@ -184,7 +205,7 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
           engineVersion: "ai-skill-diagnosis-v1",
           ruleVersion: guarded.adjudication.policyVersion,
           strategyVersion: diagnosisSkillSetVersion,
-          inputJson: toJson(sanitizeDerivedPersistedJson(decisionInput)),
+          inputJson: run.inputJson ? undefined : toJson(sanitizeDerivedPersistedJson(decisionInput)),
           aiResultJson: toJson(sanitizeDerivedPersistedJson(orchestration.result)),
           ruleResultJson: toJson(sanitizeDerivedPersistedJson(finalResult.ruleAdjudication)),
           finalResultJson: toJson(sanitizeDerivedPersistedJson(finalResult)),
@@ -201,6 +222,7 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
           leaseExpiresAt: null
         }
       });
+      await markProjectAnalysisArchiveRunStatus(tx, run.id, "SUCCEEDED");
       await upsertDraftDiagnosisCase({
         workspaceId: currentTask.project.workspaceId,
         projectId: currentTask.projectId,
@@ -223,17 +245,42 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     const normalized = normalizeWorkerError(error, timeout.signal.aborted);
-    await prisma.decisionRun.updateMany({
-      where: { id: run.id, status: "RUNNING", leaseOwner: workerId },
-      data: {
-        status: "FAILED",
-        currentStage: "FAILED",
-        errorCode: normalized.code,
-        errorMessage: normalized.message,
-        durationMs: Date.now() - startedAt,
-        completedAt: new Date(),
-        leaseOwner: null,
-        leaseExpiresAt: null
+    await prisma.$transaction(async (tx) => {
+      const failed = await tx.decisionRun.updateMany({
+        where: { id: run.id, status: "RUNNING", leaseOwner: workerId },
+        data: {
+          status: "FAILED",
+          currentStage: `FAILED:${lastStage}`,
+          errorCode: normalized.code,
+          errorMessage: normalized.message,
+          durationMs: Date.now() - startedAt,
+          completedAt: new Date(),
+          leaseOwner: null,
+          leaseExpiresAt: null
+        }
+      });
+      if (!failed.count) return;
+      await markProjectAnalysisArchiveRunStatus(tx, run.id, "FAILED");
+      if (auditActor && validationDiagnostics.length) {
+        await tx.auditLog.create({
+          data: {
+            userId: auditActor.userId,
+            actorSnapshotJson: toJson({ userId: auditActor.userId }),
+            workspaceId: auditActor.workspaceId,
+            projectId: run.projectId,
+            taskId: run.collectionTaskId,
+            action: "AI_DIAGNOSIS_VALIDATION_FAILED",
+            detailJson: toJson(sanitizeDerivedPersistedJson({
+              decisionRunId: run.id,
+              attemptCount: run.attemptCount,
+              stage: lastStage,
+              finalErrorCode: normalized.code,
+              promptVersion: diagnosisPromptVersion,
+              orchestrationVersion: diagnosisOrchestrationVersion,
+              validationDiagnostics
+            }))
+          }
+        });
       }
     });
   } finally {
@@ -304,7 +351,12 @@ function toJson(value: unknown): Prisma.InputJsonValue {
 
 function storedDecisionInput(run: DecisionRun): DecisionEngineInput | null {
   const parsed = decisionEngineInputSchema.safeParse(run.inputJson);
-  if (!parsed.success || !isStoredRealtimeInput(parsed.data)) return null;
+  const hasFrozenContext = run.inputJson !== null && typeof run.inputJson === "object" && Object.hasOwn(run.inputJson, "diagnosisContext");
+  if (!parsed.success) {
+    if (hasFrozenContext) throw new DiagnosisWorkerError("DIAGNOSIS_INPUT_INVALID", "本次冻结诊断上下文未通过服务端校验，不能重建或替换输入");
+    return null;
+  }
+  if (!hasFrozenContext && !isStoredRealtimeInput(parsed.data)) return null;
   return {
     ...parsed.data,
     latestAnalysis: isAnalyzeOutput(parsed.data.latestAnalysis) ? parsed.data.latestAnalysis : null,

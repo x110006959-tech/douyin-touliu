@@ -122,6 +122,18 @@ enum DecisionRunStatus {
   FAILED
 }
 
+enum ProjectHistorySessionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProjectHistoryArchiveStatus {
+  QUEUED
+  SUCCEEDED
+  FAILED
+  REUSED
+}
+
 enum DiagnosisSkillExecutionStatus {
   PENDING
   RUNNING
@@ -457,6 +469,9 @@ model Project {
   actionProposalGates ActionProposalGate[]
   actionProposalQuotas ActionProposalQuota[]
   diagnosisCases      DiagnosisCase[]
+  historySessions     ProjectHistorySession[]
+  historyMetricPoints ProjectHistoryMetricPoint[]
+  analysisArchives    ProjectAnalysisArchive[]
 
   @@index([workspaceId])
   @@index([accountProfileId, status])
@@ -492,6 +507,8 @@ model CollectionTask {
   routeSources    CollectionRouteSource[]
   extensionPairingCodes ExtensionPairingCode[]
   diagnosisCases DiagnosisCase[]
+  historyMetricPoints ProjectHistoryMetricPoint[]
+  analysisArchives    ProjectAnalysisArchive[]
 
   @@unique([projectId, idempotencyKey])
   @@index([projectId])
@@ -726,6 +743,7 @@ model DecisionRun {
   ruleVersion          String?
   strategyVersion      String           @default("local-life-rules-v0.1.0")
   evidenceFingerprint  String?
+  inputFingerprint     String?
   inputJson            Json?
   riskLevel            RiskLevel?
   confidence           Float?
@@ -755,6 +773,7 @@ model DecisionRun {
   skillExecutions      DiagnosisSkillExecution[]
   diagnosisCase        DiagnosisCase?
   feedback             DiagnosisFeedback[]
+  analysisArchives     ProjectAnalysisArchive[]
 
   @@unique([collectionTaskId, idempotencyKey])
   @@index([projectId])
@@ -762,6 +781,69 @@ model DecisionRun {
   @@index([mode, status, leaseExpiresAt])
   @@index([aiAnalysisTaskId])
   @@index([createdAt])
+  @@index([collectionTaskId, inputFingerprint])
+}
+
+model ProjectHistorySession {
+  id             String                      @id @default(cuid())
+  projectId      String
+  status         ProjectHistorySessionStatus @default(ACTIVE)
+  startedAt      DateTime                    @default(now())
+  lastActivityAt DateTime                    @default(now())
+  archivedAt     DateTime?
+  archiveReason  String?
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  project        Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  metricPoints   ProjectHistoryMetricPoint[]
+  analysisArchives ProjectAnalysisArchive[]
+
+  @@index([projectId, status, lastActivityAt])
+  @@index([projectId, archivedAt])
+}
+
+model ProjectHistoryMetricPoint {
+  id               String                @id @default(cuid())
+  projectId        String
+  collectionTaskId String
+  sessionId        String
+  routeKey         String
+  pageType         String
+  observedAt       DateTime
+  bucketAt         DateTime
+  sourceKind       String
+  metricsJson      Json
+  createdAt        DateTime              @default(now())
+  project          Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask   CollectionTask        @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  session          ProjectHistorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, routeKey, bucketAt])
+  @@index([projectId, observedAt])
+  @@index([collectionTaskId, observedAt])
+}
+
+model ProjectAnalysisArchive {
+  id                 String                      @id @default(cuid())
+  archiveKey         String                      @unique
+  projectId          String
+  collectionTaskId   String
+  sessionId          String
+  decisionRunId      String?
+  status             ProjectHistoryArchiveStatus @default(QUEUED)
+  archivedAt         DateTime                    @default(now())
+  metricsJson        Json
+  historyContextJson Json
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  project            Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionTask     CollectionTask              @relation(fields: [collectionTaskId], references: [id], onDelete: Cascade)
+  session            ProjectHistorySession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  decisionRun        DecisionRun?                @relation(fields: [decisionRunId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, archivedAt])
+  @@index([collectionTaskId, archivedAt])
+  @@index([decisionRunId])
 }
 
 model DiagnosisSkillExecution {

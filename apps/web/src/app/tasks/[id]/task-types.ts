@@ -6,6 +6,7 @@ import type {
   DecisionBusinessAnalysis,
   DecisionEngineOutput,
   OperatorType,
+  ProjectHistoryDecisionContext,
   RiskLevel,
   SubjectType
 } from "@douyin-local-life/shared";
@@ -15,6 +16,7 @@ import type {
   DiagnosisFinalResult,
   DiagnosisRuleAdjudication,
   DiagnosisSkillExecutionDTO,
+  DiagnosisTrustedFactsView,
   DecisionRunMode,
   DecisionRunStatus
 } from "@douyin-local-life/shared/diagnosis";
@@ -82,6 +84,8 @@ export type DecisionRun = {
   feedback?: Array<{ mainProblemCorrect: boolean; usefulnessScore: number; correctionNote: string | null }>;
   createdAt: string;
   reuseReason?: "UNCHANGED_EVIDENCE";
+  historyContext?: ProjectHistoryDecisionContext | null;
+  trustedFacts?: DiagnosisTrustedFactsView | null;
   actionProposals: Array<{
     id: string;
     actionType: ActionType;
@@ -125,6 +129,7 @@ export type DecisionRun = {
     actionRisk: RiskLevel | null;
     targetComparison: {
       metricLabel: "全域支付 ROI";
+      status: "MET" | "BELOW_TARGET";
       actual: number;
       target: number;
       absoluteGap: number;
@@ -132,6 +137,13 @@ export type DecisionRun = {
       relativeShortfall: number;
     } | null;
     facts: DiagnosisFinalResult["factSnapshot"];
+    analysis?: Array<{
+      title: string;
+      conclusion: string;
+      supportingFacts: string[];
+      conflictingFacts: string[];
+      missingEvidence: string[];
+    }>;
     openQuestions: string[];
     nextStep: {
       kind: "APPROVAL" | "MANUAL_EXECUTION" | "OBSERVATION" | "OUTCOME_REVIEW" | "COMPLETED" | "COLLECT_EVIDENCE" | "NONE";

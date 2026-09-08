@@ -18,7 +18,7 @@ import {
   type ActionProposalStatus,
   type ActionType,
   type CooperationType,
-  type ExtensionStatusDTO,
+  type DiagnosisScenario,
   type OperatorType,
   type RealtimeMetricFrame,
   type ReviewedMetricDTO,
@@ -30,6 +30,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { apiBaseUrl, apiFetch, cookieSessionMarker, createIdempotencyKey } from "@/lib/api";
 import { ExtensionBridgeError, pairExtensionTask } from "@/lib/extension-bridge";
+import { isCurrentExtensionConnected } from "@/lib/extension-connection";
 import { useAuth } from "@/lib/AuthContext";
 import { AuthLoadingState, AuthRequiredState } from "@/components/auth-page-state";
 import { getTaskWizardProgress } from "@/lib/task-progress";
@@ -47,18 +48,7 @@ type PairingCodeResponse = {
 };
 
 const pairingRetryErrorCodes = new Set([
-  "BRIDGE_REQUEST_FAILED",
-  "INVALID_PAIRING_REQUEST",
-  "TASK_PAGE_REQUIRED",
-  "PAIRING_CODE_INVALID",
-  "PAIRING_RATE_LIMITED",
-  "PAIRING_API_TIMEOUT",
-  "PAIRING_SERVICE_UNAVAILABLE",
-  "PAIRING_SERVICE_ERROR",
-  "PAIRING_REQUEST_FAILED",
-  "PAIRING_RESPONSE_INVALID",
   "PAIRING_CREDENTIAL_REJECTED",
-  "TASK_PAGE_MISMATCH",
   "TASK_ACCOUNT_MISMATCH",
   "PAIRING_REQUIRED"
 ]);
@@ -131,16 +121,15 @@ export default function TaskDetailPage() {
   const collectionDashboardPendingRouteLabels = collectionDashboardPendingRouteKeys.map((routeKey) => collectionRouteLabels[routeKey] || routeKey);
   const collectionDashboardReady = Boolean(task) && collectionDashboardPendingRouteKeys.length === 0;
 
-  const connectionReadyForTask = Boolean(
-    task
-    && webBridge.state === "READY"
-    && webBridge.response?.ok
-    && webBridge.response.boundTaskId === task.id
-    && extensionStatus?.paired
-    && extensionStatus.boundTaskId === task.id
-    && extensionStatus.lastHeartbeatAt
-    && !["OFFLINE", "VERSION_OUTDATED", "ERROR"].includes(extensionStatus.state)
-  );
+  const connectionReadyForTask = isCurrentExtensionConnected(params.id, webBridge, extensionStatus);
+
+  useEffect(() => {
+    if (connectionReadyForTask && pairingCode) {
+      setPairingCode(null);
+      setPairingMessage("");
+      setError("");
+    }
+  }, [connectionReadyForTask, pairingCode, setError]);
 
   useEffect(() => {
     if (!pairingRecoveryPending.current || !task || connectionStatusLoading || !connectionReadyForTask) return;
@@ -193,7 +182,7 @@ export default function TaskDetailPage() {
     beginPairingAttempt();
     setBusy("pairing-code"); setError(""); setPairingMessage("");
     try {
-      if (webBridge.state === "VERSION_OUTDATED" || extensionStatus?.state === "VERSION_OUTDATED") {
+      if (pluginUpdateRequired) {
         throw new Error("当前插件协议不兼容。请先在扩展管理页重新加载当前本地插件，再生成或输入配对码。");
       }
       const created = await apiFetch<PairingCodeResponse>("/extension/pairing-codes", token, {
@@ -240,7 +229,7 @@ export default function TaskDetailPage() {
     }
   }
 
-  async function runDecision() {
+  async function runDecision(scenario: DiagnosisScenario = "UNSPECIFIED") {
     if (!token) return;
     setBusy("decision");
     setError("");
@@ -249,7 +238,7 @@ export default function TaskDetailPage() {
       const nextDecisionRun = await apiFetch<DecisionRun>(`/collection-tasks/${params.id}/decision-runs`, token, {
         method: "POST",
         headers: { "idempotency-key": decisionIdempotencyKey.current },
-        body: "{}"
+        body: JSON.stringify({ scenario })
       });
       setDecisionRun(nextDecisionRun);
       if (nextDecisionRun.reuseReason === "UNCHANGED_EVIDENCE") {
@@ -323,22 +312,18 @@ export default function TaskDetailPage() {
     : collectionRun
       ? collectionRun.quality.missingRoutes.length === 0
       : task.routeSources.filter((route) => route.required && isPrimaryCollectionRouteKey(route.routeKey)).every((route) => route.status === "CAPTURED");
-  const extensionBoundToTask = Boolean(extensionStatus?.paired && extensionStatus.boundTaskId === task.id);
-  const extensionServerVerified = Boolean(extensionBoundToTask && extensionStatus?.lastHeartbeatAt);
-  const extensionConnectionBlocked = ["UNPAIRED", "PAIRED_NOT_CONNECTED", "BOUND_OTHER_TASK", "OFFLINE", "VERSION_OUTDATED", "ERROR"]
-    .includes(extensionStatus?.state || "UNPAIRED");
-  const pluginUpdateRequired = webBridge.state === "VERSION_OUTDATED" || extensionStatus?.state === "VERSION_OUTDATED";
-  const extensionConnected = Boolean(
-    webBridge.state === "READY"
-    && webBridge.response?.ok
-    && extensionServerVerified
-    && !extensionConnectionBlocked
+  const extensionServerVerified = connectionReadyForTask;
+  const pluginUpdateRequired = webBridge.state === "VERSION_OUTDATED" || Boolean(
+    webBridge.response?.paired && webBridge.response.connectionSessionId
+    && webBridge.response.connectionSessionId === extensionStatus?.connectionSessionId
+    && extensionStatus?.state === "VERSION_OUTDATED"
   );
+  const extensionConnected = connectionReadyForTask;
   const extensionConnectionNeedsAttention = !extensionConnected && !connectionStatusLoading;
   const webBridgeSupportsPairing = webBridge.state === "READY" || webBridge.state === "SYNC_FAILED";
-  const needsPairingAction = webBridgeSupportsPairing && (
+  const needsPairingAction = !connectionStatusLoading && !pluginUpdateRequired && webBridgeSupportsPairing && (
     pairingRetryErrorCodes.has(webBridge.response?.errorCode || "")
-    || (webBridge.state === "READY" && webBridge.response?.paired === false)
+    || (webBridge.response?.ok && webBridge.response.paired === false)
   );
   const bridgeNeedsReload = ["NOT_ACTIVE", "BACKGROUND_UNRESPONSIVE", "VERSION_OUTDATED"].includes(webBridge.state);
   const bridgePageRefreshRequired = webBridge.state === "BACKGROUND_UNRESPONSIVE";
@@ -350,7 +335,7 @@ export default function TaskDetailPage() {
       : webBridge.response?.errorCode === "PAIRING_REQUIRED"
         ? "当前插件未配对或凭证已失效，请重新连接当前任务所属账号。"
         : webBridge.response?.errorCode === "HEARTBEAT_FAILED"
-          ? "任务绑定已完成，但本机 API 尚未确认心跳；请检查本地服务后重新检测。"
+          ? "本地凭证已保留，正在重试当前任务心跳；无需重新生成配对码。"
           : ["CONTEXT_TIMEOUT", "CONTEXT_REFRESH_FAILED"].includes(webBridge.response?.errorCode || "")
             ? "本机 API 暂时无法完成账号校验；请确认服务运行正常后重新检测。"
             : null;
@@ -425,8 +410,8 @@ export default function TaskDetailPage() {
           <p className="mb-4 text-sm text-muted">进入任务页会自动检测插件；已配对的同账号任务会自动切换。当前仅在未配对、账号不一致、插件异常或持续采集占用时需要处理。服务器的历史授权不等于当前浏览器已经配对；只有网页桥接确认本地凭证且本机 API 收到当前任务心跳后才会进入采集步骤。配对不会读取平台密码或 Cookie。</p>
           <div className="grid gap-3 md:grid-cols-3">
             <Info label="网页桥接" value={webBridgeStateLabel(webBridge.state)} />
-            <Info label="配对状态" value={webBridge.response?.paired ? "当前插件本地凭证已验证" : extensionStatus?.paired ? "服务器有历史授权，当前插件未验证" : "当前插件尚未配对"} />
-            <Info label="任务绑定" value={extensionServerVerified ? "本机 API 已确认当前任务" : extensionStatusLabel(extensionStatus?.state)} />
+            <Info label="配对状态" value={extensionConnected ? "当前插件本地凭证已验证" : webBridge.response?.paired ? "本地凭证已保存，等待连接验证" : extensionStatus?.paired ? "服务器有历史授权，当前插件未验证" : "当前插件尚未配对"} />
+            <Info label="任务绑定" value={extensionServerVerified ? "本机 API 已确认当前任务" : "当前任务连接尚未验证"} />
           </div>
           <div className={`mt-3 rounded-md border p-3 text-sm ${webBridge.state === "READY" ? "border-primary/30 bg-blue-50" : "border-amber-300 bg-amber-50"}`}>
             <strong>{webBridge.message}</strong>
@@ -437,7 +422,7 @@ export default function TaskDetailPage() {
           </div>
           {hasCapture ? <p className="mt-3 text-sm text-muted">历史快照不会代替当前连接。请先处理上方异常；同账号任务不需要重新配对。</p> : null}
           {pairingMessage ? <p className="mt-3 rounded-md border border-primary/30 bg-blue-50 p-3 text-sm text-primary">{pairingMessage}</p> : null}
-          {pairingCode ? (
+          {pairingCode && needsPairingAction ? (
             <div className="mt-4 rounded-md border border-primary bg-blue-50 p-4 text-center">
               <p className="text-sm">一键连接未完成时，请在插件中输入本任务配对码</p>
               <p className="my-2 text-3xl font-bold tracking-[0.3em]">{pairingCode.code}</p>
@@ -606,7 +591,7 @@ export default function TaskDetailPage() {
                 ? <DiagnosisBusinessSummary conservative={!decisionRun} managedLiveGrowthMode={managedLiveGrowthMode} output={diagnosticOutput} />
                 : <p className="rounded-md border border-border bg-white p-4 text-sm text-muted">尚未生成正式诊断。完成指标确认后运行正式诊断，系统会输出问题、证据、经营方案和验证指标。</p>}
               formalReady={formalReady}
-              onRunFormal={() => void runDecision()}
+              onRunFormal={(scenario) => void runDecision(scenario)}
               token={token}
               onRefresh={() => void load()}
             />
@@ -630,22 +615,6 @@ function Info({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
-}
-
-function extensionStatusLabel(state: ExtensionStatusDTO["state"] | undefined) {
-  const labels: Record<ExtensionStatusDTO["state"], string> = {
-    UNPAIRED: "未配对",
-    PAIRED_NOT_CONNECTED: "服务器有历史授权，等待当前插件验证",
-    BOUND_OTHER_TASK: "已绑定其他任务",
-    READY: "连接正常",
-    PAGE_UNSUPPORTED: "当前页面不支持",
-    PAGE_INACTIVE: "页面未激活",
-    ROUTE_UNVERIFIED: "当前分栏待确认",
-    VERSION_OUTDATED: "插件版本过旧",
-    OFFLINE: "插件离线",
-    ERROR: "插件异常"
-  };
-  return state ? labels[state] : "检测中";
 }
 
 function webBridgeStateLabel(state: WebBridgeUiState["state"]) {

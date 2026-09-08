@@ -1,4 +1,7 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { diagnosisSkillSetVersion } from "@douyin-local-life/diagnosis-skills";
 import { DEFAULT_DEEPSEEK_MODEL } from "@douyin-local-life/llm";
 import { diagnosisFeedbackInputSchema, diagnosisCaseStatusInputSchema } from "@douyin-local-life/shared/diagnosis";
@@ -9,8 +12,8 @@ import {
   diagnosisOrchestrationVersion,
   diagnosisPromptVersion
 } from "../ai-diagnosis/orchestrator.js";
-import { buildDiagnosisDecisionView } from "../ai-diagnosis/decision-view.js";
-import { decisionEngineInputSchema } from "@douyin-local-life/shared";
+import { buildDiagnosisDecisionView, buildTrustedDiagnosisFactsView } from "../ai-diagnosis/decision-view.js";
+import { decisionEngineInputSchema, diagnosisScenarios } from "@douyin-local-life/shared";
 import { buildDecisionInput } from "../decision.js";
 import { decisionEvidenceFingerprint } from "../decision-evidence.js";
 import { caseCanBecomeEligible } from "../diagnosis-cases.js";
@@ -25,6 +28,17 @@ import { currentUser, toJson } from "../server-utils.js";
 import { readSafeOptionalText } from "../persisted-input.js";
 import { latestRealtimeMetricFrames } from "../realtime-signals.js";
 import { runSerializableTransaction } from "../transactions.js";
+import {
+  archiveMetricsFromDecisionInput,
+  buildDiagnosisContext,
+  buildProjectHistoryDecisionContext,
+  createProjectAnalysisArchive,
+  projectHistoryInputFingerprint
+} from "../project-history.js";
+
+const createDecisionRunRequestSchema = z.object({
+  scenario: z.enum(diagnosisScenarios).optional()
+}).strict();
 
 export function createDecisionRunRouter() {
   const router = Router();
@@ -35,6 +49,9 @@ export function createDecisionRunRouter() {
     if (configurationIssue) return sendError(res, 503, configurationIssue.code, configurationIssue.message);
     const task = await getOwnedTask(currentUser(req).id, req.params.id || "");
     if (!task) return sendError(res, 404, "TASK_NOT_FOUND", "采集任务不存在");
+    const requestInput = createDecisionRunRequestSchema.safeParse(req.body || {});
+    if (!requestInput.success) return sendError(res, 400, "VALIDATION_ERROR", requestInput.error.issues[0]?.message || "诊断场景参数不合法");
+    const scenario = requestInput.data.scenario || "UNSPECIFIED";
     const idempotency = readIdempotencyKey(req);
     if (idempotency.error) return sendError(res, 400, "INVALID_IDEMPOTENCY_KEY", idempotency.error);
     if (idempotency.key) {
@@ -68,7 +85,13 @@ export function createDecisionRunRouter() {
     const refreshedRealtimeFrames = latestRealtimeMetricFrames(task.id);
     if (!refreshed?.snapshots[0] && !refreshedRealtimeFrames.length) return sendError(res, 409, "SNAPSHOT_REQUIRED", "请先上传采集快照");
     const refreshedTask = refreshed as NonNullable<typeof refreshed>;
-    const decisionInput = buildDecisionInput(refreshedTask, { realtimeFrames: refreshedRealtimeFrames });
+    const currentDecisionInput = buildDecisionInput(refreshedTask, { realtimeFrames: refreshedRealtimeFrames });
+    const archiveMetrics = archiveMetricsFromDecisionInput(currentDecisionInput);
+    const [historyContext, diagnosisContext] = await Promise.all([
+      buildProjectHistoryDecisionContext(prisma, task.projectId, archiveMetrics),
+      buildDiagnosisContext(prisma, { projectId: task.projectId, collectionTaskId: task.id, scenario })
+    ]);
+    const decisionInput = { ...currentDecisionInput, historyContext, diagnosisContext };
     decisionEngineInputSchema.parse(decisionInput);
     const readiness = evaluateDecisionReadiness(refreshedTask, decisionInput);
     if (!readiness.ready) {
@@ -77,15 +100,14 @@ export function createDecisionRunRouter() {
       });
     }
     const evidenceFingerprint = decisionEvidenceFingerprint(refreshedTask);
+    const inputFingerprint = projectHistoryInputFingerprint(evidenceFingerprint, historyContext, diagnosisContext);
+    const archiveKey = `analysis:${task.id}:${idempotency.key || randomUUID()}`;
     try {
       const created = await runSerializableTransaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${task.id}), hashtext('ai-diagnosis-create'))`;
         if (idempotency.key) {
-          const replay = await tx.decisionRun.findUnique({
-            where: { collectionTaskId_idempotencyKey: { collectionTaskId: task.id, idempotencyKey: idempotency.key } },
-            include: decisionRunInclude
-          });
-          if (replay) return { run: replay, replayed: true, unchangedEvidence: false };
+          const replay = await findIdempotentRun(task.id, idempotency.key, tx);
+          if (replay) return { run: replay, replayed: true, idempotentReplay: true, unchangedEvidence: false };
         }
         const existingActive = await tx.decisionRun.findFirst({
           where: { collectionTaskId: task.id, mode: "AI_SKILL_ORCHESTRATED", status: { in: ["PENDING", "RUNNING"] } },
@@ -98,7 +120,7 @@ export function createDecisionRunRouter() {
             collectionTaskId: task.id,
             mode: "AI_SKILL_ORCHESTRATED",
             status: "SUCCEEDED",
-            evidenceFingerprint,
+            inputFingerprint,
             promptVersion: diagnosisPromptVersion,
             skillSetVersion: diagnosisSkillSetVersion,
             orchestrationVersion: diagnosisOrchestrationVersion
@@ -106,7 +128,24 @@ export function createDecisionRunRouter() {
           include: decisionRunInclude,
           orderBy: { createdAt: "desc" }
         });
-        if (unchangedSuccessfulRun) return { run: unchangedSuccessfulRun, replayed: true, unchangedEvidence: true };
+        if (unchangedSuccessfulRun) {
+          const archive = await createProjectAnalysisArchive(tx, {
+            archiveKey,
+            projectId: task.projectId,
+            collectionTaskId: task.id,
+            decisionRunId: unchangedSuccessfulRun.id,
+            status: "REUSED",
+            metrics: archiveMetrics,
+            historyContext
+          });
+          await writeAuditLog(req, "PROJECT_HISTORY_ANALYSIS_ARCHIVED", {
+            workspaceId: task.project.workspaceId,
+            projectId: task.projectId,
+            taskId: task.id,
+            detailJson: { decisionRunId: unchangedSuccessfulRun.id, historyArchiveId: archive.id, status: "REUSED" }
+          }, tx);
+          return { run: unchangedSuccessfulRun, replayed: true, unchangedEvidence: true };
+        }
         const limit = await checkDecisionRateLimit(task.id, tx);
         if (!limit.allowed) return { rateLimited: true as const, retryAfterSeconds: limit.retryAfterSeconds };
         const run = await tx.decisionRun.create({
@@ -123,17 +162,33 @@ export function createDecisionRunRouter() {
             orchestrationVersion: diagnosisOrchestrationVersion,
             engineVersion: "ai-skill-diagnosis-v1",
             evidenceFingerprint,
+            inputFingerprint,
             strategyVersion: diagnosisSkillSetVersion,
             currentStage: "QUEUED",
             inputJson: toJson(decisionInput)
           },
           include: decisionRunInclude
         });
+        const archive = await createProjectAnalysisArchive(tx, {
+          archiveKey,
+          projectId: task.projectId,
+          collectionTaskId: task.id,
+          decisionRunId: run.id,
+          status: "QUEUED",
+          metrics: archiveMetrics,
+          historyContext
+        });
         await writeAuditLog(req, "AI_DIAGNOSIS_QUEUED", {
           workspaceId: task.project.workspaceId,
           projectId: task.projectId,
           taskId: task.id,
-          detailJson: { decisionRunId: run.id, evidenceFingerprint }
+          detailJson: { decisionRunId: run.id, evidenceFingerprint, inputFingerprint, historyArchiveId: archive.id, scenario }
+        }, tx);
+        await writeAuditLog(req, "PROJECT_HISTORY_ANALYSIS_ARCHIVED", {
+          workspaceId: task.project.workspaceId,
+          projectId: task.projectId,
+          taskId: task.id,
+          detailJson: { decisionRunId: run.id, historyArchiveId: archive.id, status: "QUEUED" }
         }, tx);
         return { run, replayed: false, unchangedEvidence: false };
       });
@@ -145,6 +200,10 @@ export function createDecisionRunRouter() {
         res.setHeader("Diagnosis-Reused-Unchanged-Evidence", "true");
         return sendSuccess(res, { ...toDecisionRunDTO(created.run), reuseReason: "UNCHANGED_EVIDENCE" }, 200);
       }
+      if (created.idempotentReplay) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return sendSuccess(res, toDecisionRunDTO(created.run), created.run.status === "PENDING" || created.run.status === "RUNNING" ? 202 : 200);
+      }
       if (created.replayed) res.setHeader("Diagnosis-Already-Running", "true");
       return sendSuccess(res, toDecisionRunDTO(created.run), 202);
     } catch (error) {
@@ -152,7 +211,10 @@ export function createDecisionRunRouter() {
         const existing = idempotency.key
           ? await findIdempotentRun(task.id, idempotency.key)
           : await findActiveRun(task.id);
-        if (existing) return sendSuccess(res, toDecisionRunDTO(existing), 202);
+        if (existing) {
+          if (idempotency.key) res.setHeader("Idempotent-Replayed", "true");
+          return sendSuccess(res, toDecisionRunDTO(existing), existing.status === "PENDING" || existing.status === "RUNNING" ? 202 : 200);
+        }
       }
       throw error;
     }
@@ -282,20 +344,33 @@ function findActiveRun(collectionTaskId: string) {
   });
 }
 
-function findIdempotentRun(collectionTaskId: string, idempotencyKey: string) {
-  return prisma.decisionRun.findUnique({
-    where: { collectionTaskId_idempotencyKey: { collectionTaskId, idempotencyKey } },
+function findIdempotentRun(collectionTaskId: string, idempotencyKey: string, db: Pick<Prisma.TransactionClient, "decisionRun"> = prisma) {
+  // Reused requests are mapped by their archive, not by the original run's key.
+  // Use the same lookup before creation, under the lock and after conflicts.
+  return db.decisionRun.findFirst({
+    where: {
+      collectionTaskId,
+      OR: [
+        { idempotencyKey },
+        { analysisArchives: { some: { collectionTaskId, archiveKey: `analysis:${collectionTaskId}:${idempotencyKey}`, status: "REUSED" } } }
+      ]
+    },
     include: decisionRunInclude
   });
 }
 
 function toDecisionRunDTO(run: Awaited<ReturnType<typeof findActiveRun>> extends infer T ? NonNullable<T> : never) {
+  const storedInput = decisionEngineInputSchema.safeParse(run.inputJson);
   const deterministicReview = run.mode === "AI_SKILL_ORCHESTRATED" && run.status === "SUCCEEDED"
     ? buildDecisionRunDeterministicReview(run.inputJson, run.finalResultJson)
     : null;
   return {
     ...run,
     finalResult: run.finalResultJson,
+    historyContext: storedInput.success ? storedInput.data.historyContext || null : null,
+    trustedFacts: run.mode === "AI_SKILL_ORCHESTRATED" && storedInput.success
+      ? buildTrustedDiagnosisFactsView(storedInput.data)
+      : null,
     deterministicReview,
     decisionView: run.mode === "AI_SKILL_ORCHESTRATED" && run.status === "SUCCEEDED"
       ? buildDiagnosisDecisionView(run.inputJson, run.finalResultJson, run.actionProposals)

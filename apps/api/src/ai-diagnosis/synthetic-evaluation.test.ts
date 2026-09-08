@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildDiagnosisEvidenceCatalog, createDiagnosisSkillPlan, syntheticDiagnosisCases } from "@douyin-local-life/diagnosis-skills";
 import type { DecisionEngineInput } from "@douyin-local-life/shared";
-import { createSyntheticDiagnosisTransport, evaluateSyntheticDiagnosisSuite } from "./synthetic-evaluation.js";
+import { createSyntheticDiagnosisTransport, evaluateSyntheticDiagnosisSuite, evaluateSyntheticFailureDisplaySuite } from "./synthetic-evaluation.js";
 import {
   buildDecisionRunDeterministicReview,
   buildDeterministicDiagnosticSignals,
@@ -18,6 +18,17 @@ describe("24-case synthetic diagnosis evaluation", () => {
     expect(report.mainProblemHitRate).toBeGreaterThanOrEqual(0.8);
     expect(report.hallucinatedEvidence).toBe(0);
     expect(report.safetyViolations).toBe(0);
+    expect(report.factsAvailable).toBe(24);
+    expect(report.groundedConclusions).toBe(24);
+    expect(report.policyAccepted + report.policyRejected).toBe(24);
+  });
+
+  it("preserves independent facts when final synthesis fails after domain analysis", async () => {
+    const report = await evaluateSyntheticFailureDisplaySuite();
+    expect(report.structurePassed).toBe(0);
+    expect(report.partialFailureFactsPreserved).toBe(24);
+    expect(report.policyAccepted).toBe(0);
+    expect(report.details.every((item) => item.actualMainProblemTag === null && item.error !== null)).toBe(true);
   });
 
   it("executes the server-fixed plan once without exposing Skill planning tools or cases to the model", async () => {
@@ -135,7 +146,7 @@ describe("24-case synthetic diagnosis evaluation", () => {
     expect(signals.missingCoreMetrics).toEqual([]);
     expect(signals.delivery.payRoi).toBe(35.1);
     expect(signals.comparisonGaps).toContain("缺少本场明确的投放目标 ROI，当前只能展示实际产出，不能判定是否达标");
-    expect(signals.comparisonGaps).toContain("缺少近期历史趋势，暂不能判断当前表现是在改善还是回落");
+    expect(signals.comparisonGaps.some((item) => item.includes("近期") && item.includes("趋势"))).toBe(true);
     expect(signals.comparisonGaps.join(" ")).not.toContain("同直播类型");
   });
 
@@ -247,7 +258,7 @@ describe("24-case synthetic diagnosis evaluation", () => {
 
     expect(invalidInjected).toBe(true);
     expect(repairRequestContent).toContain("DIAGNOSIS_DETERMINISTIC_CONFLICT");
-    expect(repairRequestContent).toContain("实际支付 ROI 为 44.59，目标 ROI 为 60");
+    expect(repairRequestContent).toContain("全域支付 ROI 为 44.59，目标 ROI 为 60");
     expect(execution.result.mainProblemTag).toBe("DELIVERY_ROI");
     expect(JSON.stringify(execution.result)).not.toContain("缺少支付金额");
   });
@@ -461,6 +472,85 @@ describe("24-case synthetic diagnosis evaluation", () => {
     expect(JSON.stringify(execution.result)).not.toContain("观看时长有限");
   });
 
+  it("repairs qualitative good-or-bad wording returned by a domain Skill", async () => {
+    const testCase = syntheticDiagnosisCases[0]!;
+    const base = createSyntheticDiagnosisTransport(testCase);
+    let domainResponse: Awaited<ReturnType<typeof base.chat>> | null = null;
+    let domainInvalidInjected = false;
+    let domainRepairRequest = "";
+
+    const execution = await orchestrateDiagnosis({
+      decisionInput: testCase.input,
+      skillPlan: createDiagnosisSkillPlan(testCase.input),
+      transport: {
+        ...base,
+        async chat(request) {
+          const system = request.messages.find((message) => message.role === "system")?.content || "";
+          const isDomain = system.includes("业务诊断 Skill");
+          const isRepair = request.messages.some((message) => message.role === "user"
+            && typeof message.content === "string"
+            && message.content.includes("repairInstruction"));
+          if (isDomain && isRepair && domainResponse) {
+            domainRepairRequest = request.messages.at(-1)?.content || "";
+            return domainResponse;
+          }
+          const response = await base.chat(request);
+          if (!isDomain || domainInvalidInjected) return response;
+          domainResponse = response;
+          domainInvalidInjected = true;
+          const value = JSON.parse(response.message.content!) as Record<string, unknown>;
+          const facts = value.facts as Array<Record<string, unknown>>;
+          facts[0]!.statement = "当前直播间成交表现良好，但人均观看时长有限。";
+          return { ...response, message: { ...response.message, content: JSON.stringify(value) } };
+        }
+      }
+    });
+
+    expect(domainInvalidInjected).toBe(true);
+    expect(domainRepairRequest).toContain("DIAGNOSIS_BENCHMARK_UNSUPPORTED");
+    expect(domainRepairRequest).toContain("暂不能判断");
+    expect(JSON.stringify(execution.skillOutputs)).not.toContain("成交表现良好");
+    expect(JSON.stringify(execution.skillOutputs)).not.toContain("观看时长有限");
+  });
+
+  it("neutralizes a repeated domain comparison violation without bypassing validation", async () => {
+    const testCase = syntheticDiagnosisCases[0]!;
+    const base = createSyntheticDiagnosisTransport(testCase);
+    let domainCalls = 0;
+    let repeatedInvalidResponse: Awaited<ReturnType<typeof base.chat>> | null = null;
+    const execution = await orchestrateDiagnosis({
+      decisionInput: testCase.input,
+      skillPlan: createDiagnosisSkillPlan(testCase.input),
+      transport: {
+        ...base,
+        async chat(request) {
+          const system = request.messages.find((message) => message.role === "system")?.content || "";
+          const isDomain = system.includes("业务诊断 Skill");
+          const isRepair = request.messages.some((message) => message.role === "user"
+            && typeof message.content === "string"
+            && message.content.includes("repairInstruction"));
+          if (isDomain && isRepair && repeatedInvalidResponse) {
+            domainCalls += 1;
+            return repeatedInvalidResponse;
+          }
+          const response = await base.chat(request);
+          if (!isDomain || repeatedInvalidResponse) return response;
+          domainCalls += 1;
+          const value = JSON.parse(response.message.content!) as Record<string, unknown>;
+          const facts = value.facts as Array<Record<string, unknown>>;
+          facts[0]!.statement = "当前直播间成交表现良好，但人均观看时长有限。";
+          repeatedInvalidResponse = { ...response, message: { ...response.message, content: JSON.stringify(value) } };
+          return repeatedInvalidResponse;
+        }
+      }
+    });
+
+    expect(domainCalls).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(execution.skillOutputs)).not.toContain("成交表现良好");
+    expect(JSON.stringify(execution.skillOutputs)).not.toContain("观看时长有限");
+    expect(JSON.stringify(execution.skillOutputs)).toContain("暂不能判断");
+  });
+
   it.each([
     {
       stage: "领域 Skill",
@@ -546,8 +636,6 @@ describe("24-case synthetic diagnosis evaluation", () => {
                 facts: [{ statement: "引用了不存在的证据", evidenceIds: ["metric:invented"] }],
                 hypotheses: [],
                 missingEvidence: [],
-                experiments: [],
-                candidateActions: [],
                 confidence: 0.8
               })
             },

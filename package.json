@@ -28,7 +28,10 @@
     "restore:verify": "sh tools/verify-postgres-backup.sh",
     "backup:postgres": "sh tools/backup-postgres.sh",
     "backup:verify": "sh tools/verify-postgres-backup.sh",
-    "version:check": "node tools/version-check.mjs"
+    "version:check": "node tools/version-check.mjs",
+    "runtime:verify": "powershell -NoProfile -File tools/verify-local-pxxis-runtime.ps1",
+    "runtime:clean": "powershell -NoProfile -File tools/trim-local-pxxis-runtime.ps1 -Apply",
+    "runtime:clean:test": "powershell -NoProfile -File tools/trim-local-pxxis-runtime.test.ps1"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"

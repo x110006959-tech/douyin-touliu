@@ -23,6 +23,18 @@ export function recordExtensionPresence(input: {
   heartbeat: ExtensionHeartbeatPayload;
 }) {
   prunePresence();
+  const previous = presenceByCredential.get(input.credentialId);
+  // Task-page recovery proves connectivity, not a collectable platform page.
+  // Keep fresh platform evidence visible while its own content script reports.
+  if (input.heartbeat.pageType === "TASK_TABLE" && !input.heartbeat.collectable && !input.heartbeat.lastError
+    && previous?.collectable && !previous.lastError
+    && previous.accountProfileId === input.accountProfileId
+    && previous.collectionTaskId === input.heartbeat.collectionTaskId
+    && previous.connectionSessionId === input.heartbeat.connectionSessionId
+    && previous.buildFingerprint === input.heartbeat.buildFingerprint
+    && previous.extensionVersion === input.heartbeat.extensionVersion
+    && previous.bridgeProtocolVersion === input.heartbeat.bridgeProtocolVersion
+    && Date.now() - previous.receivedAt <= heartbeatFreshMs) return;
   presenceByCredential.set(input.credentialId, {
     ...input.heartbeat,
     credentialId: input.credentialId,
@@ -47,11 +59,13 @@ export function getExtensionStatus(input: {
   accountProfileId: string;
   activeCredentialIds: string[];
   expectedVersion: string;
+  connectionSessionId?: string;
 }): ExtensionStatusDTO {
   prunePresence();
   const activeIds = new Set(input.activeCredentialIds);
   const accountPresence = [...presenceByCredential.values()]
     .filter((item) => item.accountProfileId === input.accountProfileId && activeIds.has(item.credentialId))
+    .filter((item) => !input.connectionSessionId || item.connectionSessionId === input.connectionSessionId)
     .sort((left, right) => right.receivedAt - left.receivedAt);
   const exact = accountPresence.find((item) => item.collectionTaskId === input.collectionTaskId);
   if (exact) return statusFromPresence(exact, input.taskTitle, input.expectedVersion);
@@ -61,6 +75,7 @@ export function getExtensionStatus(input: {
     return {
       ...emptyStatus("BOUND_OTHER_TASK", true, "插件已连接同一账号，但当前绑定的是其他采集任务，请在插件中切换任务。"),
       boundTaskId: currentOtherTask.collectionTaskId,
+      connectionSessionId: currentOtherTask.connectionSessionId || null,
       extensionVersion: currentOtherTask.extensionVersion,
       bridgeProtocolVersion: currentOtherTask.bridgeProtocolVersion || null,
       buildFingerprint: currentOtherTask.buildFingerprint || null,
@@ -113,6 +128,7 @@ function statusFromPresence(presence: ExtensionPresence, taskTitle: string, expe
 
   return {
     state,
+    connectionSessionId: presence.connectionSessionId || null,
     installedDetectedByWeb: false,
     paired: true,
     boundTaskId: presence.collectionTaskId,

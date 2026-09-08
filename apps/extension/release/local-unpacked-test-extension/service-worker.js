@@ -4050,6 +4050,214 @@
   };
   var NEVER = INVALID;
 
+  // ../../packages/shared/src/action-types.ts
+  var actionTypes = [
+    "OBSERVE",
+    "INCREASE_BUDGET",
+    "DECREASE_BUDGET",
+    "KEEP_BUDGET",
+    "FINE_TUNE_TARGETING",
+    "DECREASE_BID",
+    "PAUSE_TASK",
+    "ADJUST_ROI_TARGET",
+    "CHECK_LIVE_ROOM",
+    "CHECK_CREATIVE",
+    "CHECK_AUDIENCE",
+    "VERIFY_ACTIVITY",
+    "APPLY_ACTIVITY",
+    "OPTIMIZE_SCRIPT",
+    "REPAIR_REPUTATION",
+    "STRENGTHEN_SHELF",
+    "CHECK_INVENTORY_BOOKING",
+    "OPTIMIZE_POI_SEARCH",
+    "REPLACE_CREATOR",
+    "UNIFY_CREATOR_SCRIPT",
+    "ADJUST_SERVICE_PROVIDER_SOP",
+    "RENEGOTIATE_SERVICE_FEE",
+    "REUSE_MATERIAL",
+    "ALLOCATE_HIGH_VERIFY_STORES",
+    "CALIBRATE_SUBJECT",
+    "REQUEST_MANUAL_REVIEW"
+  ];
+  var actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"];
+
+  // ../../packages/shared/src/collection-routes.ts
+  var collectionRouteKeys = [
+    "LOCAL_PROMOTION_DASHBOARD",
+    "LIVE_DATA_SCREEN",
+    "LIVE_PRODUCT_TAB",
+    "LIVE_TRAFFIC_TAB",
+    "TASK_TABLE",
+    "MATERIAL_LIBRARY",
+    "HOURLY_TREND",
+    "UNKNOWN"
+  ];
+  var collectionRouteTemplates = [
+    {
+      routeKey: "LIVE_DATA_SCREEN",
+      label: "\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6982\u89C8",
+      website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
+      purpose: "\u91C7\u96C6\u6210\u4EA4\u3001\u89C2\u770B\u3001\u66DD\u5149\u548C\u76F4\u64AD\u95F4\u627F\u63A5\u6307\u6807",
+      required: true,
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6253\u5F00\u6982\u89C8\u9875\u9762"
+    },
+    {
+      routeKey: "LIVE_PRODUCT_TAB",
+      label: "\u76F4\u64AD\u5927\u5C4F\u5546\u54C1\u9875",
+      website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
+      purpose: "\u91C7\u96C6\u5546\u54C1\u652F\u4ED8\u3001\u8BA2\u5355\u3001\u66DD\u5149\u548C\u5546\u54C1\u8F6C\u5316\u6570\u636E",
+      required: false,
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u5546\u54C1\u201D"
+    },
+    {
+      routeKey: "LIVE_TRAFFIC_TAB",
+      label: "\u76F4\u64AD\u5927\u5C4F\u6D41\u91CF\u9875",
+      website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
+      purpose: "\u91C7\u96C6\u81EA\u7136\u6D41\u91CF\u3001\u5546\u4E1A\u6D41\u91CF\u548C\u6D41\u91CF\u8D8B\u52BF",
+      required: false,
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u6D41\u91CF\u201D"
+    },
+    {
+      routeKey: "LOCAL_PROMOTION_DASHBOARD",
+      label: "\u5DE8\u91CF\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8",
+      website: "\u5DE8\u91CF\u672C\u5730\u63A8",
+      purpose: "\u91C7\u96C6\u6D88\u8017\u3001\u9884\u7B97\u3001ROI\u3001\u8BA2\u5355\u548C\u6210\u672C\u6307\u6807",
+      required: true,
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u6570\u636E\u603B\u89C8"
+    },
+    {
+      routeKey: "TASK_TABLE",
+      label: "\u5DE8\u91CF\u672C\u5730\u63A8\u4EFB\u52A1\u5217\u8868",
+      website: "\u5DE8\u91CF\u672C\u5730\u63A8",
+      purpose: "\u91C7\u96C6\u8BA1\u5212\u72B6\u6001\u3001\u9884\u7B97\u3001\u51FA\u4EF7\u548C\u4EFB\u52A1\u5C42\u7EA7\u6570\u636E",
+      required: true,
+      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
+    }
+  ];
+  var collectionRouteLabels = Object.fromEntries(
+    collectionRouteTemplates.map((route) => [route.routeKey, route.label])
+  );
+  var collectionFreshnessPolicy = {
+    agingAfterMs: 5 * 60 * 1e3,
+    staleAfterMs: 10 * 60 * 1e3,
+    patrolIntervalMs: 60 * 1e3,
+    heartbeatUploadMs: 5 * 60 * 1e3,
+    routeFailureThreshold: 3
+  };
+  var primaryCollectionRouteKeys = [
+    "LOCAL_PROMOTION_DASHBOARD",
+    "LIVE_DATA_SCREEN"
+  ];
+  var defaultRequiredCollectionRoutes = [...primaryCollectionRouteKeys];
+  var defaultCollectionRouteTemplates = collectionRouteTemplates.filter((route) => defaultRequiredCollectionRoutes.includes(route.routeKey));
+  function normalizeCollectionRouteKey(value) {
+    return collectionRouteKeys.includes(value) ? value : "UNKNOWN";
+  }
+
+  // ../../packages/shared/src/metric-keys.ts
+  var metricKeys = [
+    "unknown",
+    "verify_roi",
+    "gross_profit_roi",
+    "pay_roi",
+    "full_domain_pay_roi",
+    "full_domain_gmv",
+    "full_domain_orders",
+    "full_domain_product_clicks",
+    "target_roi",
+    "spend",
+    "daily_budget",
+    "remaining_budget",
+    "recent_30m_spend",
+    "recent_30m_orders",
+    "live_duration_minutes",
+    "average_watch_duration_seconds",
+    "minutes_since_last_adjustment",
+    "orders",
+    "impressions",
+    "clicks",
+    "ctr",
+    "cpa",
+    "target_cpa",
+    "live_viewers",
+    "current_online_viewers",
+    "exposure_users",
+    "click_users",
+    "transaction_users",
+    "product_click_rate",
+    "product_conversion_rate",
+    "live_room_click_rate",
+    "hourly_live_views",
+    "hourly_natural_live_views",
+    "hourly_commercial_live_views",
+    "gpm",
+    "gmv",
+    "gross_profit",
+    "merchant_subsidy",
+    "service_fee",
+    "store_rating",
+    "complaint_rate",
+    "refund_rate",
+    "fulfillment_exception_rate",
+    "inventory_capacity",
+    "wrong_price_promise_risk",
+    "activity_verified",
+    "platform_subsidy",
+    "ad_coupon",
+    "rebate_coupon",
+    "shelf_gmv",
+    "search_gmv",
+    "poi_visits",
+    "store_searches"
+  ];
+  var [, ...recordableMetricKeys] = metricKeys;
+
+  // ../../packages/shared/src/diagnosis-context.ts
+  var diagnosisScenarios = ["UNSPECIFIED", "LIVE_MONITORING", "POST_LIVE_REVIEW"];
+  var diagnosisRecentTrendMetricSchema = external_exports.object({
+    metricKey: external_exports.enum(metricKeys),
+    metricName: external_exports.string().min(1).max(100),
+    unit: external_exports.string().max(30).nullable(),
+    baselineValue: external_exports.number().finite(),
+    currentValue: external_exports.number().finite(),
+    delta: external_exports.number().finite()
+  });
+  var diagnosisRecentTrendSchema = external_exports.object({
+    status: external_exports.enum(["AVAILABLE", "INSUFFICIENT"]),
+    reason: external_exports.string().min(1).max(500),
+    baselineStartAt: external_exports.string().datetime().nullable(),
+    baselineEndAt: external_exports.string().datetime().nullable(),
+    currentStartAt: external_exports.string().datetime().nullable(),
+    currentEndAt: external_exports.string().datetime().nullable(),
+    routeKey: external_exports.enum(collectionRouteKeys).nullable(),
+    scope: external_exports.enum(["FULL_DOMAIN", "PAYMENT"]).nullable(),
+    metrics: external_exports.array(diagnosisRecentTrendMetricSchema).max(12),
+    efficiency: external_exports.object({
+      metricLabel: external_exports.string().min(1).max(160),
+      gmvMetricKey: external_exports.enum(metricKeys),
+      spendMetricKey: external_exports.literal("spend"),
+      baselineValue: external_exports.number().finite(),
+      currentValue: external_exports.number().finite(),
+      delta: external_exports.number().finite()
+    }).nullable()
+  });
+  var diagnosisManualActionSummarySchema = external_exports.object({
+    actionProposalId: external_exports.string().min(1),
+    actionType: external_exports.enum(actionTypes),
+    actionTitle: external_exports.string().min(1).max(200).optional(),
+    executedAt: external_exports.string().datetime(),
+    outcome: external_exports.object({
+      result: external_exports.enum(actionOutcomeResults),
+      recordedAt: external_exports.string().datetime()
+    }).nullable()
+  });
+  var diagnosisContextSchema = external_exports.object({
+    version: external_exports.literal(1),
+    scenario: external_exports.enum(diagnosisScenarios),
+    recentTrend: diagnosisRecentTrendSchema,
+    manualActions: external_exports.array(diagnosisManualActionSummarySchema).max(5)
+  });
+
   // ../../packages/shared/src/safety.ts
   var snapshotSafetyLimits = {
     rawDomTextChars: 2e5,
@@ -4256,79 +4464,6 @@
   }
   function isCredentialReferenceKey(normalizedKey) {
     return normalizedKey.endsWith("id");
-  }
-
-  // ../../packages/shared/src/collection-routes.ts
-  var collectionRouteKeys = [
-    "LOCAL_PROMOTION_DASHBOARD",
-    "LIVE_DATA_SCREEN",
-    "LIVE_PRODUCT_TAB",
-    "LIVE_TRAFFIC_TAB",
-    "TASK_TABLE",
-    "MATERIAL_LIBRARY",
-    "HOURLY_TREND",
-    "UNKNOWN"
-  ];
-  var collectionRouteTemplates = [
-    {
-      routeKey: "LIVE_DATA_SCREEN",
-      label: "\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6982\u89C8",
-      website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
-      purpose: "\u91C7\u96C6\u6210\u4EA4\u3001\u89C2\u770B\u3001\u66DD\u5149\u548C\u76F4\u64AD\u95F4\u627F\u63A5\u6307\u6807",
-      required: true,
-      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u6253\u5F00\u6982\u89C8\u9875\u9762"
-    },
-    {
-      routeKey: "LIVE_PRODUCT_TAB",
-      label: "\u76F4\u64AD\u5927\u5C4F\u5546\u54C1\u9875",
-      website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
-      purpose: "\u91C7\u96C6\u5546\u54C1\u652F\u4ED8\u3001\u8BA2\u5355\u3001\u66DD\u5149\u548C\u5546\u54C1\u8F6C\u5316\u6570\u636E",
-      required: false,
-      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u5546\u54C1\u201D"
-    },
-    {
-      routeKey: "LIVE_TRAFFIC_TAB",
-      label: "\u76F4\u64AD\u5927\u5C4F\u6D41\u91CF\u9875",
-      website: "\u6296\u97F3\u751F\u6D3B\u670D\u52A1\u76F4\u64AD\u6570\u636E\u5927\u5C4F",
-      purpose: "\u91C7\u96C6\u81EA\u7136\u6D41\u91CF\u3001\u5546\u4E1A\u6D41\u91CF\u548C\u6D41\u91CF\u8D8B\u52BF",
-      required: false,
-      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u76F4\u64AD\u6570\u636E\u5927\u5C4F\u5207\u6362\u5230\u201C\u6D41\u91CF\u201D"
-    },
-    {
-      routeKey: "LOCAL_PROMOTION_DASHBOARD",
-      label: "\u5DE8\u91CF\u672C\u5730\u63A8\u6570\u636E\u603B\u89C8",
-      website: "\u5DE8\u91CF\u672C\u5730\u63A8",
-      purpose: "\u91C7\u96C6\u6D88\u8017\u3001\u9884\u7B97\u3001ROI\u3001\u8BA2\u5355\u548C\u6210\u672C\u6307\u6807",
-      required: true,
-      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u6570\u636E\u603B\u89C8"
-    },
-    {
-      routeKey: "TASK_TABLE",
-      label: "\u5DE8\u91CF\u672C\u5730\u63A8\u4EFB\u52A1\u5217\u8868",
-      website: "\u5DE8\u91CF\u672C\u5730\u63A8",
-      purpose: "\u91C7\u96C6\u8BA1\u5212\u72B6\u6001\u3001\u9884\u7B97\u3001\u51FA\u4EF7\u548C\u4EFB\u52A1\u5C42\u7EA7\u6570\u636E",
-      required: true,
-      urlHint: "\u8BF7\u5728\u5DF2\u767B\u5F55\u7684\u5DE8\u91CF\u672C\u5730\u63A8\u540E\u53F0\u6253\u5F00\u4EFB\u52A1\u6216\u8BA1\u5212\u5217\u8868"
-    }
-  ];
-  var collectionRouteLabels = Object.fromEntries(
-    collectionRouteTemplates.map((route) => [route.routeKey, route.label])
-  );
-  var collectionFreshnessPolicy = {
-    agingAfterMs: 5 * 60 * 1e3,
-    staleAfterMs: 10 * 60 * 1e3,
-    patrolIntervalMs: 60 * 1e3,
-    heartbeatUploadMs: 5 * 60 * 1e3,
-    routeFailureThreshold: 3
-  };
-  var primaryCollectionRouteKeys = [
-    "LOCAL_PROMOTION_DASHBOARD",
-    "LIVE_DATA_SCREEN"
-  ];
-  var defaultRequiredCollectionRoutes = [...primaryCollectionRouteKeys];
-  var defaultCollectionRouteTemplates = collectionRouteTemplates.filter((route) => defaultRequiredCollectionRoutes.includes(route.routeKey));
-  function normalizeCollectionRouteKey(value) {
-    return collectionRouteKeys.includes(value) ? value : "UNKNOWN";
   }
 
   // ../../packages/shared/src/decision-tables.ts
@@ -4823,17 +4958,25 @@
       selectedAdvid: input.dom?.selectedAdvid || [],
       selectedAwemeId: input.dom?.selectedAwemeId || []
     };
+    const urlEvidenceInput = {
+      ...rawUrlEvidence,
+      selectedAdvid: removeAllSelectionSentinel(rawUrlEvidence.selectedAdvid)
+    };
+    const domEvidenceInput = {
+      ...rawDomEvidence,
+      selectedAdvid: removeAllSelectionSentinel(rawDomEvidence.selectedAdvid)
+    };
     const urlEvidence = {
-      advid: normalizeIdentity(rawUrlEvidence.advid),
-      roomId: normalizeIdentity(rawUrlEvidence.roomId),
-      selectedAdvid: normalizeIdentity(rawUrlEvidence.selectedAdvid),
-      selectedAwemeId: normalizeIdentity(rawUrlEvidence.selectedAwemeId)
+      advid: normalizeIdentity(urlEvidenceInput.advid),
+      roomId: normalizeIdentity(urlEvidenceInput.roomId),
+      selectedAdvid: normalizeIdentity(urlEvidenceInput.selectedAdvid),
+      selectedAwemeId: normalizeIdentity(urlEvidenceInput.selectedAwemeId)
     };
     const domEvidence = {
-      advid: normalizeIdentity(rawDomEvidence.advid),
-      roomId: normalizeIdentity(rawDomEvidence.roomId),
-      selectedAdvid: normalizeIdentity(rawDomEvidence.selectedAdvid),
-      selectedAwemeId: normalizeIdentity(rawDomEvidence.selectedAwemeId)
+      advid: normalizeIdentity(domEvidenceInput.advid),
+      roomId: normalizeIdentity(domEvidenceInput.roomId),
+      selectedAdvid: normalizeIdentity(domEvidenceInput.selectedAdvid),
+      selectedAwemeId: normalizeIdentity(domEvidenceInput.selectedAwemeId)
     };
     const combinedEvidence = {
       advid: normalizeIdentity([...urlEvidence.advid, ...domEvidence.advid]),
@@ -4842,7 +4985,10 @@
       selectedAwemeId: normalizeIdentity([...urlEvidence.selectedAwemeId, ...domEvidence.selectedAwemeId])
     };
     const evidence = { url: urlEvidence, dom: domEvidence };
-    const hasInvalidEvidence = [...Object.values(rawUrlEvidence), ...Object.values(rawDomEvidence)].some((values2) => values2.some((value) => Boolean(value?.trim()) && !/^\d{1,64}$/.test(value.trim())));
+    const hasInvalidEvidence = [...Object.values(urlEvidenceInput), ...Object.values(domEvidenceInput)].some((values2) => values2.some((value) => {
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      return Boolean(trimmed) && !/^\d{1,64}$/.test(trimmed);
+    }));
     const sourceConflict = hasInvalidEvidence || Object.keys(urlEvidence).some((key) => {
       const urlValues = urlEvidence[key];
       const domValues = domEvidence[key];
@@ -4908,6 +5054,9 @@
   }).strict();
   function normalizeIdentity(values) {
     return [...new Set(values.map((value) => value?.trim() || "").filter((value) => /^\d{1,64}$/.test(value)))].slice(0, 2);
+  }
+  function removeAllSelectionSentinel(values) {
+    return values.filter((value) => value?.trim() !== "ALL");
   }
 
   // ../../packages/shared/src/collection-capture.ts
@@ -5113,60 +5262,47 @@
     return evidence.source === "LIVE_SCREEN_INTERNAL_API" ? evidence.routeKey === "LIVE_DATA_SCREEN" && evidence.pageType === "LIVE_DATA_SCREEN" : evidence.routeKey === "LOCAL_PROMOTION_DASHBOARD" && evidence.pageType === "LOCAL_PROMOTION_DASHBOARD";
   }
 
-  // ../../packages/shared/src/metric-keys.ts
-  var metricKeys = [
-    "unknown",
-    "verify_roi",
-    "gross_profit_roi",
-    "pay_roi",
-    "full_domain_pay_roi",
-    "target_roi",
-    "spend",
-    "daily_budget",
-    "remaining_budget",
-    "recent_30m_spend",
-    "recent_30m_orders",
-    "live_duration_minutes",
-    "average_watch_duration_seconds",
-    "minutes_since_last_adjustment",
-    "orders",
-    "impressions",
-    "clicks",
-    "ctr",
-    "cpa",
-    "target_cpa",
-    "live_viewers",
-    "current_online_viewers",
-    "exposure_users",
-    "click_users",
-    "transaction_users",
-    "product_click_rate",
-    "product_conversion_rate",
-    "live_room_click_rate",
-    "hourly_live_views",
-    "hourly_natural_live_views",
-    "hourly_commercial_live_views",
-    "gpm",
-    "gmv",
-    "gross_profit",
-    "merchant_subsidy",
-    "service_fee",
-    "store_rating",
-    "complaint_rate",
-    "refund_rate",
-    "fulfillment_exception_rate",
-    "inventory_capacity",
-    "wrong_price_promise_risk",
-    "activity_verified",
-    "platform_subsidy",
-    "ad_coupon",
-    "rebate_coupon",
-    "shelf_gmv",
-    "search_gmv",
-    "poi_visits",
-    "store_searches"
-  ];
-  var [, ...recordableMetricKeys] = metricKeys;
+  // ../../packages/shared/src/project-history.ts
+  var projectHistoryMetricQualities = ["TRUSTED", "REVIEW_REQUIRED"];
+  var projectHistoryComparisonStatuses = ["IMPROVED", "WORSENED", "NO_CHANGE", "MIXED", "INSUFFICIENT"];
+  var projectHistoryComparisonKinds = ["ANALYSIS_ARCHIVE", "ANALYSIS_WINDOW", "SESSION", "PERIOD"];
+  var projectHistoryMetricSchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    metricKey: external_exports.enum(metricKeys),
+    metricName: external_exports.string().min(1).max(100),
+    value: external_exports.number().finite(),
+    unit: external_exports.string().max(30).nullable(),
+    scopeFingerprint: external_exports.string().regex(/^[a-f0-9]{64}$/),
+    quality: external_exports.enum(projectHistoryMetricQualities)
+  });
+  var projectHistoryComparisonMetricSchema = external_exports.object({
+    routeKey: external_exports.enum(collectionRouteKeys),
+    metricKey: external_exports.enum(metricKeys),
+    metricName: external_exports.string().min(1).max(100),
+    unit: external_exports.string().max(30).nullable(),
+    baselineValue: external_exports.number().finite().nullable(),
+    currentValue: external_exports.number().finite().nullable(),
+    delta: external_exports.number().finite().nullable(),
+    conclusion: external_exports.enum(["IMPROVED", "WORSENED", "NO_CHANGE", "RAW_CHANGE", "INSUFFICIENT"]),
+    note: external_exports.string().min(1).max(300)
+  });
+  var projectHistoryComparisonSchema = external_exports.object({
+    kind: external_exports.enum(projectHistoryComparisonKinds),
+    status: external_exports.enum(projectHistoryComparisonStatuses),
+    label: external_exports.string().min(1).max(160),
+    baselineLabel: external_exports.string().min(1).max(160),
+    currentLabel: external_exports.string().min(1).max(160),
+    baselineAt: external_exports.string().datetime().nullable(),
+    currentAt: external_exports.string().datetime().nullable(),
+    rows: external_exports.array(projectHistoryComparisonMetricSchema).max(80),
+    notices: external_exports.array(external_exports.string().min(1).max(300)).max(8)
+  });
+  var projectHistoryDecisionContextSchema = external_exports.object({
+    version: external_exports.literal(1),
+    capturedAt: external_exports.string().datetime(),
+    archiveComparison: projectHistoryComparisonSchema,
+    periodComparison: projectHistoryComparisonSchema
+  });
 
   // ../../packages/shared/src/collection-dashboard.ts
   var updateDecisionTargetsInputSchema = external_exports.object({
@@ -5290,41 +5426,12 @@
   var accountPlatforms = ["DOUYIN_LOCAL_LIFE"];
   var collectionTaskStatuses = ["PENDING", "COLLECTING", "REVIEWING", "UPLOADED", "PROCESSING", "ANALYZED", "FAILED"];
   var riskLevels = ["LOW", "MEDIUM", "HIGH"];
-  var actionTypes = [
-    "OBSERVE",
-    "INCREASE_BUDGET",
-    "DECREASE_BUDGET",
-    "KEEP_BUDGET",
-    "FINE_TUNE_TARGETING",
-    "DECREASE_BID",
-    "PAUSE_TASK",
-    "ADJUST_ROI_TARGET",
-    "CHECK_LIVE_ROOM",
-    "CHECK_CREATIVE",
-    "CHECK_AUDIENCE",
-    "VERIFY_ACTIVITY",
-    "APPLY_ACTIVITY",
-    "OPTIMIZE_SCRIPT",
-    "REPAIR_REPUTATION",
-    "STRENGTHEN_SHELF",
-    "CHECK_INVENTORY_BOOKING",
-    "OPTIMIZE_POI_SEARCH",
-    "REPLACE_CREATOR",
-    "UNIFY_CREATOR_SCRIPT",
-    "ADJUST_SERVICE_PROVIDER_SOP",
-    "RENEGOTIATE_SERVICE_FEE",
-    "REUSE_MATERIAL",
-    "ALLOCATE_HIGH_VERIFY_STORES",
-    "CALIBRATE_SUBJECT",
-    "REQUEST_MANUAL_REVIEW"
-  ];
   var actionProposalStatuses = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "OBSERVING", "MANUAL_EXECUTED", "EXPIRED", "SUPERSEDED"];
   var metricReviewStatuses = ["PENDING", "CONFIRMED", "MODIFIED", "IGNORED"];
   var dataReviewStatuses = ["REVIEWED", "UNREVIEWED"];
   var metricLayers = ["REVIEWED_METRIC", "REALTIME_API"];
   var observationWindows = ["30m", "2h", "1d", "custom"];
-  var actionOutcomeResults = ["IMPROVED", "WORSENED", "NO_CHANGE", "UNCLEAR"];
-  var extensionBridgeProtocolVersion = 8;
+  var extensionBridgeProtocolVersion = 9;
   var extensionCollectionProtocolVersion = 8;
   var metricKeyLabels = {
     unknown: "\u672A\u77E5\u6307\u6807",
@@ -5332,6 +5439,9 @@
     gross_profit_roi: "\u6BDB\u5229 ROI",
     pay_roi: "\u652F\u4ED8 ROI",
     full_domain_pay_roi: "\u5168\u57DF\u652F\u4ED8 ROI",
+    full_domain_gmv: "\u5168\u57DF\u6210\u4EA4\u91D1\u989D",
+    full_domain_orders: "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570",
+    full_domain_product_clicks: "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570",
     target_roi: "\u76EE\u6807 ROI",
     spend: "\u6D88\u8017",
     daily_budget: "\u65E5\u9884\u7B97",
@@ -5384,6 +5494,9 @@
     gross_profit_roi: ["gross_profit_roi", "\u6BDB\u5229 ROI", "\u6BDB\u5229ROI", "\u6838\u9500\u6BDB\u5229 ROI", "\u6838\u9500\u6BDB\u5229ROI"],
     pay_roi: ["pay_roi", "\u652F\u4ED8 ROI", "\u652F\u4ED8ROI", "\u4ED8\u6B3E ROI", "\u4ED8\u6B3EROI", "\u6574\u4F53\u652F\u4ED8 ROI", "\u6574\u4F53\u652F\u4ED8ROI"],
     full_domain_pay_roi: ["full_domain_pay_roi", "\u5168\u57DF\u652F\u4ED8 ROI", "\u5168\u57DF\u652F\u4ED8ROI", "\u5168\u57DF ROI", "\u5168\u57DFROI"],
+    full_domain_gmv: ["full_domain_gmv", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D", "\u5168\u57DF\u6210\u4EA4\u91D1\u989D(\u5143)", "\u5168\u57DFGMV", "\u5168\u57DF GMV"],
+    full_domain_orders: ["full_domain_orders", "\u5168\u57DF\u6210\u4EA4\u8BA2\u5355\u6570", "\u5168\u57DF\u652F\u4ED8\u8BA2\u5355\u6570"],
+    full_domain_product_clicks: ["full_domain_product_clicks", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB\u6B21\u6570", "\u5168\u57DF\u5546\u54C1\u70B9\u51FB"],
     target_roi: ["target_roi", "\u76EE\u6807 ROI", "\u76EE\u6807ROI"],
     spend: ["spend", "\u6D88\u8017", "\u5E7F\u544A\u6D88\u8017", "\u4ECA\u65E5\u6D88\u8017", "\u6295\u653E\u6D88\u8017"],
     daily_budget: ["daily_budget", "\u65E5\u9884\u7B97", "\u9884\u7B97"],
@@ -5524,6 +5637,7 @@
     collectionTaskId: external_exports.string().min(1, "\u8BF7\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1")
   });
   var extensionHeartbeatSchema = external_exports.object({
+    connectionSessionId: external_exports.string().uuid().optional(),
     collectionTaskId: external_exports.string().min(1, "\u63D2\u4EF6\u5C1A\u672A\u7ED1\u5B9A\u91C7\u96C6\u4EFB\u52A1"),
     extensionVersion: external_exports.string().trim().min(1).max(50),
     bridgeProtocolVersion: external_exports.number().int().min(1).max(100).optional(),
@@ -5750,7 +5864,9 @@
       blocksStrongActions: external_exports.boolean()
     }).optional(),
     realtimeEvidence: realtimeEvidenceSummarySchema.optional(),
-    realtimeEvidenceItems: external_exports.array(realtimeEvidenceSummarySchema).max(4).optional()
+    realtimeEvidenceItems: external_exports.array(realtimeEvidenceSummarySchema).max(4).optional(),
+    historyContext: projectHistoryDecisionContextSchema.optional(),
+    diagnosisContext: diagnosisContextSchema.optional()
   }).superRefine((input, context) => {
     const items = input.realtimeEvidenceItems?.length ? input.realtimeEvidenceItems : input.realtimeEvidence ? [input.realtimeEvidence] : [];
     const seenRoutes = /* @__PURE__ */ new Set();
@@ -6962,6 +7078,21 @@
   var livePulseStorageHydration = null;
   var livePulseStorageWriteQueue = Promise.resolve();
   var latestLivePulseOutcome = null;
+  var connectionSessionId = crypto.randomUUID();
+  var bindingQueue = Promise.resolve();
+  function updateBinding(operation) {
+    const result = bindingQueue.then(operation);
+    bindingQueue = result.then(() => void 0, () => void 0);
+    return result;
+  }
+  async function bridgeBindingResponse(operation) {
+    try {
+      const result = await updateBinding(operation);
+      return { ...await getBridgeStatus(), ...result };
+    } catch {
+      return { ok: false, errorCode: "BRIDGE_REQUEST_FAILED" };
+    }
+  }
   chrome.runtime.onInstalled.addListener(() => {
     void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).then(() => appendLog("extension.installed"));
   });
@@ -7034,7 +7165,7 @@
         sendResponse({ ok: false, error: "\u914D\u5BF9\u6821\u9A8C\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
         return false;
       }
-      void verifyBoundContext().then(sendResponse);
+      void updateBinding(verifyBoundContext).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
@@ -7042,11 +7173,11 @@
       return true;
     }
     if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
-      void syncCurrentTaskFromBridge(sender).then(sendResponse);
+      void bridgeBindingResponse(() => syncCurrentTaskFromBridge(sender)).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
-      void pairTaskFromWeb(message.payload || {}, sender).then(sendResponse);
+      void bridgeBindingResponse(() => pairTaskFromWeb(message.payload || {}, sender)).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
@@ -7058,7 +7189,7 @@
         sendResponse({ ok: false, error: "\u914D\u5BF9\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
         return false;
       }
-      void confirmPairing(sender).then(sendResponse);
+      void updateBinding(() => confirmPairing(sender)).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.CANCEL_PAIRING) {
@@ -7074,7 +7205,7 @@
         sendResponse({ ok: false, error: "\u4EFB\u52A1\u5207\u6362\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
         return false;
       }
-      void selectTask(message.payload || {}).then(sendResponse);
+      void updateBinding(() => selectTask(message.payload || {})).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.CLEAR_PAIRING) {
@@ -7082,7 +7213,7 @@
         sendResponse({ ok: false, error: "\u89E3\u9664\u914D\u5BF9\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
         return false;
       }
-      void clearPairing().then(sendResponse);
+      void updateBinding(clearPairing).then(sendResponse);
       return true;
     }
     if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
@@ -7253,7 +7384,14 @@
         };
       }
       const token = body?.data?.token;
-      if (!token) return { ok: false, errorCode: "PAIRING_RESPONSE_INVALID", error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u6709\u6548\u63D2\u4EF6\u51ED\u8BC1\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
+      if (typeof token !== "string" || !token.trim()) return { ok: false, errorCode: "PAIRING_RESPONSE_INVALID", error: "\u670D\u52A1\u5668\u672A\u8FD4\u56DE\u6709\u6548\u63D2\u4EF6\u51ED\u8BC1\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u3002" };
+      const suggestedTaskId = expectedTaskId || (typeof body?.data?.suggestedTask?.id === "string" ? body.data.suggestedTask.id : void 0);
+      await chrome.storage.local.set({
+        [STORAGE.TOKEN]: token,
+        [STORAGE.CONFIG]: { apiBaseUrl: confirmation.apiBaseUrl, collectionTaskId: suggestedTaskId },
+        [STORAGE.CONTEXT]: null
+      });
+      await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
       const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
         headers: extensionContextRequestHeaders(token)
       });
@@ -7269,7 +7407,6 @@
       if (!protocolCheck.ok) return { ok: false, errorCode: protocolCheck.code, error: protocolErrorMessage(protocolCheck.code) };
       const context = parseExtensionContext(contextBody.data);
       if (!context) return { ok: false, errorCode: "INVALID_CONTEXT", error: "\u670D\u52A1\u5668\u8FD4\u56DE\u7684\u8D26\u53F7\u4E0A\u4E0B\u6587\u65E0\u6548\uFF0C\u5DF2\u505C\u6B62\u914D\u5BF9\u3002" };
-      const suggestedTaskId = expectedTaskId || body?.data?.suggestedTask?.id;
       const suggestedProject = suggestedTaskId ? context.account.projects.find((project) => project.tasks.some((task) => task.id === suggestedTaskId)) : void 0;
       const suggestedTask = suggestedProject?.tasks.find((task) => task.id === suggestedTaskId);
       if (expectedTaskId && (!suggestedProject || !suggestedTask)) {
@@ -7287,6 +7424,7 @@
       };
       const pulseConflict = await pairingPulseConflict(config.collectionTaskId);
       if (pulseConflict) return pulseConflict;
+      await chrome.storage.local.set({ [STORAGE.CONFIG]: config, [STORAGE.CONTEXT]: context });
       const heartbeat = taskPageUrl ? await reportExtensionHeartbeatForCredentials({
         apiBaseUrl: confirmation.apiBaseUrl,
         collectionTaskId: config.collectionTaskId,
@@ -7300,10 +7438,8 @@
           error: /超时/.test(heartbeatError) ? "\u4EFB\u52A1\u9875\u5FC3\u8DF3\u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002" : "\u4EFB\u52A1\u9875\u5FC3\u8DF3\u672A\u88AB\u670D\u52A1\u7AEF\u786E\u8BA4\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002"
         };
       }
-      await chrome.storage.local.set({ [STORAGE.TOKEN]: token, [STORAGE.CONFIG]: config, [STORAGE.CONTEXT]: context });
-      await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
       await appendLog("extension.paired", { accountProfileId: context.account.id, expiresAt: body?.data?.expiresAt });
-      return { ok: true, config, context };
+      return { ok: true, paired: true, config, context };
     } catch (error) {
       return isRequestTimeout(error) ? { ok: false, errorCode: "PAIRING_API_TIMEOUT", error: "\u8BCA\u65AD\u670D\u52A1\u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u672C\u673A API \u540E\u91CD\u8BD5\u3002" } : { ok: false, errorCode: "PAIRING_SERVICE_ERROR", error: "\u65E0\u6CD5\u8FDE\u63A5\u8BCA\u65AD\u670D\u52A1\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u670D\u52A1\u5668\u5730\u5740\u3002" };
     }
@@ -7460,11 +7596,12 @@
       ok: true,
       paired,
       pendingConfirmation: Boolean(local[STORAGE.PENDING_PAIRING_CONFIRMATION]?.expiresAt && new Date(local[STORAGE.PENDING_PAIRING_CONFIRMATION].expiresAt).getTime() > Date.now()),
-      boundTaskId: config.collectionTaskId || null,
+      boundTaskId: paired ? config.collectionTaskId || null : null,
+      connectionSessionId,
       protocolVersion: extensionBridgeProtocolVersion,
       extensionVersion: chrome.runtime.getManifest().version,
-      buildFingerprint: "f268e9840248",
-      message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u914D\u5BF9\u5E76\u7ED1\u5B9A\u5F53\u524D\u4EFB\u52A1" : "\u63D2\u4EF6\u5DF2\u914D\u5BF9\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
+      buildFingerprint: "a5c05f67d34f",
+      message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u6709\u672C\u5730\u51ED\u8BC1\uFF0C\u6B63\u5728\u6838\u5BF9\u4EFB\u52A1\u8FDE\u63A5" : "\u63D2\u4EF6\u5DF2\u6709\u672C\u5730\u51ED\u8BC1\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
     };
   }
   async function syncCurrentTaskFromBridge(sender) {
@@ -7717,7 +7854,7 @@
       return { ok: false, error: "\u670D\u52A1\u7AEF API \u5F00\u5173\u672A\u5F00\u542F\uFF1B\u672A\u542F\u52A8\u5B9E\u65F6\u8109\u51B2\uFF0C\u4E5F\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM\u3002" };
     }
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
-    if (pageContext?.buildFingerprint !== "f268e9840248") {
+    if (pageContext?.buildFingerprint !== "a5c05f67d34f") {
       return { ok: false, error: "\u76EE\u6807\u76F4\u64AD\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u76F4\u64AD\u9875\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
     }
     const initialLiveActivity = livePulseActivityForTab({
@@ -7860,7 +7997,7 @@
       return { ok: false, error: "\u672C\u5730\u63A8 API \u5951\u7EA6\u6216\u9002\u914D\u5668\u7248\u672C\u4E0D\u5339\u914D\uFF1B\u8BF7\u66F4\u65B0\u5E76\u91CD\u542F\u672C\u5730\u670D\u52A1\u3001\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u540E\u518D\u8BD5\u3002" };
     }
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
-    if (pageContext?.buildFingerprint !== "f268e9840248") {
+    if (pageContext?.buildFingerprint !== "a5c05f67d34f") {
       return { ok: false, error: "\u76EE\u6807\u540E\u53F0\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u672C\u5730\u63A8\u9875\u9762\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
     }
     if (pageContext?.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(pageContext?.currentUrl || "") || pageContext?.localPromotionPulseEligible !== true) {
@@ -8174,7 +8311,7 @@
       lastFailureReason: state.lastFailureReason,
       lastFailureEndpoint: state.lastFailureEndpoint,
       rateLimitedUntil: state.rateLimitedUntil,
-      buildFingerprint: "f268e9840248",
+      buildFingerprint: "a5c05f67d34f",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
   }
@@ -8243,7 +8380,7 @@
   }
   function parseStoredLivePulseOutcomes(value) {
     const context = {
-      buildFingerprint: "f268e9840248",
+      buildFingerprint: "a5c05f67d34f",
       collectionProtocolVersion: extensionCollectionProtocolVersion,
       endpointKeys: [
         ...liveScreenInternalApiEndpointKeys,
@@ -8266,7 +8403,7 @@
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const candidate = value;
     const routeKey = candidate.routeKey === "LOCAL_PROMOTION_DASHBOARD" || candidate.routeKey === "LIVE_DATA_SCREEN" ? candidate.routeKey : null;
-    if (candidate.buildFingerprint !== "f268e9840248" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
+    if (candidate.buildFingerprint !== "a5c05f67d34f" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
       return null;
     }
     const allowedMetricKeys = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseMetricKeys : liveScreenPulseCoreMetricKeys;
@@ -8298,7 +8435,7 @@
     await hydrateLivePulseStorage();
     const versionedOutcome = {
       ...outcome,
-      buildFingerprint: "f268e9840248",
+      buildFingerprint: "a5c05f67d34f",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
     latestLivePulseOutcome = versionedOutcome;
@@ -8439,7 +8576,8 @@
           collectionTaskId: credentials.collectionTaskId,
           extensionVersion: chrome.runtime.getManifest().version,
           bridgeProtocolVersion: extensionBridgeProtocolVersion,
-          buildFingerprint: "f268e9840248",
+          buildFingerprint: "a5c05f67d34f",
+          connectionSessionId,
           currentUrl: activity.currentUrl,
           pageType: activity.pageType,
           routeKey: activity.routeKey,
@@ -8545,7 +8683,7 @@
       const body = await response.json().catch(() => null);
       if (!response.ok) {
         const message = body && typeof body === "object" && "error" in body ? body.error?.message : null;
-        return { ok: false, error: typeof message === "string" ? message : "\u65E0\u6CD5\u5237\u65B0\u5F53\u524D\u8D26\u53F7\u4FE1\u606F\uFF0C\u8BF7\u91CD\u65B0\u914D\u5BF9\u540E\u91CD\u8BD5\u3002" };
+        return { ok: false, errorCode: contextRefreshErrorCode(response.status), error: typeof message === "string" ? message : "\u65E0\u6CD5\u5237\u65B0\u5F53\u524D\u8D26\u53F7\u4FE1\u606F\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u540E\u91CD\u8BD5\u3002" };
       }
       const payload = body && typeof body === "object" && "data" in body ? body.data : null;
       const protocolCheck = checkExtensionContextProtocol(payload, extensionCollectionProtocolVersion);
