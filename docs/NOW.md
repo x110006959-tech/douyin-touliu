@@ -2,7 +2,7 @@
 
 ## 2026-09-08 Git/GitHub 同步
 
-- 已将本轮诊断闭环、项目历史对比、场景分析、连接恢复、失败步骤脱敏诊断、Prisma migration、测试与本地解包插件构建产物创建为 `main` 分支本地版本提交；远程同步正在本轮收尾。
+- 已将本轮诊断闭环、项目历史对比、场景分析、连接恢复、失败步骤脱敏诊断、Prisma migration、测试与本地解包插件构建产物创建为 `main` 分支提交 `3bb0970`，并成功同步至 GitHub `main`。
 - 本机环境目录 `.runtime-switch-v19/` 与部署过程日志未纳入版本提交；它们继续留在本机供运行态交接使用。
 - 已通过全仓 `lint`、`typecheck`、`test`、`build`、Prisma `validate`/`generate`、`version:check`、代码卫生与架构边界检查，以及离线诊断评测。
 

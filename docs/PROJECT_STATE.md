@@ -2,7 +2,7 @@
 
 ## 2026-09-08：本轮源码版本已提交，准备同步 GitHub
 
-- 本轮完成的诊断闭环、项目历史对比、场景分析、连接恢复、失败步骤脱敏诊断、回归测试、Prisma migration、验收文档和本地解包插件构建产物已创建 `main` 分支版本提交，远程同步正在收尾。
+- 本轮完成的诊断闭环、项目历史对比、场景分析、连接恢复、失败步骤脱敏诊断、回归测试、Prisma migration、验收文档和本地解包插件构建产物已创建 `main` 分支版本提交 `3bb0970`，并已成功同步 GitHub。
 - `.runtime-switch-v19/` 本机环境文件与部署过程日志未进入版本提交；数据库、业务数据、生产环境和平台操作均未因此改变。
 - 验证已通过：lint、typecheck、全仓 test、build、Prisma validate/generate、version check、代码卫生、架构边界、diff check 和离线诊断评测。
 

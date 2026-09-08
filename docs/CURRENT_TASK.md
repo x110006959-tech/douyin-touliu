@@ -2,7 +2,7 @@
 
 ## 2026-09-08：Git/GitHub 版本同步
 
-- 已完成本轮源码、测试、迁移、验收文档和本地解包插件构建产物的 Git 提交，目标分支为 `main`；远程 GitHub 推送正在收尾。
+- 已完成本轮源码、测试、迁移、验收文档和本地解包插件构建产物的 Git 提交 `3bb0970`，并成功推送到 GitHub `main`。
 - 未纳入提交：`.runtime-switch-v19/` 本机环境文件及 `02_执行过程` 下的部署日志、一次性部署脚本；这些文件保留在本机，不上传远程。
 - 已实际通过 `corepack pnpm lint`、`typecheck`、`test`、`build`、`prisma validate`、`prisma:generate`、`version:check`、`git diff --check` 和 `diagnosis:eval:fake`。
 
