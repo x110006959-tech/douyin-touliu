@@ -40,7 +40,7 @@ type SystemHealth = {
 };
 
 export default function DashboardPage() {
-  const { token, hydrated, setToken } = useAuth();
+  const { token, hydrated, user, setToken } = useAuth();
   const [accounts, setAccounts] = useState<AccountProfile[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [buildMetadata, setBuildMetadata] = useState<BuildMetadata | null>(null);
@@ -159,6 +159,7 @@ export default function DashboardPage() {
           <p className="mt-2 text-sm leading-6 text-muted">一个平台账号一个长期档案。再次使用时可继续原项目，或复用基础配置建立新项目。</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">剩余积分 {user?.creditBalance ?? "-"}</span>
           <Link className="rounded-md border border-border px-4 py-2 text-sm font-medium" href="/extension">插件说明</Link>
           <Link className="rounded-md border border-border px-4 py-2 text-sm font-medium" href="/decision-center">决策中心</Link>
           <Link className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white" href="/accounts/new">新建其他账号</Link>
@@ -198,9 +199,9 @@ export default function DashboardPage() {
             <Link
               className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-danger px-3 text-sm font-medium text-white transition hover:opacity-90"
               href={createLoginHref("/dashboard")}
-              onClick={(event) => {
+              onClick={async (event) => {
                 event.preventDefault();
-                setToken(null);
+                await setToken(null);
                 window.location.replace(createLoginHref("/dashboard"));
               }}
               replace

@@ -53,61 +53,19 @@ import { resolveLiveScreenRoomId } from "./live-screen-room-id";
 import { canKeepLivePulseForUrlUpdate } from "./live-pulse-tab-update";
 import { collectLocalPromotionInternalApi } from "./local-promotion-internal-api";
 import { createLocalPromotionPulseSnapshot } from "./local-promotion-pulse-snapshot";
-
-type CollectionSessionState = {
-  taskId: string;
-  collectionRunId: string;
-  requiredRoutes: CollectionRouteKey[];
-  startedAt: string;
-};
-
-type PageActivity = {
-  currentUrl: string;
-  pageType: CollectionSnapshotPayload["pageType"];
-  routeKey?: CollectionRouteKey;
-  collectable: boolean;
-  tabState: "VISIBLE" | "HIDDEN" | "FROZEN" | "DISCARDED" | "UNKNOWN";
-  observedAt: string;
-  lastError?: string | null;
-};
-
-type RouteUploadState = Record<string, { fingerprint: string; lastUploadAt: number; consecutiveFailures: number }>;
-type PendingPairingConfirmation = {
-  apiBaseUrl: string;
-  code: string;
-  label: string;
-  account: { id: string; accountName: string };
-  task: { id: string; pageTitle: string | null; projectId: string; projectName: string } | null;
-  expiresAt: string;
-  requestedAt: string;
-};
-type PairingExchangeInput = Pick<PendingPairingConfirmation, "apiBaseUrl" | "code" | "label">;
-type PulseState = {
-  loopId: string;
-  tabId: number;
-  taskId: string;
-  identityKey: string;
-  routeKey: "LIVE_DATA_SCREEN" | "LOCAL_PROMOTION_DASHBOARD";
-  currentUrl: string;
-  collectionRunId: string | null;
-  startedAt: string;
-  consecutiveFailures: number;
-  successCount: number;
-  lastSuccessAt: string | null;
-  lastMetricCount: number;
-  lastMetricKeys: string[];
-  lastFailureReason: string | null;
-  lastFailureEndpoint: string | null;
-  rateLimitedUntil: string | null;
-  uploadController: AbortController | null;
-};
-type StoredPulseState = Omit<PulseState, "uploadController"> & {
-  buildFingerprint: string;
-  collectionProtocolVersion: number;
-};
-type StoredPulseStateMap = Record<string, StoredPulseState>;
-type StoredPulseActivityMap = Record<string, LivePulseActivity>;
-type StoredPulseOutcomeMap = Record<string, LivePulseOutcome>;
+import { registerServiceWorkerRuntime } from "./service-worker-runtime";
+import {
+  type CollectionSessionState,
+  type PageActivity,
+  type PairingExchangeInput,
+  type PendingPairingConfirmation,
+  type PulseState,
+  type RouteUploadState,
+  type StoredPulseActivityMap,
+  type StoredPulseOutcomeMap,
+  type StoredPulseState,
+  type StoredPulseStateMap
+} from "./service-worker-state";
 let uploadQueue: Promise<unknown> = Promise.resolve();
 const captureSingleFlight = createKeyedSingleFlight();
 const livePulseStates = new Map<number, PulseState>();
@@ -119,6 +77,20 @@ let livePulseStorageWriteQueue: Promise<void> = Promise.resolve();
 let latestLivePulseOutcome: LivePulseOutcome | null = null;
 const connectionSessionId = crypto.randomUUID();
 let bindingQueue: Promise<unknown> = Promise.resolve();
+const pairingLocalStateKeys = [
+  STORAGE.TOKEN,
+  STORAGE.CONFIG,
+  STORAGE.CONTEXT,
+  STORAGE.ACTIVE_COLLECTION_SESSION,
+  STORAGE.PENDING_PAIRING_CONFIRMATION,
+  STORAGE.LATEST_SNAPSHOT,
+  STORAGE.ROUTE_UPLOAD_STATE,
+  STORAGE.PAGE_ACTIVITY,
+  STORAGE.LOGS,
+  STORAGE.LIVE_PULSE_LAST_OUTCOME,
+  STORAGE.LIVE_PULSE_ACTIVITY,
+  STORAGE.LIVE_PULSE_STATE
+] as const;
 
 function updateBinding<T>(operation: () => Promise<T>) {
   const result = bindingQueue.then(operation);
@@ -134,144 +106,6 @@ async function bridgeBindingResponse(operation: () => Promise<object>) {
     return { ok: false, errorCode: "BRIDGE_REQUEST_FAILED" };
   }
 }
-
-chrome.runtime.onInstalled.addListener(() => {
-  void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
-    .then(() => appendLog("extension.installed"));
-});
-void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  void stopLivePulseForTab(tabId, "TAB_CLOSED");
-});
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  void stopLivePulseForTabUpdate(tabId, changeInfo);
-});
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === MESSAGE.PAGE_ACTIVITY) {
-    void handlePageActivity(message.payload as PageActivity, sender.tab?.id).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.CAPTURE_AND_UPLOAD) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "采集确认只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void captureAndUploadSingleFlight(message.payload || {}).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.START_LIVE_PULSE) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中开启。" });
-      return false;
-    }
-    void startLivePulse(message.payload || {}).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.START_LOCAL_PROMOTION_PULSE) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中开启。" });
-      return false;
-    }
-    void startLocalPromotionPulse(message.payload || {}).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中停止。" });
-      return false;
-    }
-    void stopLivePulse("USER_STOPPED", undefined, undefined, undefined, message.payload?.tabId).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-  if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "实时脉冲只能在插件 Popup 中停止。" });
-      return false;
-    }
-    void stopLivePulse("USER_STOPPED", undefined, undefined, undefined, message.payload?.tabId).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-  if (message?.type === MESSAGE.SUBMIT_LIVE_PULSE) {
-    void submitLivePulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE) {
-    void submitLocalPromotionPulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.GET_STATE) {
-    void getState(Number.isInteger(message.payload?.tabId) ? Number(message.payload.tabId) : undefined).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.VERIFY_BOUND_CONTEXT) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "配对校验只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void updateBinding(verifyBoundContext).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
-    void getBridgeStatus().then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
-    void bridgeBindingResponse(() => syncCurrentTaskFromBridge(sender)).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
-    void bridgeBindingResponse(() => pairTaskFromWeb(message.payload || {}, sender)).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
-    void requestPairingConfirmation(message.payload || {}).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.CONFIRM_PAIRING) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "配对确认只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void updateBinding(() => confirmPairing(sender)).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.CANCEL_PAIRING) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "配对取消只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void cancelPairingConfirmation().then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.SELECT_TASK) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "任务切换只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void updateBinding(() => selectTask(message.payload || {})).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.CLEAR_PAIRING) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "解除配对只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void updateBinding(clearPairing).then(sendResponse);
-    return true;
-  }
-  if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
-    if (!isPopupSender(sender)) {
-      sendResponse({ ok: false, error: "清空本地快照只能在插件 Popup 中完成。" });
-      return false;
-    }
-    void chrome.storage.local.remove(STORAGE.LATEST_SNAPSHOT).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-  return false;
-});
 
 async function saveSnapshot(snapshot: CollectionSnapshotPayload, tabId?: number) {
   const safeSnapshot = sanitizeSnapshotPayload(snapshot) as CollectionSnapshotPayload;
@@ -467,7 +301,23 @@ async function exchangePairingConfirmation(
       [STORAGE.CONFIG]: { apiBaseUrl: confirmation.apiBaseUrl, collectionTaskId: suggestedTaskId },
       [STORAGE.CONTEXT]: null
     });
-    await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
+    await chrome.storage.local.remove([
+      STORAGE.PENDING_PAIRING_CONFIRMATION,
+      STORAGE.ACTIVE_COLLECTION_SESSION,
+      STORAGE.ROUTE_UPLOAD_STATE,
+      STORAGE.LATEST_SNAPSHOT,
+      STORAGE.PAGE_ACTIVITY,
+      STORAGE.LOGS
+    ]);
+    await hydrateLivePulseStorage();
+    if (livePulseStates.size === 0) {
+      await chrome.storage.local.remove([
+        STORAGE.LIVE_PULSE_LAST_OUTCOME,
+        STORAGE.LIVE_PULSE_ACTIVITY,
+        STORAGE.LIVE_PULSE_STATE
+      ]);
+      resetLivePulseStorage();
+    }
     const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
       headers: extensionContextRequestHeaders(token)
     });
@@ -580,6 +430,9 @@ async function selectTask(payload: { collectionTaskId?: string }) {
   const project = context.account.projects.find((item) => item.tasks.some((task) => task.id === taskId));
   const task = project?.tasks.find((item) => item.id === taskId);
   if (!project || !task) return { ok: false, error: "所选任务不属于当前绑定账号，已阻止切换。" };
+  if (config.collectionTaskId === task.id) {
+    return { ok: true, config };
+  }
   await hydrateLivePulseStorage();
   if (shouldBlockTaskSwitchForActivePulse({
     boundTaskId: config.collectionTaskId,
@@ -590,16 +443,15 @@ async function selectTask(payload: { collectionTaskId?: string }) {
   }
   const nextConfig: ExtensionConfig = { ...config, collectionTaskId: task.id, projectId: project.id, projectName: project.name };
   await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig });
-  await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
+  await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.PAGE_ACTIVITY, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
   resetLivePulseStorage();
   await appendLog("task.selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
-  await reportExtensionHeartbeatFromStoredActivity();
   return { ok: true, config: nextConfig };
 }
 
 async function clearPairing() {
   await stopLivePulse("UNPAIRED");
-  await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
+  await chrome.storage.local.remove([...pairingLocalStateKeys]);
   resetLivePulseStorage();
   await appendLog("extension.unpaired");
   return { ok: true };
@@ -792,6 +644,7 @@ async function syncCurrentTaskFromBridge(sender: chrome.runtime.MessageSender) {
         STORAGE.ACTIVE_COLLECTION_SESSION,
         STORAGE.ROUTE_UPLOAD_STATE,
         STORAGE.LATEST_SNAPSHOT,
+        STORAGE.PAGE_ACTIVITY,
         STORAGE.LIVE_PULSE_LAST_OUTCOME,
         STORAGE.LIVE_PULSE_ACTIVITY,
         STORAGE.LIVE_PULSE_STATE
@@ -2078,3 +1931,29 @@ async function appendLog(action: string, detail?: unknown) {
   logs.unshift({ action, detail, createdAt: new Date().toISOString() });
   await chrome.storage.local.set({ [STORAGE.LOGS]: logs.slice(0, 100) });
 }
+
+registerServiceWorkerRuntime({
+  appendLog,
+  bridgeBindingResponse,
+  cancelPairingConfirmation,
+  captureAndUploadSingleFlight,
+  clearPairing,
+  confirmPairing,
+  getBridgeStatus,
+  getState,
+  handlePageActivity,
+  isPopupSender,
+  pairTaskFromWeb,
+  requestPairingConfirmation,
+  selectTask,
+  startLivePulse,
+  startLocalPromotionPulse,
+  stopLivePulse,
+  stopLivePulseForTab,
+  stopLivePulseForTabUpdate,
+  submitLivePulse,
+  submitLocalPromotionPulse,
+  syncCurrentTaskFromBridge,
+  updateBinding,
+  verifyBoundContext
+});

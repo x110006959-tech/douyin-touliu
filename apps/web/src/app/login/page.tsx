@@ -14,8 +14,10 @@ type AuthPayload = {
   csrfToken: string;
   user: {
     id: string;
-    email: string;
+    email: string | null;
+    phone: string | null;
     name: string | null;
+    creditBalance: number;
     workspaceId?: string;
   };
 };
@@ -39,14 +41,14 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
     try {
       const body = {
-        email: form.get("email"),
+        identifier: form.get("identifier"),
         password: form.get("password")
       };
       const payload = await apiFetch<AuthPayload>("/auth/login", null, {
         method: "POST",
         body: JSON.stringify(body)
       });
-      setToken(payload.csrfToken);
+      setToken(payload.csrfToken, payload.user);
       router.push(returnTo);
     } catch (err) {
       if (err instanceof ApiError) setFieldErrors(err.fieldErrors);
@@ -85,13 +87,14 @@ export default function LoginPage() {
         <Card className="border-[#d7dee7] p-6 shadow-[0_18px_50px_rgba(20,33,61,0.08)] sm:p-7">
           <p className="text-xs font-semibold text-primary">欢迎回来</p>
           <CardTitle className="mb-5 mt-2 text-xl">登录工作台</CardTitle>
-          <p className="mb-5 text-sm leading-6 text-muted">请使用管理员发放的账号登录；公开注册入口暂不展示。</p>
+          <p className="mb-5 text-sm leading-6 text-muted">使用邮箱或手机号登录，也可以直接创建新账号。</p>
           <form className="grid gap-4" onSubmit={submit}>
-            <label className="grid gap-1 text-sm">邮箱<Input autoComplete="email" maxLength={128} name="email" type="email" placeholder="name@example.com" required />{fieldErrors.email ? <span className="text-xs text-danger">{fieldErrors.email}</span> : null}</label>
+            <label className="grid gap-1 text-sm">邮箱或手机号<Input autoComplete="username" maxLength={128} name="identifier" placeholder="name@example.com 或 13800000000" required />{fieldErrors.identifier ? <span className="text-xs text-danger">{fieldErrors.identifier}</span> : null}</label>
             <label className="grid gap-1 text-sm">密码<Input autoComplete="current-password" name="password" type="password" minLength={6} maxLength={128} placeholder="至少 6 位" required />{fieldErrors.password ? <span className="text-xs text-danger">{fieldErrors.password}</span> : null}</label>
             {error ? <div className="rounded-md border border-danger bg-[#fff7f7] px-3 py-2 text-sm text-danger">{error}</div> : null}
             <Button className="mt-1 h-11" disabled={submitting} type="submit">{submitting ? "正在登录..." : "登录并进入工作台"}</Button>
           </form>
+          <p className="mt-5 border-t border-border pt-4 text-center text-sm text-muted">还没有账号？ <button className="font-semibold text-primary hover:underline" type="button" onClick={() => router.push("/register")}>注册新账号</button></p>
         </Card>
       </div>
     </main>

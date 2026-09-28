@@ -1,0 +1,4217 @@
+{
+  "generatedAt": "1970-01-01T00:00:00.000Z",
+  "roots": [
+    "apps/api/src",
+    "apps/web/src",
+    "apps/extension/src",
+    "packages/shared/src",
+    "packages/llm/src",
+    "packages/decision-engine/src",
+    "packages/diagnosis-skills/src",
+    "prisma",
+    "tools",
+    "scripts"
+  ],
+  "modules": [
+    {
+      "path": "apps/api/src/action-proposals.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "ActionProposalAuditInput",
+        "approveActionProposal",
+        "markActionProposalManualExecuted",
+        "observeActionProposal",
+        "rejectActionProposal"
+      ],
+      "localDeps": [
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-circuit.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/ai-circuit.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-circuit.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "AiCircuitOpenError",
+        "executeWithAiCircuit",
+        "getAiCircuitStatus",
+        "recordAiFailure",
+        "recordAiSuccess"
+      ],
+      "localDeps": [
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/comparison-language.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "hasKnownRoiContradiction",
+        "hasUnsupportedBenchmark",
+        "hasUnsupportedQualitativeComparison"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/comparison-recovery.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/config.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/llm",
+        "apps/api/src/ai-diagnosis/config.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/config.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "AiDiagnosisConfigurationIssue",
+        "aiDiagnosisConfigurationIssue",
+        "aiDiagnosisEnabled",
+        "aiDiagnosisTimeoutMs",
+        "createConfiguredDiagnosisTransport"
+      ],
+      "localDeps": [
+        "@douyin-local-life/llm"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/decision-view.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/decision-view.js",
+        "apps/api/src/ai-diagnosis/orchestrator.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/decision-view.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "DiagnosisDecisionView",
+        "buildDiagnosisDecisionView",
+        "buildTrustedDiagnosisFactsView"
+      ],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/comparison-language.js",
+        "apps/api/src/ai-diagnosis/experiment-variables.js",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/server-insights.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/experiment-design.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/experiment-variables.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/ai-diagnosis/experiment-variables.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/experiment-variables.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "changedExperimentVariables",
+        "experimentVariableNames"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/orchestrator-validation.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "DiagnosisOrchestrationError",
+        "addUsage",
+        "assertBriefReferences",
+        "assertBusinessFacingLanguage",
+        "assertDeterministicResultConsistency",
+        "assertDomainReferences",
+        "assertDomainResultConsistency",
+        "assertExperimentDesign",
+        "assertFinalReferences",
+        "assertFixedSkillPlan",
+        "buildDecisionRunDeterministicReview",
+        "buildDeterministicDiagnosticSignals"
+      ],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/comparison-language.js",
+        "apps/api/src/ai-diagnosis/experiment-variables.js",
+        "apps/api/src/ai-diagnosis/server-insights.js",
+        "apps/api/src/ai-diagnosis/validation-diagnostic.js",
+        "apps/api/src/diagnosis-cases.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/orchestrator.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "DiagnosisOrchestrationError",
+        "SkillExecutionEvent",
+        "buildDecisionRunDeterministicReview",
+        "buildDeterministicDiagnosticSignals",
+        "determineMainProblemTag",
+        "diagnosisOrchestrationVersion",
+        "diagnosisPromptVersion",
+        "isUsefulDiagnosisHypothesis",
+        "legacyDiagnosisOrchestrationLimits",
+        "normalizeDiagnosisModelOutput",
+        "orchestrateDiagnosis"
+      ],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/orchestrator-validation.js",
+        "apps/api/src/ai-diagnosis/server-insights.js",
+        "apps/api/src/ai-diagnosis/validation-diagnostic.js",
+        "apps/api/src/diagnosis-cases.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/scenario-strategy.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/server-insights.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-diagnosis/server-insights.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/server-insights.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "ServerDiagnosisInsight",
+        "buildServerDiagnosisInsights"
+      ],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/synthetic-evaluation.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/synthetic-evaluation.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "DiagnosisEvaluationCase",
+        "createSyntheticDiagnosisTransport",
+        "evaluateSyntheticDiagnosisSuite",
+        "evaluateSyntheticFailureDisplaySuite",
+        "isDecisionEngineInput"
+      ],
+      "localDeps": [
+        "@douyin-local-life/decision-engine",
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/config.js",
+        "apps/api/src/ai-diagnosis/decision-view.js",
+        "apps/api/src/ai-diagnosis/orchestrator.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/validation-diagnostic.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/validation-diagnostic.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/validation-diagnostic.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "ObservationValidationDiagnostic",
+        "observationValidationDiagnostic"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-diagnosis/experiment-variables.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/worker-orphan.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ai-diagnosis/worker.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "finalizeExpiredMaxAttemptDecisionRuns",
+        "finalizeSucceededDecisionRun",
+        "processNextDecisionRun",
+        "startDecisionWorker"
+      ],
+      "localDeps": [
+        "@douyin-local-life/decision-engine",
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-diagnosis/config.js",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/ai-diagnosis/validation-diagnostic.js",
+        "apps/api/src/credits.js",
+        "apps/api/src/decision-evidence.js",
+        "apps/api/src/decision-readiness.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/audit.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "AuditActorSnapshot",
+        "createAuditActorSnapshot",
+        "writeAuditLog",
+        "writeAuditLogs"
+      ],
+      "localDeps": [
+        "apps/api/src/auth.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/auth.test.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/auth.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/auth.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "AuthUser",
+        "AuthenticatedRequest",
+        "authMiddleware",
+        "clearSessionCookie",
+        "createUserSession",
+        "ensureSecurityConfiguration",
+        "extensionScopeGuard",
+        "hashExtensionSecret",
+        "hashOpaqueSecret",
+        "readCookie",
+        "requireHumanSession",
+        "resolveSecuritySecret"
+      ],
+      "localDeps": [
+        "apps/api/src/prisma.js",
+        "apps/api/src/response.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/capture-derived-data-repair-cli.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/capture-derived-data-repair.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/capture-derived-data-repair.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/capture-derived-data-repair.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/capture-derived-data-repair.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "CaptureDerivedDataRepairResult",
+        "inspectCurrentVerifiedCaptureDerivedData",
+        "repairCurrentVerifiedCaptureDerivedData"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/normalize.js",
+        "apps/api/src/review-metrics.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/capture-summary.test.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/capture-summary.js",
+        "apps/api/src/current-snapshots.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/capture-summary.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [
+        "getCaptureSummary",
+        "selectOverviewMetrics",
+        "summaryDisplayValue",
+        "summarySemanticScope",
+        "tableReviewCoverageForSummary"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/table-cell-reviews.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/collection-runs.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/collection-runs.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/collection-runs.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "assessCollectionRunQuality",
+        "createCollectionRunSchema",
+        "getOwnedCollectionRun",
+        "hydrateCurrentRunSnapshots",
+        "refreshCollectionRunStatus",
+        "reportCollectionRouteFailureSchema",
+        "requiredRoutesFromJson",
+        "sameCollectionRouteSet",
+        "toCollectionRunDTO"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/credits.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "chargeDiagnosisCredit",
+        "diagnosisCreditCost",
+        "initialCreditBalance",
+        "refundDecisionRunCredit"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/csrf.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "csrfProtection",
+        "hashCsrfToken"
+      ],
+      "localDeps": [
+        "apps/api/src/auth.js",
+        "apps/api/src/http-security.js",
+        "apps/api/src/response.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/current-snapshots.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/current-snapshots.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/current-snapshots.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "findCurrentSnapshotIdsByRoute",
+        "selectLatestSnapshotsByRoute"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-evidence.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/decision-evidence.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-evidence.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "DecisionEvidenceChangedError",
+        "decisionEvidenceFingerprint"
+      ],
+      "localDeps": [
+        "apps/api/src/current-snapshots.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow-test-support.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "ActionOutcomeResponse",
+        "ApiEnvelope",
+        "DecisionRunResponse",
+        "ProjectOutcomeSummaryResponse",
+        "ReviewMetricResponse",
+        "captureMeta",
+        "createDecisionFlowApiClient",
+        "hashForTest",
+        "internalApiPulseMetric",
+        "localPromotionPulseMetric",
+        "metric",
+        "restoreDecisionTestEnvironment"
+      ],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow.account-pairing.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/decision-flow-test-support.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow.realtime-manual-import.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/decision-flow-test-support.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow.review-calibration.test.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/decision-flow-test-support.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow.route-confirmation.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/decision-flow-test-support.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow.smoke.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/decision-flow-test-support.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-flow.table-calibration.test.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/decision-flow-test-support.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-readiness.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "evaluateDecisionReadiness"
+      ],
+      "localDeps": [
+        "@douyin-local-life/decision-engine",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/formal-decision-readiness",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/decision.js",
+        "apps/api/src/ownership.js",
+        "apps/api/src/realtime-decision-evidence.js",
+        "apps/api/src/review-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-safety.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/decision-readiness.js",
+        "apps/api/src/decision.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-targets.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "currentTargetRoiMetric",
+        "replaceTaskTargetRoi",
+        "targetRoiFromMetrics",
+        "targetRoiMetricKey",
+        "targetRoiVisibleMetric"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/review-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision-worker-main.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/ai-diagnosis/worker.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/decision.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "buildDecisionInput",
+        "hasUntrustedCurrentEvidence",
+        "runDecisionEngine",
+        "strategyVersion",
+        "toActionProposalCreate"
+      ],
+      "localDeps": [
+        "@douyin-local-life/decision-engine",
+        "@douyin-local-life/shared",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/decision-targets.js",
+        "apps/api/src/metric-validation.js",
+        "apps/api/src/proposal-lifecycle.js",
+        "apps/api/src/realtime-decision-evidence.js",
+        "apps/api/src/review-metrics.js",
+        "apps/api/src/table-cell-reviews.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/diagnosis-cases.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "DiagnosisCaseRetrievalHints",
+        "attachOutcomeToDiagnosisCase",
+        "caseCanBecomeEligible",
+        "findSimilarDiagnosisCases",
+        "upsertDraftDiagnosisCase"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/diagnosis-eval-cli.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/config.js",
+        "apps/api/src/ai-diagnosis/synthetic-evaluation.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/email-verification.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "ensureEmailDeliveryConfigured",
+        "resetTestEmailDeliveries",
+        "sendEmailVerification",
+        "takeLatestVerificationForTest"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/extension-presence.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/extension-presence.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/extension-presence.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "clearExtensionPresenceForTests",
+        "getExtensionStatus",
+        "recordExtensionPresence",
+        "removeExtensionPresence"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/http-security.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "assignRequestId",
+        "configuredExtensionOrigins",
+        "configuredWebOrigins",
+        "corsOrigin",
+        "getRequestId",
+        "isAllowedWebOrigin",
+        "requireConfiguredWebOrigins",
+        "sanitizeErrorForLog",
+        "sanitizeErrorMessage"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/idempotency.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/idempotency.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/idempotency.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "isUniqueConstraintError",
+        "readIdempotencyKey"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/index.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/email-verification.js",
+        "apps/api/src/http-security.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/project-history.js",
+        "apps/api/src/security-metrics.js",
+        "apps/api/src/server.js",
+        "apps/api/src/sse-limits.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/live-screen-internal-api-config.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "liveScreenInternalApiEnabled"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/live-screen-internal-api-validation.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/live-screen-internal-api-validation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/live-screen-internal-api-validation.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "validateLiveScreenInternalApiPayload"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/live-screen-minute-trend.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/live-screen-minute-trend.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/live-screen-minute-trend.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "structureLiveScreenMinuteTrend"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/local-promotion-internal-api-config.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "localPromotionInternalApiEnabled"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/local-promotion-internal-api-validation.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/local-promotion-internal-api-validation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/local-promotion-internal-api-validation.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "validateLocalPromotionInternalApiPulse"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/metric-drift.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "metricAliasOverrideInputSchema",
+        "metricDriftStatusSchema",
+        "normalizeAlias",
+        "recordMetricDriftEvents"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/metric-validation.test.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/metric-validation.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/metric-validation.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [
+        "calibrateFullyReviewedTables",
+        "calibrationInputForMetric",
+        "canAutoConfirmMetric",
+        "confirmTableBindingCalibration",
+        "hasTrustedMetricEvidence",
+        "hasTrustedTableBinding",
+        "hasTrustedTableBindings",
+        "isConfirmableMetricEvidence",
+        "isInvalidMetricEvidence",
+        "needsManualBindingReview",
+        "qualifyCapturedMetrics",
+        "qualifyTableBindings"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/normalize.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/normalize.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/normalize.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "MetricAliasOverrideInput",
+        "normalizeMetrics"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/outcomes.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createActionOutcome",
+        "getProjectOutcomeSummary",
+        "listActionOutcomes",
+        "toActionOutcomeDTO"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/pagination.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/ownership.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "getOwnedActionProposal",
+        "getOwnedProject",
+        "getOwnedReviewedMetric",
+        "getOwnedTask",
+        "getOwnedTaskAccess",
+        "getTaskForDecision"
+      ],
+      "localDeps": [
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/pagination.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/pagination.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/pagination.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "cursorArgs",
+        "readPagination"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/persisted-input.test.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/audit.js",
+        "apps/api/src/persisted-input.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/persisted-input.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "SensitivePersistedInputError",
+        "readSafeOptionalText",
+        "sanitizeDerivedPersistedJson",
+        "sanitizePersistedJson",
+        "sanitizeRequestMetadata"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/prisma.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "prisma"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/project-history-comparison.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "compareAnalysisWindowPoints",
+        "compareHistoryMetrics",
+        "comparePeriodPoints",
+        "emptyComparison",
+        "latestMetricsForSession"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/project-history-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/project-history-metrics.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "DiagnosisContextClient",
+        "HistoryClient",
+        "ProjectHistoryComparisonPoint",
+        "analysisWindowToleranceMs",
+        "archiveMetricsFromDecisionInput",
+        "beijingDayKey",
+        "beijingOffsetMs",
+        "fingerprintComparison",
+        "historyMetricSetFingerprint",
+        "isCumulativeMetric",
+        "isRatioMetric",
+        "metricComparisonKey"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/project-history-queries.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "buildDiagnosisContext",
+        "buildProjectHistoryDecisionContext",
+        "getProjectHistoryComparison",
+        "getProjectHistoryOverview"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/project-history-comparison.js",
+        "apps/api/src/project-history-metrics.js",
+        "apps/api/src/project-history-recent-trend.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/project-history-recent-trend.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "buildRecentFifteenMinuteTrend"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/project-history-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/project-history-write.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "archiveInactiveProjectHistorySessions",
+        "createProjectAnalysisArchive",
+        "markProjectAnalysisArchiveRunStatus",
+        "recordProjectHistoryObservation",
+        "startProjectHistoryLifecycle"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/project-history-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/project-history.test.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/project-history.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/project-history.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "archiveInactiveProjectHistorySessions",
+        "archiveMetricsFromDecisionInput",
+        "buildDiagnosisContext",
+        "buildProjectHistoryDecisionContext",
+        "buildRecentFifteenMinuteTrend",
+        "compareAnalysisWindowPoints",
+        "compareHistoryMetrics",
+        "comparePeriodPoints",
+        "createProjectAnalysisArchive",
+        "getProjectHistoryComparison",
+        "getProjectHistoryOverview",
+        "markProjectAnalysisArchiveRunStatus"
+      ],
+      "localDeps": [
+        "apps/api/src/project-history-comparison.js",
+        "apps/api/src/project-history-metrics.js",
+        "apps/api/src/project-history-queries.js",
+        "apps/api/src/project-history-recent-trend.js",
+        "apps/api/src/project-history-write.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/proposal-lifecycle.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "actionProposalStatusFilter",
+        "isSafeActionType",
+        "prepareActionProposals",
+        "proposalExpiresAfterMs",
+        "proposalLifecyclePolicy",
+        "readableActionProposalStatus",
+        "toReadableActionProposal"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/rate-limit.test.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/prisma.js",
+        "apps/api/src/rate-limit.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/rate-limit.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "RateLimitCheck",
+        "checkAiExplanationRateLimit",
+        "checkDecisionRateLimit",
+        "checkEmailVerificationRateLimit",
+        "checkExtensionPairingRateLimit",
+        "checkLoginRateLimit",
+        "checkMetricPulseRateLimit",
+        "checkRegisterRateLimit",
+        "checkSnapshotRateLimit",
+        "checkWriteRateLimit",
+        "metricPulseRateLimitWindowMs",
+        "resetRateLimitBuckets"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/auth.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/realtime-decision-evidence.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/decision.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/realtime-decision-evidence.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "applyLiveOverviewRealtimeRouteCoverage",
+        "applyRealtimeRouteCoverage",
+        "hasUsableLiveOverviewRealtimeEvidence",
+        "liveOverviewRealtimeDecisionEvidence",
+        "liveOverviewRealtimeDecisionFreshnessMs",
+        "localPromotionRealtimeDecisionEvidence",
+        "localPromotionRealtimeDecisionFreshnessMs",
+        "realtimeDecisionEvidenceForFrame"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/realtime-signals.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/realtime-signals.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/realtime-signals.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "clearRealtimeSignalStore",
+        "latestRealtimeMetricFrame",
+        "latestRealtimeMetricFrames",
+        "latestRealtimeSignals",
+        "recordMetricPulse",
+        "subscribeRealtimeMetricFrames",
+        "subscribeRealtimeSignals"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/response.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "sendError",
+        "sendSuccess",
+        "validationErrorOptions"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/retention-cli.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/prisma.js",
+        "apps/api/src/retention.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/retention-scheduler.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/http-security.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/retention.js",
+        "apps/api/src/security-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/retention.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/prisma.js",
+        "apps/api/src/retention.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/retention.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "RetentionMode",
+        "RetentionOptions",
+        "RetentionReport",
+        "retentionPolicy",
+        "runRetention"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/review-metrics.test.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/review-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/review-metrics.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [
+        "TaskReviewInput",
+        "canConfirmMetric",
+        "canModifyMetric",
+        "currentReviewSnapshots",
+        "currentReviewedMetrics",
+        "defaultConfidence",
+        "ensureReviewMetricsForTask",
+        "isSourceConflictMetric",
+        "latestSnapshot",
+        "normalizeReviewPatch",
+        "normalizedMetricsToVisibleMetrics",
+        "resolveSourceConflictReview"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/metric-validation.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/accounts.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "accountIdentity",
+        "createAccountRouter",
+        "normalizeAccountValue",
+        "ownedAccount"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/audit.js",
+        "apps/api/src/idempotency.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/response.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/action-proposals.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createActionProposalRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/action-proposals.js",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/audit.js",
+        "apps/api/src/diagnosis-cases.js",
+        "apps/api/src/idempotency.js",
+        "apps/api/src/outcomes.js",
+        "apps/api/src/ownership.js",
+        "apps/api/src/pagination.js",
+        "apps/api/src/persisted-input.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/auth.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "createAuthRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/auth.js",
+        "apps/api/src/credits.js",
+        "apps/api/src/csrf.js",
+        "apps/api/src/email-verification.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/rate-limit.js",
+        "apps/api/src/response.js",
+        "apps/api/src/transactions.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/collection-dashboard.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createCollectionDashboardRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/audit.js",
+        "apps/api/src/capture-summary.js",
+        "apps/api/src/current-snapshots.js",
+        "apps/api/src/decision-targets.js",
+        "apps/api/src/metric-validation.js",
+        "apps/api/src/ownership.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/realtime-signals.js",
+        "apps/api/src/response.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/credits.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "createCreditsRouter"
+      ],
+      "localDeps": [
+        "apps/api/src/prisma.js",
+        "apps/api/src/response.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/decision-runs.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createDecisionRunRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/diagnosis-skills",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/api/src/ai-diagnosis/config.js",
+        "apps/api/src/ai-diagnosis/decision-view.js",
+        "apps/api/src/ai-diagnosis/orchestrator.js",
+        "apps/api/src/audit.js",
+        "apps/api/src/credits.js",
+        "apps/api/src/decision-evidence.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/extension-pairing.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createExtensionProtectedRouter",
+        "createExtensionPublicRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/audit.js",
+        "apps/api/src/auth.js",
+        "apps/api/src/extension-presence.js",
+        "apps/api/src/live-screen-internal-api-config.js",
+        "apps/api/src/local-promotion-internal-api-config.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/rate-limit.js",
+        "apps/api/src/response.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/project-history.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "createProjectHistoryRouter"
+      ],
+      "localDeps": [
+        "apps/api/src/ownership.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/project-history.js",
+        "apps/api/src/response.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/review-metrics.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [
+        "createReviewMetricRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/audit.js",
+        "apps/api/src/metric-validation.js",
+        "apps/api/src/ownership.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/response.js",
+        "apps/api/src/review-metrics.js",
+        "apps/api/src/server-utils.js",
+        "apps/api/src/transactions.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/snapshot-accounts.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createSnapshotAccountRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/api/src/audit.js",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/project-history.js",
+        "apps/api/src/response.js",
+        "apps/api/src/review-metrics.js",
+        "apps/api/src/server-utils.js",
+        "apps/api/src/transactions.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/system-health.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createSystemHealthRouter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/llm",
+        "apps/api/src/ai-circuit.js",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/response.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/routes/workspaces.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createWorkspaceRouter"
+      ],
+      "localDeps": [
+        "apps/api/src/audit.js",
+        "apps/api/src/persisted-input.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/response.js",
+        "apps/api/src/server-utils.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/security-metrics.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/prisma.js",
+        "apps/api/src/security-metrics.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/security-metrics.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "SecurityMetricKey",
+        "flushSecurityMetrics",
+        "observeSecurityMetricResponse",
+        "queueSecurityMetrics",
+        "recordSecurityMetrics"
+      ],
+      "localDeps": [
+        "apps/api/src/http-security.js",
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/security.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/auth.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/rate-limit.js",
+        "apps/api/src/server.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/server-routes.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "registerLegacyRoutes"
+      ],
+      "localDeps": [
+        "@douyin-local-life/decision-engine",
+        "@douyin-local-life/llm",
+        "@douyin-local-life/shared",
+        "apps/api/src/ai-circuit.js",
+        "apps/api/src/audit.js",
+        "apps/api/src/auth.js",
+        "apps/api/src/capture-summary.js",
+        "apps/api/src/collection-runs.js",
+        "apps/api/src/csrf.js",
+        "apps/api/src/decision-evidence.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/server-utils.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "actionProposalAudit",
+        "currentUser",
+        "readOptionalText",
+        "toJson"
+      ],
+      "localDeps": [
+        "apps/api/src/audit.js",
+        "apps/api/src/auth.js",
+        "apps/api/src/persisted-input.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/server.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createServer"
+      ],
+      "localDeps": [
+        "apps/api/src/auth.js",
+        "apps/api/src/csrf.js",
+        "apps/api/src/http-security.js",
+        "apps/api/src/prisma.js",
+        "apps/api/src/rate-limit.js",
+        "apps/api/src/response.js",
+        "apps/api/src/routes/accounts.js",
+        "apps/api/src/routes/action-proposals.js",
+        "apps/api/src/routes/auth.js",
+        "apps/api/src/routes/collection-dashboard.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/sse-limits.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/sse-limits.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/sse-limits.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "closeAllSseConnections",
+        "getSseConnectionMetrics",
+        "registerSseConnectionCloser",
+        "reserveSseConnection",
+        "resetSseConnectionLimits"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/sse-writer.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/sse-writer.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/sse-writer.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "createKeyedLatestSseWriter",
+        "createLatestSseWriter",
+        "maxSseBufferedBytes"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/api/src/table-cell-reviews.ts",
+      "domain": "reviewAndCalibration",
+      "owner": "服务端 - 复核校准",
+      "exports": [
+        "applyTableCellReviews",
+        "coordinateKey",
+        "getTableCellValue",
+        "projectSnapshotTables",
+        "tableCellReviewCoverage",
+        "toTableCellReviewDTO"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/api/src/transactions.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "apps/api/src/transactions.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/transactions.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "isSerializableConflict",
+        "runSerializableTransaction"
+      ],
+      "localDeps": [
+        "apps/api/src/prisma.js"
+      ]
+    },
+    {
+      "path": "apps/api/src/version.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "getBuildMetadata"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/bridge-protocol.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/bridge-protocol"
+      ]
+    },
+    {
+      "path": "apps/extension/src/bridge-protocol.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "BridgeWindowMessage",
+        "BridgeWindowMessageType",
+        "ExtensionBridgeRequest",
+        "ExtensionBridgeResponse",
+        "isAllowedBridgeApiBaseUrl",
+        "isAllowedBridgeOrigin",
+        "parseBridgeRequest",
+        "parseBridgeWindowMessage",
+        "sanitizeBridgeResponse",
+        "serializeBridgeWindowMessage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/build-target"
+      ]
+    },
+    {
+      "path": "apps/extension/src/build-target.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "apiBaseUrlGuidance",
+        "defaultApiBaseUrl",
+        "developmentLoopbackHostnames",
+        "isLocalBuild",
+        "localWebPort"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/capture-budget.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/capture-budget"
+      ]
+    },
+    {
+      "path": "apps/extension/src/capture-budget.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "CaptureBudgetState",
+        "applyCaptureBudget",
+        "captureBudget",
+        "collectBudgetedTables",
+        "collectBudgetedVisibleText",
+        "createCaptureBudgetState",
+        "isCaptureVisibleElement"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/connection-recovery.integration.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/bridge-protocol",
+        "apps/extension/src/messages"
+      ]
+    },
+    {
+      "path": "apps/extension/src/content.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "apps/extension/src/capture-budget",
+        "apps/extension/src/live-pulse-schedule",
+        "apps/extension/src/live-screen-capture-plan",
+        "apps/extension/src/live-screen-internal-api",
+        "apps/extension/src/live-screen-metric-merge",
+        "apps/extension/src/live-screen-pulse-page",
+        "apps/extension/src/live-screen-room-id",
+        "apps/extension/src/messages"
+      ]
+    },
+    {
+      "path": "apps/extension/src/extension-context.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/extension-context"
+      ]
+    },
+    {
+      "path": "apps/extension/src/extension-context.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "ExtensionConfig",
+        "ExtensionContext",
+        "ExtensionContextProtocolCheck",
+        "ExtensionProject",
+        "ExtensionTask",
+        "checkExtensionContextProtocol",
+        "parseExtensionContext",
+        "refreshConfigFromContext"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/globals.d.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/live-pulse-activity.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/content.ts?raw",
+        "apps/extension/src/live-pulse-activity",
+        "apps/extension/src/service-worker-runtime.ts?raw",
+        "apps/extension/src/service-worker.ts?raw"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-activity.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LivePulseActivity",
+        "isLivePulseActivityReporter",
+        "livePulseActivityForTab"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-api-collector.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/popup.html?raw",
+        "apps/extension/sidepanel.html?raw",
+        "apps/extension/src/content.ts?raw",
+        "apps/extension/src/metric-pulse-upload.ts?raw",
+        "apps/extension/src/service-worker.ts?raw",
+        "apps/extension/src/sidepanel.ts?raw"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-failure.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-pulse-failure"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-failure.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LivePulseFailureProgress",
+        "advanceLivePulseFailure",
+        "fatalLivePulseFailureReason",
+        "isFatalLivePulseFailure"
+      ],
+      "localDeps": [
+        "apps/extension/src/live-pulse-status"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-schedule.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-pulse-schedule"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-schedule.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "livePulseCadenceMs",
+        "livePulseUploadSafetyIntervalMs",
+        "localPromotionPulseCadenceMs",
+        "localPromotionRateLimitCooldownMs",
+        "localPromotionRateLimitCooldownRemaining",
+        "nextLivePulseAfter",
+        "nextLivePulseAfterRateLimit",
+        "nextLivePulseAt"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/live-pulse-status.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/live-pulse-status"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-status.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LivePulseDisplayState",
+        "LivePulseOutcome",
+        "LivePulseOutcomeContext",
+        "livePulseButtonState",
+        "livePulseMetricCoverage",
+        "livePulseOutcomeMessage",
+        "livePulseReasonText",
+        "livePulseStatusText",
+        "localPromotionPulseMetricCoverage",
+        "normalizeLivePulseMetricKeys",
+        "parseLivePulseOutcome",
+        "safeLivePulseFailureReason"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-tab-update.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-pulse-tab-update"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-pulse-tab-update.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LivePulseTabUpdateState",
+        "canKeepLivePulseForUrlUpdate"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/live-screen-pulse-page"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-capture-plan.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-screen-capture-plan"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-capture-plan.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "liveScreenCapturePlan"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/live-screen-internal-api.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-screen-internal-api"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-internal-api.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LiveScreenInternalApiCollection",
+        "collectLiveScreenInternalApi",
+        "liveScreenInternalApiRequestTimeoutMs",
+        "readApprovedFieldValue"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-metric-merge.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/live-screen-metric-merge"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-metric-merge.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "liveScreenMetricsForMode",
+        "mergeLiveScreenMetrics"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-pulse-page.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-screen-pulse-page"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-pulse-page.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LivePulsePageContext",
+        "isExactLiveScreenPage",
+        "livePulsePageContext",
+        "livePulseRouteDetection"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared/collection-routes"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-room-id.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-screen-room-id"
+      ]
+    },
+    {
+      "path": "apps/extension/src/live-screen-room-id.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "resolveLiveScreenRoomId",
+        "type LiveScreenRoomIdEvidence",
+        "type LiveScreenRoomIdResolution",
+        "type LiveScreenRoomIdSource"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/local-promotion-internal-api.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/content.ts?raw",
+        "apps/extension/src/local-promotion-internal-api",
+        "apps/extension/src/local-promotion-pulse-snapshot",
+        "apps/extension/src/service-worker.ts?raw"
+      ]
+    },
+    {
+      "path": "apps/extension/src/local-promotion-internal-api.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "LocalPromotionInternalApiCollection",
+        "collectLocalPromotionInternalApi",
+        "localPromotionInternalApiRequestTimeoutMs"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/local-promotion-pulse-snapshot.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "createLocalPromotionPulseSnapshot"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/local-promotion-internal-api",
+        "apps/extension/src/safety"
+      ]
+    },
+    {
+      "path": "apps/extension/src/messages.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "MESSAGE",
+        "STORAGE"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/metric-pulse-upload.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/metric-pulse-upload"
+      ]
+    },
+    {
+      "path": "apps/extension/src/metric-pulse-upload.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "MetricPulseUploadResult",
+        "metricPulseUploadTimeoutMs",
+        "uploadMetricPulseRequest"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/extension/src/page-adapters.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/page-adapters"
+      ]
+    },
+    {
+      "path": "apps/extension/src/page-adapters.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "PageAdapter",
+        "PageAdapterInput",
+        "selectPageAdapter"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/capture-budget"
+      ]
+    },
+    {
+      "path": "apps/extension/src/popup-lifecycle.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/popup.html?raw",
+        "apps/extension/src/live-pulse-status.ts?raw",
+        "apps/extension/src/popup.ts?raw"
+      ]
+    },
+    {
+      "path": "apps/extension/src/popup.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "apps/extension/src/extension-context",
+        "apps/extension/src/live-pulse-schedule",
+        "apps/extension/src/live-pulse-status",
+        "apps/extension/src/messages",
+        "apps/extension/src/safety"
+      ]
+    },
+    {
+      "path": "apps/extension/src/raw-imports.d.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "source"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/request-timeout.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/request-timeout",
+        "apps/extension/src/service-worker.ts?raw"
+      ]
+    },
+    {
+      "path": "apps/extension/src/request-timeout.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "bridgeRecoveryRequestTimeoutMs",
+        "extensionRequestTimeoutMs",
+        "fetchWithTimeout",
+        "isRequestTimeout"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/safety.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/safety"
+      ]
+    },
+    {
+      "path": "apps/extension/src/safety.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "isSupportedExtensionCollectionUrl",
+        "normalizeApiBaseUrl",
+        "sanitizeSensitiveFields",
+        "sanitizeSnapshotPayload",
+        "shouldRedactKey"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/build-target"
+      ]
+    },
+    {
+      "path": "apps/extension/src/service-worker-runtime.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "registerServiceWorkerRuntime"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/messages"
+      ]
+    },
+    {
+      "path": "apps/extension/src/service-worker-state.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "CollectionSessionState",
+        "PageActivity",
+        "PairingExchangeInput",
+        "PendingPairingConfirmation",
+        "PulseState",
+        "RouteUploadState",
+        "StoredPulseActivityMap",
+        "StoredPulseOutcomeMap",
+        "StoredPulseState",
+        "StoredPulseStateMap"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/live-pulse-activity",
+        "apps/extension/src/live-pulse-status"
+      ]
+    },
+    {
+      "path": "apps/extension/src/service-worker.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "apps/extension/src/build-target",
+        "apps/extension/src/extension-context",
+        "apps/extension/src/live-pulse-activity",
+        "apps/extension/src/live-pulse-failure",
+        "apps/extension/src/live-pulse-schedule",
+        "apps/extension/src/live-pulse-status",
+        "apps/extension/src/live-pulse-tab-update",
+        "apps/extension/src/live-screen-pulse-page"
+      ]
+    },
+    {
+      "path": "apps/extension/src/sidepanel.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/live-pulse-status",
+        "apps/extension/src/messages"
+      ]
+    },
+    {
+      "path": "apps/extension/src/single-flight.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/single-flight"
+      ]
+    },
+    {
+      "path": "apps/extension/src/single-flight.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "createKeyedSingleFlight"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/extension/src/task-page-bridge-recovery.test.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "apps/extension/src/extension-context",
+        "apps/extension/src/task-page-bridge-recovery"
+      ]
+    },
+    {
+      "path": "apps/extension/src/task-page-bridge-recovery.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [
+        "TaskPageBinding",
+        "contextRefreshErrorCode",
+        "createTaskPageConnectionActivity",
+        "isTaskBridgePageUrl",
+        "resolveTaskPageBinding",
+        "shouldBlockTaskSwitchForActivePulse",
+        "taskIdFromBridgePageUrl"
+      ],
+      "localDeps": [
+        "apps/extension/src/build-target",
+        "apps/extension/src/extension-context"
+      ]
+    },
+    {
+      "path": "apps/extension/src/web-bridge.ts",
+      "domain": "extensionCapture",
+      "owner": "Extension - 插件采集",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/extension/src/bridge-protocol",
+        "apps/extension/src/messages"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/accounts/[id]/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "AccountPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/accounts/new/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "NewAccountPage"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/app/action-proposals/[id]/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ActionProposalDetailPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/dashboard/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "DashboardPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/decision-center/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "DecisionCenterPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/email-verification/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "EmailVerificationPage"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/app/extension/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ExtensionPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/home-footer.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/app/layout.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "RootLayout",
+        "metadata"
+      ],
+      "localDeps": [
+        "apps/web/src/app/globals.css"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/login/page.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/auth-redirect"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/login/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "LoginPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "HomePage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/privacy/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "PrivacyPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/projects/[id]/history/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ProjectHistoryPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/projects/[id]/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ProjectDetailPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/projects/new/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "NewProjectPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/register/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "RegisterPage"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/collection-dashboard/collection-route-flow.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "CollectionRouteFlow",
+        "routeHasUsableData",
+        "routeNeedsAttention",
+        "sortPrimaryRoutes"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/collection-dashboard/overview-panel.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "OverviewPanel"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/collection-dashboard/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "CollectionDashboardPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/web/src/app/tasks/[id]/collection-dashboard/collection-route-flow",
+        "apps/web/src/app/tasks/[id]/collection-dashboard/overview-panel",
+        "apps/web/src/app/tasks/[id]/collection-dashboard/refresh-policy",
+        "apps/web/src/app/tasks/[id]/diagnosis-business-summary",
+        "apps/web/src/app/tasks/[id]/diagnosis-comparison",
+        "apps/web/src/app/tasks/[id]/task-types"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/collection-dashboard/refresh-policy.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/app/tasks/[id]/collection-dashboard/refresh-policy"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/collection-dashboard/refresh-policy.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "CollectionDashboardCalibrationState",
+        "CollectionDashboardRefreshMode",
+        "collectionDashboardCalibrationState",
+        "collectionDashboardRefreshMode"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/collection-tutorial.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "CollectionTutorial"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/diagnosis-business-summary.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "DiagnosisBusinessSummary"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/diagnosis-comparison.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "DiagnosisComparison"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "apps/web/src/app/tasks/[id]/task-types"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "TaskDetailPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/formal-decision-readiness",
+        "apps/web/src/app/tasks/[id]/collection-tutorial",
+        "apps/web/src/app/tasks/[id]/diagnosis-business-summary",
+        "apps/web/src/app/tasks/[id]/diagnosis-comparison",
+        "apps/web/src/app/tasks/[id]/task-types",
+        "apps/web/src/app/tasks/[id]/use-extension-task-status",
+        "apps/web/src/app/tasks/[id]/use-task-data"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/task-types.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "CollectionRun",
+        "DecisionPreview",
+        "DecisionReferenceInsight",
+        "DecisionRun",
+        "ExpertAnalysis",
+        "TaskDetail"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/use-extension-task-status.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "WebBridgeUiState",
+        "useExtensionTaskStatus"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/tasks/[id]/use-task-data.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "useTaskData"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/web/src/app/tasks/[id]/task-types"
+      ]
+    },
+    {
+      "path": "apps/web/src/app/terms/page.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "TermsPage"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/components/auth-page-state.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "AuthLoadingState",
+        "AuthRequiredState"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/components/ui/button.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "Button"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/components/ui/card.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "Card",
+        "CardTitle"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/components/ui/confirm-dialog.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ConfirmDialog"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/components/ui/input.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "Input",
+        "Select",
+        "Textarea"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/lib/api.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/api"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/api.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ApiError",
+        "apiBaseUrl",
+        "apiFetch",
+        "cookieSessionMarker",
+        "createIdempotencyKey",
+        "setCsrfToken"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/auth-redirect.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "createLoginHref",
+        "getSafeReturnTo",
+        "loginDestination"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/lib/AuthContext.tsx",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "AuthProvider",
+        "AuthUser",
+        "useAuth"
+      ],
+      "localDeps": [
+        "apps/web/src/lib/api",
+        "apps/web/src/lib/credits",
+        "apps/web/src/lib/latest-request"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/brand-copy-collection-tutorial.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/collection-tutorial"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/credits.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/api",
+        "apps/web/src/lib/credits",
+        "apps/web/src/lib/latest-request"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/credits.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "fetchLatestCreditBalance"
+      ],
+      "localDeps": [
+        "apps/web/src/lib/api",
+        "apps/web/src/lib/latest-request"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/diagnosis-insights.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared/diagnosis",
+        "apps/web/src/lib/diagnosis-insights"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/diagnosis-insights.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "TrustedBusinessInsight",
+        "TrustedInsightTone",
+        "buildTrustedBusinessInterpretation"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared/diagnosis"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/diagnosis-presentation.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/diagnosis-presentation"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/diagnosis-presentation.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "diagnosisExperimentFailureReason",
+        "humanizeBusinessText",
+        "humanizeDiagnosisFailure",
+        "summarizeDecisionBoundaries"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/lib/diagnosis-render.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared/diagnosis",
+        "apps/web/src/app/tasks/[id]/diagnosis-comparison",
+        "apps/web/src/app/tasks/[id]/task-types"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/extension-bridge.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/extension-bridge"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/extension-bridge.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "ExtensionBridgeError",
+        "WebExtensionBridgeMarker",
+        "WebExtensionBridgeResponse",
+        "announceExtensionBridge",
+        "getExtensionBridgeStatus",
+        "onExtensionBridgeReady",
+        "pairExtensionTask",
+        "parseBridgeResponse",
+        "readExtensionBridgeMarker",
+        "syncExtensionCurrentTask"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/extension-connection.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/web/src/lib/extension-bridge",
+        "apps/web/src/lib/extension-connection"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/extension-connection.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "isCurrentExtensionConnected",
+        "shouldRecoverExtensionTask"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "apps/web/src/lib/extension-bridge"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/latest-request.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/latest-request"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/latest-request.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "LatestRequestGuard",
+        "createLatestRequestGuard"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/lib/realtime-metric-stream.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/realtime-metric-stream"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/realtime-metric-stream.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "RealtimeMetricStreamStatus",
+        "createSseEventParser",
+        "subscribeRealtimeMetricStream",
+        "usableRealtimeMetrics"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/task-page-source.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/lib/task-progress.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/lib/task-progress"
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/task-progress.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "TaskWizardProgressInput",
+        "getTaskWizardProgress"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/lib/utils.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "cn"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "apps/web/src/proxy.test.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [],
+      "localDeps": [
+        "apps/web/src/proxy"
+      ]
+    },
+    {
+      "path": "apps/web/src/proxy.ts",
+      "domain": "webDisplay",
+      "owner": "Web - 展示",
+      "exports": [
+        "config",
+        "proxy"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/decision-engine/src/ai-policy.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/decision-engine/src/ai-policy.js"
+      ]
+    },
+    {
+      "path": "packages/decision-engine/src/ai-policy.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "guardAiCandidateActionsWithPolicy"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis"
+      ]
+    },
+    {
+      "path": "packages/decision-engine/src/index.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "packages/decision-engine/src/index"
+      ]
+    },
+    {
+      "path": "packages/decision-engine/src/index.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "applyApprovalGuard",
+        "decisionEngineVersion",
+        "decisionPolicyVersion",
+        "decisionRuleVersion",
+        "evaluateDecisionPolicy",
+        "guardAiCandidateActions",
+        "runDecisionRules",
+        "structureTaskCollectionTables"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "packages/decision-engine/src/ai-policy.js",
+        "packages/decision-engine/src/table-analysis.js"
+      ]
+    },
+    {
+      "path": "packages/decision-engine/src/table-analysis.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "packages/decision-engine/src/table-analysis"
+      ]
+    },
+    {
+      "path": "packages/decision-engine/src/table-analysis.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "InvestmentUnitAnalysis",
+        "ProductTableAnalysis",
+        "analyzeInvestmentUnitTables",
+        "analyzeProductTables",
+        "buildFunnelEvidence",
+        "structureTaskCollectionTables"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "packages/diagnosis-skills/src/evaluation-cases.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "SyntheticDiagnosisCase",
+        "syntheticDiagnosisCases"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "@douyin-local-life/shared/diagnosis"
+      ]
+    },
+    {
+      "path": "packages/diagnosis-skills/src/index.test.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis",
+        "packages/diagnosis-skills/src/index.js"
+      ]
+    },
+    {
+      "path": "packages/diagnosis-skills/src/index.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "DiagnosisDomainSkillId",
+        "DiagnosisSkillDefinition",
+        "DiagnosisSkillModel",
+        "DiagnosisSkillPlan",
+        "DiagnosisTokenUsage",
+        "auditDataReadinessSkill",
+        "buildDiagnosisEvidenceCatalog",
+        "createDiagnosisSkillPlan",
+        "diagnosisSkillIds",
+        "diagnosisSkillInputSchema",
+        "diagnosisSkillRegistry",
+        "diagnosisSkillSetVersion"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/collection-routes",
+        "@douyin-local-life/shared/diagnosis",
+        "packages/diagnosis-skills/src/evaluation-cases.js",
+        "packages/diagnosis-skills/src/scenario-strategy.js"
+      ]
+    },
+    {
+      "path": "packages/diagnosis-skills/src/scenario-strategy.ts",
+      "domain": "aiWorker",
+      "owner": "服务端 - AI Worker",
+      "exports": [
+        "getDiagnosisScenarioStrategy"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "@douyin-local-life/shared/diagnosis"
+      ]
+    },
+    {
+      "path": "packages/llm/src/deepseek.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/llm/src/deepseek.js",
+        "packages/llm/src/tool-loop.js"
+      ]
+    },
+    {
+      "path": "packages/llm/src/deepseek.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "ChatMessage",
+        "ChatRequest",
+        "ChatResponse",
+        "ChatTokenUsage",
+        "ChatToolCall",
+        "ChatToolDefinition",
+        "ChatTransport",
+        "DEFAULT_AI_DIAGNOSIS_TIMEOUT_MS",
+        "DEFAULT_DEEPSEEK_BASE_URL",
+        "DEFAULT_DEEPSEEK_MODEL",
+        "LlmTransportError",
+        "createDeepSeekTransport"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/llm/src/index.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "packages/llm/src/index"
+      ]
+    },
+    {
+      "path": "packages/llm/src/index.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "AGENCY_AGENTS_REVISION",
+        "DECISION_REFERENCE_POLICY_VERSION",
+        "EXPLANATION_PROMPT_VERSION",
+        "ExplanationOutput",
+        "LlmProvider",
+        "LlmProviderName",
+        "agencyAgentSources",
+        "buildDecisionReferenceBundle",
+        "buildDecisionReferenceInstructions",
+        "createLlmProvider",
+        "mockAnalyze",
+        "type DecisionReferenceBundle"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "packages/llm/src/deepseek.js",
+        "packages/llm/src/reference-playbooks.js",
+        "packages/llm/src/tool-loop.js"
+      ]
+    },
+    {
+      "path": "packages/llm/src/reference-playbooks.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "@douyin-local-life/shared",
+        "packages/llm/src/reference-playbooks"
+      ]
+    },
+    {
+      "path": "packages/llm/src/reference-playbooks.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "AGENCY_AGENTS_REVISION",
+        "AgencyAgentSourceId",
+        "DECISION_REFERENCE_POLICY_VERSION",
+        "DecisionReferenceBundle",
+        "DecisionReferenceInsight",
+        "DecisionReferenceSource",
+        "agencyAgentSourceIds",
+        "agencyAgentSources",
+        "buildDecisionReferenceBundle",
+        "buildDecisionReferenceInstructions"
+      ],
+      "localDeps": [
+        "@douyin-local-life/shared"
+      ]
+    },
+    {
+      "path": "packages/llm/src/tool-loop.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "ToolLoopResult",
+        "ToolLoopTool",
+        "completeJsonWithRepair",
+        "runToolLoop"
+      ],
+      "localDeps": [
+        "packages/llm/src/deepseek.js"
+      ]
+    },
+    {
+      "path": "packages/llm/src/validation-recovery.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/llm/src/deepseek.js",
+        "packages/llm/src/tool-loop.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/action-types.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "actionOutcomeResults",
+        "actionTypes"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/api-response.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "ApiResponse",
+        "failure",
+        "success"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/auth-schemas.ts",
+      "domain": "authAndCredits",
+      "owner": "服务端 - 认证与积分",
+      "exports": [
+        "authLoginSchema",
+        "authRegisterSchema",
+        "normalizePhoneNumber"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/collection-capture.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "CaptureCompleteness",
+        "CaptureTabState",
+        "MetricSource",
+        "MetricSourceStatus",
+        "PageType",
+        "captureCompletenessValues",
+        "captureMetaSchema",
+        "captureTabStates",
+        "collectionSnapshotSchema",
+        "metricPulseSchema",
+        "metricRawEvidenceSchema",
+        "metricSourceStatuses"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/live-screen-internal-api.js",
+        "packages/shared/src/local-promotion-internal-api.js",
+        "packages/shared/src/metric-value.js",
+        "packages/shared/src/safety.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-dashboard.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "BulkTableCellReviewInput",
+        "CollectionDashboardDTO",
+        "ConfirmTableBindingInput",
+        "DashboardOverviewCandidateDTO",
+        "DashboardOverviewCandidateStatus",
+        "DashboardOverviewCardDTO",
+        "DashboardOverviewCardStatus",
+        "DashboardOverviewSection",
+        "DashboardOverviewSourceType",
+        "TableCellReviewDTO",
+        "UpdateDecisionTargetsInput",
+        "bulkTableCellReviewInputSchema"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/index.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-diagnostics.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/collection-diagnostics",
+        "packages/shared/src/collection-routes"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-diagnostics.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "CollectionDataProvenance",
+        "CollectionDiagnosticIssue",
+        "CollectionIssueCode",
+        "CollectionIssueSeverity",
+        "CollectionRouteDiagnostic",
+        "CollectionRouteDiagnosticInput",
+        "CollectionRouteDiagnosticStatus",
+        "CollectionRouteFailureCode",
+        "collectionDataProvenance",
+        "collectionIssueCodes",
+        "collectionRouteDiagnosticSchema",
+        "collectionRouteDiagnosticStatuses"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-field-profiles.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/collection-field-profiles"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-field-profiles.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "CollectionFieldProfile",
+        "CollectionMetricFieldDefinition",
+        "CollectionTableFieldDefinition",
+        "collectionFieldProfiles",
+        "collectionMetricFieldDefinitions",
+        "isAllowedCollectionMetricLabel",
+        "metricFieldsForRoute",
+        "normalizeCollectionFieldName",
+        "tableFieldForHeader"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/metric-value.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-records.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "CollectionRecordProvenance",
+        "HourlyCollectionRow",
+        "MaterialCollectionRow",
+        "StructuredCollectionData",
+        "TaskCollectionRow",
+        "structuredCollectionDataSchema",
+        "structuredCollectionDataVersion",
+        "taskCollectionRowSchema"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-routes.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/collection-routes"
+      ]
+    },
+    {
+      "path": "packages/shared/src/collection-routes.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "CollectionQuality",
+        "CollectionRouteDetection",
+        "CollectionRouteDetectionSource",
+        "CollectionRouteHealth",
+        "CollectionRouteKey",
+        "CollectionRouteState",
+        "CollectionRouteTemplate",
+        "PrimaryCollectionRouteKey",
+        "assessCollectionQuality",
+        "collectionFreshnessPolicy",
+        "collectionRouteKeys",
+        "collectionRouteLabels"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/dashboard-overview.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/dashboard-overview",
+        "packages/shared/src/index"
+      ]
+    },
+    {
+      "path": "packages/shared/src/dashboard-overview.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "buildDashboardOverviewCards"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-dashboard.js",
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/index.js",
+        "packages/shared/src/live-screen-internal-api.js",
+        "packages/shared/src/local-promotion-internal-api.js",
+        "packages/shared/src/metric-value.js",
+        "packages/shared/src/realtime-evidence.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/decision-tables.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "DecisionTableCell",
+        "DecisionTableInput",
+        "decisionTableCellSchema",
+        "decisionTableInputSchema",
+        "projectRawTableData"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/diagnosis-context.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "DiagnosisContext",
+        "DiagnosisManualActionSummary",
+        "DiagnosisRecentTrend",
+        "DiagnosisScenario",
+        "diagnosisContextSchema",
+        "diagnosisManualActionSummarySchema",
+        "diagnosisRecentTrendMetricSchema",
+        "diagnosisRecentTrendSchema",
+        "diagnosisScenarios"
+      ],
+      "localDeps": [
+        "packages/shared/src/action-types.js",
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/metric-keys.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/diagnosis.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "AiCandidateAction",
+        "AiDecisionRunDTO",
+        "DecisionRunMode",
+        "DecisionRunStatus",
+        "DiagnosisCaseStatus",
+        "DiagnosisClaim",
+        "DiagnosisDomainAnalysisOutput",
+        "DiagnosisEvidence",
+        "DiagnosisExperiment",
+        "DiagnosisExperimentModelOutput",
+        "DiagnosisFinalModelOutput",
+        "DiagnosisFinalResult"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/index.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/formal-decision-readiness.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/formal-decision-readiness"
+      ]
+    },
+    {
+      "path": "packages/shared/src/formal-decision-readiness.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "FormalDecisionReadiness",
+        "FormalDecisionReadinessInput",
+        "evaluateFormalDecisionReadiness"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/index.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/collection-capture",
+        "packages/shared/src/index"
+      ]
+    },
+    {
+      "path": "packages/shared/src/index.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "AccountIdentityStatus",
+        "AccountPlatform",
+        "AccountProfileDTO",
+        "AccountProfileStatus",
+        "ActionEligibility",
+        "ActionOutcomeDTO",
+        "ActionOutcomeResult",
+        "ActionProposalDTO",
+        "ActionProposalStatus",
+        "ActionType",
+        "AnalysisProblem",
+        "AnalysisStatus"
+      ],
+      "localDeps": [
+        "packages/shared/src/action-types.js",
+        "packages/shared/src/api-response.js",
+        "packages/shared/src/auth-schemas.js",
+        "packages/shared/src/collection-capture.js",
+        "packages/shared/src/collection-dashboard.js",
+        "packages/shared/src/collection-diagnostics.js",
+        "packages/shared/src/collection-field-profiles.js",
+        "packages/shared/src/collection-records.js",
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/dashboard-overview.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/live-screen-internal-api.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/live-screen-internal-api.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/live-screen-internal-api.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "LiveScreenApiEvidencePurpose",
+        "LiveScreenInternalApiEndpointContract",
+        "LiveScreenInternalApiEndpointKey",
+        "LiveScreenInternalApiField",
+        "LiveScreenRoomIdEvidence",
+        "LiveScreenRoomIdResolution",
+        "LiveScreenRoomIdSource",
+        "isApprovedLiveScreenFieldPath",
+        "isLiveScreenInternalApiPath",
+        "liveScreenApiEvidencePurposes",
+        "liveScreenEndpointKeysForMode",
+        "liveScreenInternalApiAdapterVersion"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/local-promotion-internal-api.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/local-promotion-internal-api"
+      ]
+    },
+    {
+      "path": "packages/shared/src/local-promotion-internal-api.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "LocalPromotionApiMetricKey",
+        "LocalPromotionInternalApiEndpointKey",
+        "LocalPromotionInternalApiEvidencePurpose",
+        "LocalPromotionInternalApiField",
+        "LocalPromotionInternalApiIdentityEvidence",
+        "LocalPromotionInternalApiIdentityFields",
+        "LocalPromotionInternalApiIdentityResolution",
+        "LocalPromotionInternalApiMetricGroupKey",
+        "LocalPromotionPulseMetricKey",
+        "isExactLocalPromotionInternalApiPage",
+        "localPromotionApiMetricKeys",
+        "localPromotionIdentityKey"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/metric-keys.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "metricKeys"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/metric-value.test.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/metric-value"
+      ]
+    },
+    {
+      "path": "packages/shared/src/metric-value.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "MetricRawEvidence",
+        "MetricSourceCandidate",
+        "MetricValidationStatus",
+        "MetricValueSemantic",
+        "ParsedMetricValue",
+        "VisibleMetric",
+        "metricValidationStatuses",
+        "metricValueSemantic",
+        "metricValueText",
+        "metricValueToRuleNumber",
+        "parseDisplayedMetricValue"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "packages/shared/src/project-history.ts",
+      "domain": "projectHistory",
+      "owner": "服务端 - 项目历史",
+      "exports": [
+        "ProjectHistoryArchiveDTO",
+        "ProjectHistoryComparison",
+        "ProjectHistoryComparisonKind",
+        "ProjectHistoryComparisonStatus",
+        "ProjectHistoryDecisionContext",
+        "ProjectHistoryMetric",
+        "ProjectHistoryMetricQuality",
+        "ProjectHistoryOverviewDTO",
+        "ProjectHistorySessionDTO",
+        "projectHistoryComparisonKinds",
+        "projectHistoryComparisonMetricSchema",
+        "projectHistoryComparisonSchema"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/metric-keys.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/realtime-evidence.ts",
+      "domain": "captureAndEvidence",
+      "owner": "服务端 - 采集与证据",
+      "exports": [
+        "RealtimeEvidenceSummary",
+        "RealtimeMetricFrame",
+        "realtimeEvidenceRouteMatchesSource",
+        "realtimeEvidenceSummarySchema",
+        "realtimeMetricFrameFreshnessMs",
+        "realtimeMetricFrameIsFresh"
+      ],
+      "localDeps": [
+        "packages/shared/src/collection-capture.js",
+        "packages/shared/src/collection-routes.js",
+        "packages/shared/src/metric-value.js"
+      ]
+    },
+    {
+      "path": "packages/shared/src/safety.test.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [],
+      "localDeps": [
+        "packages/shared/src/safety"
+      ]
+    },
+    {
+      "path": "packages/shared/src/safety.ts",
+      "domain": "decisionOrchestration",
+      "owner": "服务端 - 决策编排",
+      "exports": [
+        "PersistedInputValidation",
+        "addSafeNetworkRecord",
+        "aiDisclaimer",
+        "containsSensitivePersistedInput",
+        "extensionSafetyNotice",
+        "sanitizeAndValidatePersistedInput",
+        "sanitizeCaptureUrl",
+        "sanitizeCapturedNetworkRecord",
+        "sanitizeCollectionSnapshotPayload",
+        "sanitizeSensitiveData",
+        "sanitizeVisibleText",
+        "shouldRedactSensitiveKey"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260712190000_baseline_v021/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260712191000_v021_realtime_safety/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260714170000_v022_account_profiles/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260715120000_v023_extension_pairing/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260715170000_v024_task_scoped_extension_pairing/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260716110000_v025_sessions/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260716120000_v026_rate_limit_buckets/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260716130000_v027_decision_evidence_fingerprint/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260716140000_v028_route_verification/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260717100000_v029_email_verification/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260718110000_v030_security_metrics/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260719180000_v031_collection_diagnostics/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260720110000_v032_audit_actor_snapshot/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260722090000_v033_table_cell_reviews/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260729120000_metric_binding_calibration/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260731120000_v035_ai_skill_diagnosis/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260903210000_project_history_comparison/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/migrations/20260910120000_simplified_accounts_and_credits/migration.sql",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/architecture-check.mjs",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": [
+        "tools/build-code-index.mjs"
+      ]
+    },
+    {
+      "path": "tools/backup-postgres.sh",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/build-code-index.mjs",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [
+        "computeCodeIndex",
+        "writeCodeIndex"
+      ],
+      "localDeps": []
+    },
+    {
+      "path": "tools/clean-dist.mjs",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/docs-verify.mjs",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/reconcile-v035-legacy-database.ps1",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/source-hygiene-check.mjs",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/trim-local-pxxis-runtime.ps1",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/trim-local-pxxis-runtime.test.ps1",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/upgrade-pxxis-prelaunch-v035.ps1",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/verify-diagnosis-closure-candidate.ps1",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": [
+        "tools/apps/api/dist/ai-diagnosis/orchestrator.js",
+        "tools/apps/api/dist/ai-diagnosis/synthetic-evaluation.js"
+      ]
+    },
+    {
+      "path": "tools/verify-local-pxxis-runtime.ps1",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": [
+        "tools/apps/api/dist/ai-diagnosis/orchestrator.js",
+        "tools/apps/api/dist/ai-diagnosis/synthetic-evaluation.js",
+        "tools/packages/diagnosis-skills/dist/index.js"
+      ]
+    },
+    {
+      "path": "tools/verify-postgres-backup.sh",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    },
+    {
+      "path": "tools/version-check.mjs",
+      "domain": "dataAndInfrastructure",
+      "owner": "工程 - 数据与基础设施",
+      "exports": [],
+      "localDeps": []
+    }
+  ]
+}

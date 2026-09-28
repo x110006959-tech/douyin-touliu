@@ -14,6 +14,7 @@ import { prepareActionProposals, proposalExpiresAfterMs, proposalLifecyclePolicy
 import { sanitizeDerivedPersistedJson } from "../persisted-input.js";
 import { latestRealtimeMetricFrames } from "../realtime-signals.js";
 import { markProjectAnalysisArchiveRunStatus } from "../project-history.js";
+import { refundDecisionRunCredit } from "../credits.js";
 import type { ObservationValidationDiagnostic } from "./validation-diagnostic.js";
 import {
   aiDiagnosisConfigurationIssue,
@@ -44,11 +45,17 @@ export async function processNextDecisionRun(options: {
   return run.id;
 }
 
-export function startDecisionWorker(options: { pollIntervalMs?: number; workerId?: string; transport?: ChatTransport } = {}) {
+export function startDecisionWorker(options: {
+  pollIntervalMs?: number;
+  workerId?: string;
+  transport?: ChatTransport;
+  onError?: (error: unknown) => void;
+} = {}) {
   const configurationIssue = options.transport ? null : aiDiagnosisConfigurationIssue();
   if (configurationIssue) throw new DiagnosisWorkerError(configurationIssue.code, configurationIssue.message);
   const workerId = options.workerId || `diagnosis-worker-${randomUUID()}`;
   const pollIntervalMs = options.pollIntervalMs ?? 1_000;
+  const onError = options.onError || ((error: unknown) => console.error("Decision worker tick failed", error));
   let running = false;
   let stopped = false;
   const tick = async () => {
@@ -56,6 +63,8 @@ export function startDecisionWorker(options: { pollIntervalMs?: number; workerId
     running = true;
     try {
       await processNextDecisionRun({ workerId, transport: options.transport });
+    } catch (error) {
+      onError(error);
     } finally {
       running = false;
     }
@@ -72,6 +81,7 @@ export function startDecisionWorker(options: { pollIntervalMs?: number; workerId
 async function claimDecisionRun(workerId: string) {
   return prisma.$transaction(async (tx) => {
     const now = new Date();
+    await finalizeExpiredMaxAttemptDecisionRuns(tx, now);
     const candidate = await tx.decisionRun.findFirst({
       where: {
         mode: "AI_SKILL_ORCHESTRATED",
@@ -105,6 +115,106 @@ async function claimDecisionRun(workerId: string) {
     });
     return claimed.count ? tx.decisionRun.findUnique({ where: { id: candidate.id } }) : null;
   });
+}
+
+/**
+ * Recovers AI runs that exhausted their three attempts and then lost their
+ * lease because the owning Worker exited outside the normal catch path.
+ */
+export async function finalizeExpiredMaxAttemptDecisionRuns(
+  tx: Prisma.TransactionClient,
+  now = new Date()
+) {
+  const orphans = await tx.decisionRun.findMany({
+    where: {
+      mode: "AI_SKILL_ORCHESTRATED",
+      status: "RUNNING",
+      attemptCount: { gte: 3 },
+      leaseExpiresAt: { lt: now }
+    },
+    select: {
+      id: true,
+      attemptCount: true,
+      projectId: true,
+      collectionTaskId: true,
+      leaseOwner: true,
+      creditCharged: true,
+      creditRefunded: true,
+      project: { select: { workspace: { select: { id: true, ownerId: true } } } }
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+  });
+
+  let finalized = 0;
+  for (const orphan of orphans) {
+    let refunded = false;
+    if (orphan.leaseOwner && orphan.creditCharged && !orphan.creditRefunded) {
+      refunded = await refundDecisionRunCredit(tx, {
+        runId: orphan.id,
+        userId: orphan.project.workspace.ownerId,
+        status: "RUNNING",
+        leaseOwner: orphan.leaseOwner
+      });
+    }
+
+    const result = await tx.decisionRun.updateMany({
+      where: {
+        id: orphan.id,
+        status: "RUNNING",
+        attemptCount: { gte: 3 },
+        leaseExpiresAt: { lt: now }
+      },
+      data: {
+        status: "FAILED",
+        currentStage: "FAILED:ORPHANED_LEASE",
+        errorCode: "AI_DIAGNOSIS_MAX_ATTEMPTS",
+        errorMessage: "AI 诊断已超过最大尝试次数，且最后租约已过期；本次运行已自动关闭。",
+        completedAt: now,
+        leaseOwner: null,
+        leaseExpiresAt: null
+      }
+    });
+
+    if (result.count === 1) {
+      finalized += 1;
+      await markProjectAnalysisArchiveRunStatus(tx, orphan.id, "FAILED");
+      await tx.auditLog.create({
+        data: {
+          userId: orphan.project.workspace.ownerId,
+          workspaceId: orphan.project.workspace.id,
+          projectId: orphan.projectId,
+          taskId: orphan.collectionTaskId,
+          action: "AI_DIAGNOSIS_ORPHAN_RECOVERED",
+          detailJson: toJson({
+            decisionRunId: orphan.id,
+            attemptCount: orphan.attemptCount,
+            errorCode: "AI_DIAGNOSIS_MAX_ATTEMPTS"
+          })
+        }
+      });
+    } else if (refunded) {
+      // A concurrent terminal write won the row. Do not leave a refund behind.
+      throw new Error("DECISION_RUN_ORPHAN_RECOVERY_WRITE_CONFLICT");
+    }
+  }
+
+  return finalized;
+}
+
+export async function finalizeSucceededDecisionRun(
+  tx: Prisma.TransactionClient,
+  input: {
+    runId: string;
+    workerId: string;
+    data: Prisma.DecisionRunUpdateManyMutationInput;
+  }
+) {
+  const result = await tx.decisionRun.updateMany({
+    where: { id: input.runId, status: "RUNNING", leaseOwner: input.workerId },
+    data: input.data
+  });
+  if (!result.count) throw new DiagnosisWorkerError("DIAGNOSIS_LEASE_LOST", "诊断任务租约已失效");
+  return result.count;
 }
 
 async function processClaimedDecisionRun(run: DecisionRun, workerId: string, configuredTransport?: ChatTransport) {
@@ -192,8 +302,9 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
           lifecycleSuppressed: prepared.suppressed
         }
       };
-      await tx.decisionRun.update({
-        where: { id: run.id },
+      await finalizeSucceededDecisionRun(tx, {
+        runId: run.id,
+        workerId,
         data: {
           status: "SUCCEEDED",
           currentStage: "COMPLETED",
@@ -246,6 +357,17 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
   } catch (error) {
     const normalized = normalizeWorkerError(error, timeout.signal.aborted);
     await prisma.$transaction(async (tx) => {
+      const currentRun = await tx.decisionRun.findFirst({
+        where: { id: run.id, status: "RUNNING", leaseOwner: workerId },
+        select: { project: { select: { workspace: { select: { ownerId: true } } } } }
+      });
+      if (!currentRun) return;
+      await refundDecisionRunCredit(tx, {
+        runId: run.id,
+        userId: currentRun.project.workspace.ownerId,
+        status: "RUNNING",
+        leaseOwner: workerId
+      });
       const failed = await tx.decisionRun.updateMany({
         where: { id: run.id, status: "RUNNING", leaseOwner: workerId },
         data: {
@@ -259,7 +381,7 @@ async function processClaimedDecisionRun(run: DecisionRun, workerId: string, con
           leaseExpiresAt: null
         }
       });
-      if (!failed.count) return;
+      if (!failed.count) throw new Error("DECISION_RUN_FAILURE_WRITE_CONFLICT");
       await markProjectAnalysisArchiveRunStatus(tx, run.id, "FAILED");
       if (auditActor && validationDiagnostics.length) {
         await tx.auditLog.create({

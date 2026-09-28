@@ -4733,6 +4733,9 @@
       value: external_exports.string().max(100),
       displayValue: external_exports.string().max(100),
       unit: external_exports.string().nullable(),
+      unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+      scope: external_exports.string().max(100).optional(),
+      scopeExplicit: external_exports.boolean().optional(),
       timeRange: external_exports.string().max(100),
       displayPrecision: external_exports.number().int().min(0).max(20),
       fieldPath: external_exports.string().max(300),
@@ -4742,6 +4745,9 @@
       value: external_exports.string().max(100),
       displayValue: external_exports.string().max(100),
       unit: external_exports.string().nullable(),
+      unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+      scope: external_exports.string().max(100).optional(),
+      scopeExplicit: external_exports.boolean().optional(),
       timeRange: external_exports.string().max(100),
       displayPrecision: external_exports.number().int().min(0).max(20),
       fieldPath: external_exports.string().max(300),
@@ -5026,6 +5032,44 @@
   }
   function reference(routeKey, metricKey) {
     return { routeKey, metricKey };
+  }
+
+  // ../../packages/shared/src/auth-schemas.ts
+  var optionalEmailSchema = external_exports.preprocess(
+    (value) => typeof value === "string" && !value.trim() ? void 0 : value,
+    external_exports.string().trim().toLowerCase().email("\u8BF7\u8F93\u5165\u6709\u6548\u90AE\u7BB1").max(128, "\u90AE\u7BB1\u4E0D\u80FD\u8D85\u8FC7 128 \u4E2A\u5B57\u7B26").optional()
+  );
+  var optionalPhoneSchema = external_exports.preprocess(
+    (value) => typeof value === "string" && !value.trim() ? void 0 : value,
+    external_exports.string().trim().max(32, "\u624B\u673A\u53F7\u4E0D\u80FD\u8D85\u8FC7 32 \u4E2A\u5B57\u7B26").transform((value, context) => {
+      const normalized = normalizePhoneNumber(value);
+      if (normalized) return normalized;
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "\u8BF7\u8F93\u5165\u6709\u6548\u624B\u673A\u53F7" });
+      return external_exports.NEVER;
+    }).optional()
+  );
+  var authLoginSchema = external_exports.object({
+    identifier: external_exports.string().trim().min(1, "\u8BF7\u8F93\u5165\u90AE\u7BB1\u6216\u624B\u673A\u53F7").max(128, "\u767B\u5F55\u6807\u8BC6\u4E0D\u80FD\u8D85\u8FC7 128 \u4E2A\u5B57\u7B26").optional(),
+    // 旧客户端此前直接提交 email 字段；保留为兼容别名，identifier 优先。
+    email: external_exports.string().trim().max(128).optional(),
+    password: external_exports.string().min(6, "\u5BC6\u7801\u81F3\u5C11 6 \u4F4D").max(128, "\u5BC6\u7801\u4E0D\u80FD\u8D85\u8FC7 128 \u4F4D")
+  }).superRefine((value, context) => {
+    if (value.identifier || value.email) return;
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["identifier"], message: "\u8BF7\u8F93\u5165\u90AE\u7BB1\u6216\u624B\u673A\u53F7" });
+  }).transform((value) => ({ identifier: (value.identifier || value.email || "").trim(), password: value.password }));
+  var authRegisterSchema = external_exports.object({
+    email: optionalEmailSchema,
+    phone: optionalPhoneSchema,
+    password: external_exports.string().min(8, "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D").max(128, "\u5BC6\u7801\u4E0D\u80FD\u8D85\u8FC7 128 \u4F4D"),
+    name: external_exports.string().trim().min(1, "\u8BF7\u8F93\u5165\u59D3\u540D").max(100, "\u59D3\u540D\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57").optional()
+  }).superRefine((value, context) => {
+    if (value.email || value.phone) return;
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["email"], message: "\u90AE\u7BB1\u548C\u624B\u673A\u53F7\u81F3\u5C11\u586B\u5199\u4E00\u4E2A" });
+  });
+  function normalizePhoneNumber(value) {
+    const compact = value.trim().replace(/[\s()-]/g, "");
+    const normalized = /^1[3-9]\d{9}$/.test(compact) ? `+86${compact}` : compact.startsWith("0086") ? `+${compact.slice(2)}` : compact;
+    return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
   }
 
   // ../../packages/shared/src/index.ts
@@ -5659,13 +5703,6 @@
   var updateCollectionTaskStatusSchema = external_exports.object({
     status: external_exports.enum(collectionTaskStatuses)
   });
-  var authLoginSchema = external_exports.object({
-    email: external_exports.string().trim().toLowerCase().email("\u8BF7\u8F93\u5165\u6709\u6548\u90AE\u7BB1").max(128, "\u90AE\u7BB1\u4E0D\u80FD\u8D85\u8FC7 128 \u4E2A\u5B57\u7B26"),
-    password: external_exports.string().min(6, "\u5BC6\u7801\u81F3\u5C11 6 \u4F4D").max(128, "\u5BC6\u7801\u4E0D\u80FD\u8D85\u8FC7 128 \u4F4D")
-  });
-  var authRegisterSchema = authLoginSchema.extend({
-    name: external_exports.string().trim().min(1, "\u8BF7\u8F93\u5165\u59D3\u540D").max(100, "\u59D3\u540D\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57").optional()
-  });
   var emailVerificationConfirmSchema = external_exports.object({
     token: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/, "\u9A8C\u8BC1\u94FE\u63A5\u65E0\u6548\u6216\u5DF2\u8FC7\u671F")
   });
@@ -5927,7 +5964,7 @@
     els.accountName.textContent = state?.config?.accountName || "\u672A\u7ED1\u5B9A";
     els.projectName.textContent = state?.config?.projectName || "\u672A\u7ED1\u5B9A";
     els.collectionRunId.textContent = state?.activeCollectionSession?.collectionRunId || "-";
-    els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${"a5c05f67d34f"}`;
+    els.extensionBuild.textContent = `${chrome.runtime.getManifest().version} / ${"ba8c652b84a9"}`;
     els.snapshot.textContent = state?.latestSnapshot ? JSON.stringify({
       pageType: state.latestSnapshot.pageType,
       routeKey: state.latestSnapshot.routeKey,

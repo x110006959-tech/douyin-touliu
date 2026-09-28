@@ -272,11 +272,13 @@ enum ExtensionCredentialScope {
 
 model User {
   id              String           @id @default(cuid())
-  email           String           @unique
-  emailVerifiedAt DateTime         @default(now())
+  email           String?          @unique
+  phone           String?          @unique
+  emailVerifiedAt DateTime?
   passwordHash    String
   name            String?
   role            UserRole         @default(MEMBER)
+  creditBalance   Int              @default(0)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   workspaces      Workspace[]
@@ -764,6 +766,8 @@ model DecisionRun {
   leaseOwner           String?
   leaseExpiresAt       DateTime?
   attemptCount         Int              @default(0)
+  creditCharged        Boolean          @default(false)
+  creditRefunded       Boolean          @default(false)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)

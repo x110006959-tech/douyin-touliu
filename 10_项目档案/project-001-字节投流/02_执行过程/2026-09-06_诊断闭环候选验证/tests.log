@@ -1,0 +1,81 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+$ corepack pnpm -r test
+Scope: 7 of 8 workspace projects
+packages/shared test$ vitest run src
+packages/shared test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/packages/shared
+packages/shared test:  Test Files  10 passed (10)
+packages/shared test:       Tests  62 passed (62)
+packages/shared test:    Start at  15:59:39
+packages/shared test:    Duration  977ms (transform 1.74s, setup 0ms, import 2.57s, tests 108ms, environment 2ms)
+packages/shared test: Done
+apps/web test$ vitest run src
+apps/extension test$ vitest run --passWithNoTests
+packages/decision-engine test$ vitest run src --passWithNoTests
+packages/diagnosis-skills test$ vitest run src
+packages/decision-engine test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/packages/decision-engine
+packages/diagnosis-skills test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/packages/diagnosis-skills
+apps/extension test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/apps/extension
+apps/web test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/apps/web
+packages/decision-engine test:  Test Files  3 passed (3)
+packages/decision-engine test:       Tests  41 passed (41)
+packages/decision-engine test:    Start at  15:59:41
+packages/decision-engine test:    Duration  1.78s (transform 2.01s, setup 0ms, import 2.46s, tests 104ms, environment 0ms)
+packages/diagnosis-skills test:  Test Files  1 passed (1)
+packages/diagnosis-skills test:       Tests  8 passed (8)
+packages/diagnosis-skills test:    Start at  15:59:41
+packages/diagnosis-skills test:    Duration  1.81s (transform 577ms, setup 0ms, import 712ms, tests 32ms, environment 0ms)
+packages/decision-engine test: Done
+packages/llm test$ vitest run src --passWithNoTests
+packages/diagnosis-skills test: Done
+apps/web test:  Test Files  12 passed (12)
+apps/web test:       Tests  82 passed (82)
+apps/web test:    Start at  15:59:41
+apps/web test:    Duration  3.17s (transform 3.90s, setup 0ms, import 5.12s, tests 199ms, environment 47ms)
+apps/web test: Done
+apps/extension test:  Test Files  25 passed (25)
+apps/extension test:       Tests  198 passed (198)
+apps/extension test:    Start at  15:59:41
+apps/extension test:    Duration  3.82s (transform 22.95s, setup 0ms, import 26.76s, tests 2.44s, environment 7ms)
+apps/extension test: Done
+packages/llm test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/packages/llm
+packages/llm test:  Test Files  4 passed (4)
+packages/llm test:       Tests  21 passed (21)
+packages/llm test:    Start at  15:59:45
+packages/llm test:    Duration  785ms (transform 833ms, setup 0ms, import 1.16s, tests 75ms, environment 0ms)
+packages/llm test: Done
+apps/api test$ node scripts/test.mjs
+apps/api test: Scope: 4 of 8 workspace projects
+apps/api test: packages/shared build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/api test: packages/shared build: Done
+apps/api test: packages/llm build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/api test: packages/decision-engine build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/api test: packages/diagnosis-skills build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/api test: packages/llm build: Done
+apps/api test: packages/decision-engine build: Done
+apps/api test: packages/diagnosis-skills build: Done
+apps/api test:  Network pxxis-api-test_default Creating
+apps/api test:  Network pxxis-api-test_default Creating
+apps/api test:  Network pxxis-api-test_default Created
+apps/api test:  Network pxxis-api-test_default Created
+apps/api test:  Container pxxis-api-test-postgres-test-1 Creating
+apps/api test:  Container pxxis-api-test-postgres-test-1 Created
+apps/api test:  Container pxxis-api-test-postgres-test-1 Starting
+apps/api test:  Container pxxis-api-test-postgres-test-1 Started
+apps/api test:  Container pxxis-api-test-postgres-test-1 Waiting
+apps/api test:  Container pxxis-api-test-postgres-test-1 Healthy
+apps/api test: Environment variables loaded from .env
+apps/api test: Prisma schema loaded from prisma\schema.prisma
+apps/api test: Datasource "db": PostgreSQL database "pxxis_test", schema "public" at "127.0.0.1:55432"
+apps/api test: Your database is now in sync with your Prisma schema. Done in 1.16s
+apps/api test:  RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/apps/api
+apps/api test:  Test Files  35 passed (35)
+apps/api test:       Tests  259 passed (259)
+apps/api test:    Start at  16:00:01
+apps/api test:    Duration  52.64s (transform 2.02s, setup 0ms, import 6.56s, tests 37.05s, environment 4ms)
+apps/api test:  Container pxxis-api-test-postgres-test-1 Stopping
+apps/api test:  Container pxxis-api-test-postgres-test-1 Stopped
+apps/api test:  Container pxxis-api-test-postgres-test-1 Removing
+apps/api test:  Container pxxis-api-test-postgres-test-1 Removed
+apps/api test:  Network pxxis-api-test_default Removing
+apps/api test:  Network pxxis-api-test_default Removed
+apps/api test: Done

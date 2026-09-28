@@ -36,7 +36,8 @@ type StructuredDataReport = Record<
   | "projectHistorySessions"
   | "aiAnalysisTasks"
   | "auditLogs"
-  | "securityMetrics",
+  | "securityMetrics"
+  | "rateLimitBuckets",
   OperationReport
 >;
 
@@ -47,6 +48,7 @@ export type RetentionReport = {
   batchSize: number;
   rawEvidenceCutoff: string;
   structuredDataCutoff: string;
+  rateLimitCutoff: string;
   rawEvidence: Record<"snapshots" | "normalizedMetricEvidence" | "reviewedMetricEvidence", OperationReport>;
   structuredData: StructuredDataReport;
 };
@@ -111,6 +113,7 @@ export async function runRetention(client: PrismaClient, options: RetentionOptio
   };
 
   const structuredData = await deleteStructuredData(client, options.mode, batchSize, structuredDataCutoff);
+  const rateLimitBuckets = await deleteExpiredRateLimitBuckets(client, options.mode, batchSize, now);
   return {
     mode: options.mode,
     startedAt: startedAt.toISOString(),
@@ -118,12 +121,35 @@ export async function runRetention(client: PrismaClient, options: RetentionOptio
     batchSize,
     rawEvidenceCutoff: rawEvidenceCutoff.toISOString(),
     structuredDataCutoff: structuredDataCutoff.toISOString(),
+    rateLimitCutoff: now.toISOString(),
     rawEvidence,
-    structuredData
+    structuredData: { ...structuredData, rateLimitBuckets }
   };
 }
 
-async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, batchSize: number, cutoff: Date): Promise<StructuredDataReport> {
+async function deleteExpiredRateLimitBuckets(
+  client: PrismaClient,
+  mode: RetentionMode,
+  batchSize: number,
+  now: Date
+) {
+  return executeOperation({
+    mode,
+    batchSize,
+    count: () => client.rateLimitBucket.count({ where: { expiresAt: { lte: now } } }),
+    selectIds: async () => (await client.rateLimitBucket.findMany({
+      where: { expiresAt: { lte: now } },
+      orderBy: [{ expiresAt: "asc" }, { keyHash: "asc" }],
+      take: batchSize,
+      select: { keyHash: true }
+    })).map((row) => row.keyHash),
+    process: async (ids) => (await client.$transaction((tx) => tx.rateLimitBucket.deleteMany({
+      where: { keyHash: { in: ids }, expiresAt: { lte: now } }
+    }))).count
+  });
+}
+
+async function deleteStructuredData(client: PrismaClient, mode: RetentionMode, batchSize: number, cutoff: Date): Promise<Omit<StructuredDataReport, "rateLimitBuckets">> {
   // Delete leaf records first; guarded parent deletes never cascade into newer records.
   const snapshotVisibleMetrics = await executeOperation({
     mode,

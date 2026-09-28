@@ -60,13 +60,19 @@ export function createActionProposalRouter() {
 
     const parsed = createActionOutcomeInputSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message || "结果复盘参数错误");
+    const customWindowInput = readSafeOptionalText(parsed.data.customWindow, 100);
     const noteInput = readSafeOptionalText(parsed.data.note, 2_000);
     const conclusionInput = readSafeOptionalText(parsed.data.conclusion, 2_000);
-    if (noteInput.error || conclusionInput.error) {
-      return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", noteInput.error || conclusionInput.error || "输入包含敏感认证信息，已拒绝保存");
+    if (customWindowInput.error || noteInput.error || conclusionInput.error) {
+      return sendError(res, 400, "SENSITIVE_DATA_FORBIDDEN", customWindowInput.error || noteInput.error || conclusionInput.error || "输入包含敏感认证信息，已拒绝保存");
     }
 
-    const outcomeBody = { ...parsed.data, note: noteInput.value, conclusion: conclusionInput.value };
+    const outcomeBody = {
+      ...parsed.data,
+      customWindow: customWindowInput.value,
+      note: noteInput.value,
+      conclusion: conclusionInput.value
+    };
     try {
       const result = await prisma.$transaction(async (tx) => {
         if (idempotency.key) {

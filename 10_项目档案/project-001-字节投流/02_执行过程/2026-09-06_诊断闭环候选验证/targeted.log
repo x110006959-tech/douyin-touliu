@@ -1,0 +1,9 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+
+ RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/apps/api
+
+
+ Test Files  3 passed (3)
+      Tests  49 passed (49)
+   Start at  10:57:41
+   Duration  686ms (transform 699ms, setup 0ms, import 1.00s, tests 277ms, environment 0ms)

@@ -1,0 +1,10 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+$ vitest run src
+
+ RUN  v4.1.9 C:/Users/Admin/Documents/字节投流/apps/web
+
+
+ Test Files  12 passed (12)
+      Tests  82 passed (82)
+   Start at  15:52:07
+   Duration  2.35s (transform 2.21s, setup 0ms, import 3.40s, tests 197ms, environment 3ms)

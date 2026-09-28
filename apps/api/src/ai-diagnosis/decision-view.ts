@@ -18,10 +18,12 @@ import {
 import {
   buildDecisionRunDeterministicReview,
   buildDeterministicDiagnosticSignals,
-  determineMainProblemTag
+  determineMainProblemTag,
+  isUsefulDiagnosisHypothesis
 } from "./orchestrator.js";
 import { changedExperimentVariables } from "./experiment-variables.js";
 import { hasUnsupportedBenchmark, hasUnsupportedQualitativeComparison } from "./comparison-language.js";
+import { buildServerDiagnosisInsights } from "./server-insights.js";
 
 type ProposalForDecisionView = {
   id: string;
@@ -106,6 +108,12 @@ export function buildDiagnosisDecisionView(
   const blockedActions = review ? [] : readBlockedActions(finalResultValue, result.data);
   const conclusion = review?.conclusion
     || buildDeterministicConclusion(mainProblemTag, targetComparison, nextProposal, result.data.coreConclusion);
+  const modelAnalysis = review || !isFormalDiagnosisEvidenceLayer(decisionInput)
+    ? []
+    : buildGroundedAnalysis(result.data, evidenceCatalog);
+  const analysis = modelAnalysis.length
+    ? modelAnalysis
+    : buildServerDiagnosisInsights(decisionInput, evidenceCatalog);
 
   return {
     mainProblemTag,
@@ -118,7 +126,7 @@ export function buildDiagnosisDecisionView(
     actionRisk: nextProposal?.riskLevel || null,
     targetComparison,
     facts: result.data.factSnapshot,
-    analysis: review || !isFormalDiagnosisEvidenceLayer(decisionInput) ? [] : buildGroundedAnalysis(result.data, evidenceCatalog),
+    analysis,
     openQuestions: unique([
       ...result.data.missingEvidence,
       ...result.data.hypotheses.flatMap((item) => item.missingEvidence),
@@ -141,7 +149,8 @@ function buildGroundedAnalysis(result: DiagnosisFinalResult, evidence: ReturnTyp
     const references = [...hypothesis.supportingEvidenceIds, ...hypothesis.conflictingEvidenceIds];
     // Historical output may contain instructions that were never approved.
     // Only evidence-linked interpretations belong here; actions keep their lifecycle gate.
-    return hypothesis.supportingEvidenceIds.length > 0
+    return isUsefulDiagnosisHypothesis(hypothesis, byId)
+      && hypothesis.supportingEvidenceIds.length > 0
       && hypothesis.supportingEvidenceIds.some((id) => byId.get(id)?.kind === "METRIC" || byId.get(id)?.kind === "TABLE_ROW" || id.startsWith("history:") || id.startsWith("manual-action:"))
       && references.every((id) => byId.has(id))
       && changedExperimentVariables([text], { includeImplicitChanges: false }).length === 0

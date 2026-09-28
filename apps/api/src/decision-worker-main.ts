@@ -1,7 +1,9 @@
 import { startDecisionWorker } from "./ai-diagnosis/worker.js";
 import { prisma } from "./prisma.js";
 
-const stop = startDecisionWorker();
+const stop = startDecisionWorker({
+  onError: (error) => console.error("Decision worker tick failed", error instanceof Error ? error.message : error)
+});
 let shuttingDown = false;
 
 async function shutdown() {

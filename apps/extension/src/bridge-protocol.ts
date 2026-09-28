@@ -1,4 +1,4 @@
-import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
+import { extensionBridgeProtocolVersion, sanitizeVisibleText } from "@douyin-local-life/shared";
 import { developmentLoopbackHostnames, isLocalBuild } from "./build-target";
 
 const bridgeWindowMessageChannel = "PXXIS_EXTENSION_BRIDGE";
@@ -59,6 +59,8 @@ const bridgeErrorCodes = new Set([
   "PROTOCOL_MISMATCH",
   "INVALID_CONTEXT"
 ]);
+const bridgeConnectionSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const bridgeTaskIdPattern = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function isAllowedBridgeOrigin(origin: string, allowedLoopbackHostnames = developmentLoopbackHostnames) {
   try {
@@ -150,29 +152,45 @@ export function sanitizeBridgeResponse(input: {
   const errorCode = ok
     ? null
     : safeBridgeErrorCode(result.errorCode) || safeBridgeErrorCode(input.fallbackErrorCode) || "BRIDGE_REQUEST_FAILED";
+  const connectionSessionId = safeBridgeConnectionSessionId(result.connectionSessionId);
+  const boundTaskId = !paired
+    ? null
+    : safeBridgeBoundTaskId(result.boundTaskId)
+      || safeBridgeBoundTaskId(config.collectionTaskId);
   return {
     requestId: input.requestId,
     ok: ok && !workerChanged,
     protocolVersion: extensionBridgeProtocolVersion,
     extensionVersion: input.extensionVersion,
     buildFingerprint: input.buildFingerprint,
-    connectionSessionId: typeof result.connectionSessionId === "string" ? result.connectionSessionId : null,
+    connectionSessionId,
     paired,
     pendingConfirmation: result.pendingConfirmation === true,
-    boundTaskId: !paired ? null : typeof result.boundTaskId === "string"
-      ? result.boundTaskId
-      : typeof config.collectionTaskId === "string"
-        ? config.collectionTaskId
-        : null,
+    boundTaskId,
     errorCode: workerChanged ? "EXTENSION_CONTEXT_INVALIDATED" : errorCode,
     message: workerChanged ? bridgeErrorMessage("EXTENSION_CONTEXT_INVALIDATED") : ok
-      ? typeof result.message === "string" ? result.message : "插件后台连接正常"
+      ? safeBridgeSuccessMessage(result.message)
       : bridgeErrorMessage(errorCode, input.fallbackMessage)
   };
 }
 
 function safeBridgeErrorCode(value: unknown) {
   return typeof value === "string" && bridgeErrorCodes.has(value) ? value : null;
+}
+
+function safeBridgeConnectionSessionId(value: unknown) {
+  return typeof value === "string" && bridgeConnectionSessionIdPattern.test(value) ? value : null;
+}
+
+function safeBridgeBoundTaskId(value: unknown) {
+  return typeof value === "string" && bridgeTaskIdPattern.test(value) ? value : null;
+}
+
+function safeBridgeSuccessMessage(value: unknown) {
+  const message = typeof value === "string" && value.trim()
+    ? sanitizeVisibleText(value.trim(), 180).slice(0, 200)
+    : "";
+  return message || "插件后台连接正常";
 }
 
 function bridgeErrorMessage(code: string | null, fallback?: string) {

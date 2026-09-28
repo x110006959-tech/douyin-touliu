@@ -122,6 +122,7 @@ export async function getCaptureSummary(userId: string, collectionTaskId: string
         displayValue: summaryDisplayValue(metric, reviewed),
         originalValue: reviewed?.originalValue || null,
         metricUnit: metric.metricUnit,
+        semanticScope: summarySemanticScope(metric, reviewed),
         category: standardizedKey === "unknown" ? "UNKNOWN" : metricKeyCategories[standardizedKey],
         confidence: reviewed?.confidence ?? metric.confidence,
         metricSource: normalizeMetricSource(reviewed?.metricSource || metric.metricSource),
@@ -217,6 +218,19 @@ export function summaryDisplayValue(
   if (!metric.rawEvidence || typeof metric.rawEvidence !== "object" || Array.isArray(metric.rawEvidence)) return null;
   const displayValue = (metric.rawEvidence as Record<string, unknown>).displayValue;
   return typeof displayValue === "string" && displayValue ? displayValue : null;
+}
+
+export function summarySemanticScope(
+  metric: { rawEvidence: unknown },
+  reviewed?: { rawEvidence?: unknown } | null
+) {
+  return semanticScopeFromEvidence(reviewed?.rawEvidence) || semanticScopeFromEvidence(metric.rawEvidence);
+}
+
+function semanticScopeFromEvidence(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const semanticScope = (value as Record<string, unknown>).semanticScope;
+  return typeof semanticScope === "string" && semanticScope ? semanticScope : null;
 }
 
 function readCaptureMeta(value: unknown): CaptureMeta | null {

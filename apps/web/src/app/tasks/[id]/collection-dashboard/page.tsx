@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -40,15 +39,13 @@ import {
 } from "./collection-route-flow";
 import { OverviewPanel } from "./overview-panel";
 import { collectionDashboardCalibrationState, collectionDashboardRefreshMode } from "./refresh-policy";
-
 type CellDraft = {
   reviewedValue: string;
   reviewStatus: Exclude<MetricReviewStatus, "PENDING">;
 };
-
 export default function CollectionDashboardPage() {
   const params = useParams<{ id: string }>();
-  const { token, hydrated } = useAuth();
+  const { token, hydrated, user, refreshCredits } = useAuth();
   const [dashboard, setDashboard] = useState<CollectionDashboardDTO | null>(null);
   const [metrics, setMetrics] = useState<ReviewedMetricDTO[]>([]);
   const [metricDrafts, setMetricDrafts] = useState<Record<string, string>>({});
@@ -152,7 +149,8 @@ export default function CollectionDashboardPage() {
         .then((nextRun) => {
           setDecisionRun(nextRun);
           if (nextRun.status === "SUCCEEDED") setMessage("诊断已完成，结果和建议已显示在本页下方。");
-          if (nextRun.status === "FAILED") setError(humanizeDiagnosisFailure(nextRun.errorCode, nextRun.errorMessage));
+          if (nextRun.status === "FAILED") setError(`${humanizeDiagnosisFailure(nextRun.errorCode, nextRun.errorMessage)} 本次积分已返还。`);
+          if (["SUCCEEDED", "FAILED"].includes(nextRun.status)) void refreshCredits();
         })
         .catch((pollError) => setError(pollError instanceof Error ? pollError.message : "读取诊断进度失败"));
     }, 2_000);
@@ -325,7 +323,8 @@ export default function CollectionDashboardPage() {
           updated.map((metric) => [metric.id, metric.timeRange && metric.timeRange !== "UNKNOWN" ? metric.timeRange : ""]),
         ),
       );
-      setMessage("全部待确认指标已确认。");
+      const remainingPendingCount = updated.filter((metric) => metric.reviewStatus === "PENDING").length;
+      setMessage(remainingPendingCount > 0 ? `已确认可确认指标；仍有 ${remainingPendingCount} 项需人工处理。` : "全部待确认指标已确认。");
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "批量确认指标失败");
@@ -498,6 +497,7 @@ export default function CollectionDashboardPage() {
     decisionIdempotencyKey.current = "";
     setDecisionPreview(null);
     setDecisionRun(nextDecisionRun);
+    await refreshCredits();
     return nextDecisionRun;
   }
 
@@ -805,6 +805,7 @@ export default function CollectionDashboardPage() {
               className="h-10 bg-white px-5 text-indigo-700 shadow-sm hover:bg-indigo-50"
               disabled={
                 Boolean(busy) ||
+                (user?.creditBalance ?? 0) <= 0 ||
                 calibrationState === "EMPTY" ||
                 hasUnsavedReviewEdits ||
                 metrics.some((metric) => (
@@ -816,16 +817,14 @@ export default function CollectionDashboardPage() {
               onClick={() => void confirmAndRunDiagnosis()}
               type="button"
             >
-              {busy === "confirm-and-diagnose" ? "正在确认并分析..." : "确认可信数据并生成诊断"}
+              {busy === "confirm-and-diagnose" ? "正在确认并分析..." : "确认可信数据并生成诊断（消耗 1 积分）"}
             </Button>
             <p className={`text-xs ${hasUnsavedReviewEdits || targetRoiDirty ? "text-amber-200" : "text-indigo-100/80"}`}>
-              {hasUnsavedReviewEdits
-                ? "存在未保存修改，请先在详细数据中保存"
-                : targetRoiDirty
-                  ? "目标 ROI 将在生成诊断前自动保存"
-                : pendingReviewCount > 0
-                  ? `${pendingReviewCount} 项可信数据将在生成诊断前确认`
-                  : "数据已校准，可直接生成诊断"}
+              {hasUnsavedReviewEdits ? "存在未保存修改，请先在详细数据中保存"
+                : targetRoiDirty ? "目标 ROI 将在生成诊断前自动保存"
+                  : (user?.creditBalance ?? 0) <= 0 ? "积分不足，无法创建新的 AI 诊断"
+                    : pendingReviewCount > 0 ? `${pendingReviewCount} 项可信数据将在生成诊断前确认`
+                      : "数据已校准，可直接生成诊断"}
             </p>
           </div>
         }
@@ -1260,6 +1259,7 @@ export default function CollectionDashboardPage() {
           onScenarioChange={setDiagnosisScenario}
           token={token}
           onRefresh={() => void load()}
+          creditBalance={user?.creditBalance ?? 0}
         />
       </section>
     </main>

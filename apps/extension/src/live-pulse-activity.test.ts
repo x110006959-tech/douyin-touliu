@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import contentSource from "./content.ts?raw";
 import serviceWorkerSource from "./service-worker.ts?raw";
+import serviceWorkerRuntimeSource from "./service-worker-runtime.ts?raw";
 import { isLivePulseActivityReporter, livePulseActivityForTab } from "./live-pulse-activity";
 
 const activity = {
@@ -83,7 +84,7 @@ describe("live pulse activity isolation", () => {
     expect(serviceWorkerSource).toContain("const livePulseStates = new Map<number, PulseState>()");
     expect(serviceWorkerSource).toContain("const active = livePulseStates.get(tabId) || null;");
     expect(serviceWorkerSource).toContain("livePulseStates.set(tabId, state)");
-    expect(serviceWorkerSource).toContain("message.payload?.tabId");
+    expect(serviceWorkerRuntimeSource).toContain("message.payload?.tabId");
   });
 
   it("does not let an old content-loop response stop a newer loop", () => {

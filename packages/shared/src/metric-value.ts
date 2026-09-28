@@ -56,6 +56,9 @@ export type MetricSourceCandidate = {
   value: string;
   displayValue: string;
   unit: string | null;
+  unitSource?: "VALUE" | "HEADER" | "LABEL" | "DEFAULT" | "NONE";
+  scope?: string;
+  scopeExplicit?: boolean;
   timeRange: string;
   displayPrecision: number;
   fieldPath: string;

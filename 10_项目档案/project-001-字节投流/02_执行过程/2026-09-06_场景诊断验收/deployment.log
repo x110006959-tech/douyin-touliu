@@ -1,0 +1,14 @@
+{"time":"2026-09-07T02:41:29.602Z","stage":"preflight","active":0,"runs":27,"proposals":19,"schemaUnchanged":true,"candidateImagesPinned":true}
+{"time":"2026-09-07T02:41:29.955Z","stage":"prepared","name":"pxxis-prelaunch-20260713-api-1","configurationEqual":true}
+{"time":"2026-09-07T02:41:30.059Z","stage":"prepared","name":"pxxis-local-ai-validation-worker","configurationEqual":true}
+{"time":"2026-09-07T02:41:30.223Z","stage":"prepared","name":"pxxis-prelaunch-20260713-web-1","configurationEqual":true}
+{"time":"2026-09-07T02:41:31.247Z","stage":"drained","active":0,"runs":27,"proposals":19}
+{"time":"2026-09-07T02:41:33.070Z","stage":"http","ready":{"status":200},"version":{"status":200,"version":{"success":true,"data":{"productVersion":"0.2.6","gitSha":"unknown","buildTime":"2026-09-07T02:41:32.356Z","schemaVersion":"20260731_v035_ai_skill_diagnosis","extensionVersion":"0.2.6","collectionProtocolVersion":8,"artifactSha256":null},"error":null}},"login":{"status":200}}
+{"time":"2026-09-07T02:41:33.219Z","stage":"runtime-version","name":"pxxis-prelaunch-20260713-api-1","diagnosisPromptVersion":"managed-live-growth-prompt-v27","diagnosisOrchestrationVersion":"server-determined-skill-plan-v35","diagnosisSkillSetVersion":"managed-live-growth-skills-v11"}
+{"time":"2026-09-07T02:41:33.364Z","stage":"runtime-version","name":"pxxis-local-ai-validation-worker","diagnosisPromptVersion":"managed-live-growth-prompt-v27","diagnosisOrchestrationVersion":"server-determined-skill-plan-v35","diagnosisSkillSetVersion":"managed-live-growth-skills-v11"}
+{"time":"2026-09-07T02:41:42.340Z","stage":"container","name":"pxxis-prelaunch-20260713-api-1","image":"sha256:45422162458d01790b5ce7e082d0eaa41e7a734e1141b59c5687e6041656dbae","status":"running","health":"healthy","restarts":0}
+{"time":"2026-09-07T02:41:42.387Z","stage":"container","name":"pxxis-local-ai-validation-worker","image":"sha256:45422162458d01790b5ce7e082d0eaa41e7a734e1141b59c5687e6041656dbae","status":"running","restarts":0}
+{"time":"2026-09-07T02:41:42.438Z","stage":"container","name":"pxxis-prelaunch-20260713-web-1","image":"sha256:0019e8a2e89e4e1f1a33be3f8c0fdd36cb8df42869f112ac947de7b25c561b70","status":"running","restarts":0}
+{"time":"2026-09-07T02:41:42.609Z","stage":"web-content","webMarkers":7}
+{"time":"2026-09-07T02:41:42.973Z","stage":"postflight","active":0,"runs":27,"proposals":19,"configurationEqual":true}
+{"time":"2026-09-07T02:41:42.973Z","stage":"complete","rollbackContainers":["pxxis-prelaunch-20260713-api-1-before-diagnosis-scenario-v24-20260907","pxxis-local-ai-validation-worker-before-diagnosis-scenario-v24-20260907","pxxis-prelaunch-20260713-web-1-before-diagnosis-scenario-v24-20260907"]}

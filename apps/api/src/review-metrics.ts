@@ -132,7 +132,7 @@ export function toReviewedMetricDTO(metric: ReviewedMetric): ReviewedMetricDTO {
     confidence: metric.confidence,
     rawEvidence: metric.rawEvidence,
     displayValue: evidence?.displayValue || null,
-    normalizedValue: metric.originalValue,
+    normalizedValue: evidence?.normalizedValue ?? metric.reviewedValue ?? metric.originalValue,
     fieldLabel: evidence?.fieldLabel || null,
     displayPrecision: evidence?.displayPrecision ?? null,
     unitSource: evidence?.unitSource || null,
@@ -249,7 +249,10 @@ export function resolveSourceConflictReview(
   input: { reviewedValue?: string; timeRange?: string; sourceSelection?: "API" | "DOM" | "IGNORE"; reviewStatus: PrismaMetricReviewStatus }
 ) {
   const evidence = toMetricRawEvidence(metric.rawEvidence);
-  if (evidence?.sourceStatus !== "SOURCE_CONFLICT") return { ok: true as const, patch: null };
+  if (evidence?.sourceStatus !== "SOURCE_CONFLICT") {
+    if (input.sourceSelection) return { ok: false as const, error: "SOURCE_CONFLICT_SELECTION_INVALID" as const };
+    return { ok: true as const, patch: null };
+  }
   const selection = input.sourceSelection;
   if (!selection) return { ok: false as const, error: "SOURCE_CONFLICT_SELECTION_REQUIRED" as const };
   if (selection === "IGNORE") {
@@ -277,8 +280,53 @@ export function resolveSourceConflictReview(
   };
 }
 
+export function sourceConflictReviewPersistence(
+  metric: Pick<ReviewedMetric, "rawEvidence" | "metricUnit" | "scope">,
+  patch: { sourceSelection?: "API" | "DOM" }
+) {
+  const evidence = toMetricRawEvidence(metric.rawEvidence);
+  if (!evidence || evidence.sourceStatus !== "SOURCE_CONFLICT" || !patch.sourceSelection) return null;
+  const candidate = patch.sourceSelection === "API" ? evidence.apiCandidate : evidence.domCandidate;
+  if (!candidate) return null;
+  const selectedScope = candidate.scopeExplicit === true && candidate.scope
+    ? candidate.scope
+    : null;
+  const selectedSource = patch.sourceSelection === "API" ? "XHR_JSON" as const : "DOM_TEXT" as const;
+  const selectedSourceType = patch.sourceSelection === "API" ? "INTERNAL_API" as const : "DOM_TEXT" as const;
+  const originalEvidence = metric.rawEvidence && typeof metric.rawEvidence === "object" && !Array.isArray(metric.rawEvidence)
+    ? metric.rawEvidence as Record<string, unknown>
+    : {};
+  return {
+    metricSource: selectedSource,
+    metricUnit: candidate.unit,
+    scope: selectedScope ?? metric.scope,
+    confidence: 1 as const,
+    rawEvidence: {
+      ...originalEvidence,
+      sourceType: selectedSourceType,
+      displayValue: candidate.displayValue,
+      normalizedValue: candidate.value,
+      displayPrecision: candidate.displayPrecision,
+      timeRange: candidate.timeRange,
+      fieldLabel: candidate.fieldLabel,
+      componentPath: candidate.fieldPath,
+      unitSource: candidate.unitSource ?? (candidate.unit ? "DEFAULT" : "NONE"),
+      semanticScope: selectedScope,
+      manualSourceSelection: patch.sourceSelection,
+      selectionReason: `人工选择 ${patch.sourceSelection} 候选值`,
+      sourceStatus: patch.sourceSelection === "API" ? "INTERNAL_API" : "DOM_TEXT",
+      validationStatus: "TRUSTED",
+      validationReasons: []
+    } as Record<string, unknown>
+  };
+}
+
 export function isSourceConflictMetric(metric: Pick<ReviewedMetric, "rawEvidence">) {
   return toMetricRawEvidence(metric.rawEvidence)?.sourceStatus === "SOURCE_CONFLICT";
+}
+
+export function taskLevelConfirmableReviewedMetrics<T extends Pick<ReviewedMetric, "id" | "originalValue" | "reviewStatus" | "rawEvidence">>(metrics: T[]): T[] {
+  return metrics.filter((metric) => metric.reviewStatus === "PENDING" && !isSourceConflictMetric(metric) && canConfirmMetric(metric));
 }
 
 export function canConfirmMetric(metric: Pick<ReviewedMetric, "rawEvidence">) {

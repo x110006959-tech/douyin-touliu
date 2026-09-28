@@ -11,11 +11,14 @@ foreach ($name in @($api, $worker, $web)) {
   $state = (Invoke-CheckedDocker @('inspect', $name, '--format', '{{json .State}}')) | ConvertFrom-Json
   if (!$state.Running -or ($state.Health -and $state.Health.Status -ne 'healthy')) { throw "Service not healthy: $name" }
 }
-foreach ($url in @('http://127.0.0.1:4300/ready', 'http://127.0.0.1:4300/version', 'http://127.0.0.1:3300/login')) {
+foreach ($url in @('http://127.0.0.1:4300/ready', 'http://127.0.0.1:4300/version', 'http://127.0.0.1:3300/login', 'http://127.0.0.1:3300/register')) {
   $response = Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 15
   if ($response.StatusCode -ne 200) { throw "HTTP verification failed: $url" }
   Write-Output "HTTP 200: $url"
 }
+$webArtifactCheck = 'test -f /app/apps/web/.next/server/app-paths-manifest.json && ! test -d /app/apps/web/.next/.next && grep -q ''/register/page'' /app/apps/web/.next/server/app-paths-manifest.json'
+Invoke-CheckedDocker @('exec', $web, 'sh', '-c', $webArtifactCheck)
+Write-Output 'Web register route and build layout verified'
 $apiImage = Invoke-CheckedDocker @('inspect', $api, '--format', '{{.Image}}')
 $workerImage = Invoke-CheckedDocker @('inspect', $worker, '--format', '{{.Image}}')
 if ($apiImage -ne $workerImage) { throw 'API and actual Worker images differ' }

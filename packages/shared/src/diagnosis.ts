@@ -158,7 +158,9 @@ export const diagnosisFinalResultSchema = z.object({
   mainProblemTag: z.enum(["HEALTHY", "DATA_READINESS", "TRAFFIC", "LIVE_ROOM", "PRODUCT", "DELIVERY_ROI", "ACTIVITY_COMPLIANCE", "MULTI_FACTOR"]),
   confidence: z.number().min(0).max(1),
   factSnapshot: z.array(diagnosisClaimSchema).min(1).max(40),
-  hypotheses: z.array(diagnosisHypothesisSchema).min(1).max(20),
+  // 没有足够证据时允许为空。强制生成一个假设会把“原因未知”伪装成
+  // 一条看似完整、实际上不能改变经营决定的泛化结论。
+  hypotheses: z.array(diagnosisHypothesisSchema).max(20),
   missingEvidence: z.array(z.string().min(1).max(300)).max(30),
   experiments: z.array(diagnosisExperimentSchema).max(20),
   // 保留历史输出字段。新运行由服务端从每个实验的 abortCriteria 汇总；

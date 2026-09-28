@@ -31,6 +31,16 @@ function send(type: string, payload?: object, url = taskUrl) {
   });
 }
 
+function sendPopup(type: string, payload?: object) {
+  return new Promise<Record<string, unknown>>((resolve) => {
+    listener(
+      { type, payload },
+      { id: "test-extension", tab: { id: 1, url: taskUrl } as chrome.tabs.Tab, url: "chrome-extension://test-extension/popup.html" },
+      resolve
+    );
+  });
+}
+
 function pair() {
   return send(MESSAGE.PAIR_TASK_FROM_WEB, { code: "123456", apiBaseUrl: "https://api.pxxis.cn" });
 }
@@ -106,9 +116,56 @@ describe("worker pairing and recovery lifecycle", () => {
 
   it("recovers same-account task binding without exchanging another code", async () => {
     await pair();
+    storage[STORAGE.PAGE_ACTIVITY] = { currentUrl: "https://eos.douyin.com/dp/liveScreen", pageType: "LIVE_DATA_SCREEN", collectable: true };
     expect(await send(MESSAGE.SYNC_CURRENT_TASK, undefined, "https://www.pxxis.cn/tasks/task-2")).toMatchObject({ ok: true, boundTaskId: "task-2" });
+    expect(storage[STORAGE.PAGE_ACTIVITY]).toBeUndefined();
     expect(await send(MESSAGE.SYNC_CURRENT_TASK, undefined, "https://www.pxxis.cn/tasks/other-account")).toMatchObject({ ok: false, errorCode: "TASK_ACCOUNT_MISMATCH", boundTaskId: "task-2" });
     expect(requests.filter((path) => path.endsWith("/exchange"))).toHaveLength(1);
+  });
+
+  it("keeps task-scoped state when selecting the already-bound task", async () => {
+    await pair();
+    storage[STORAGE.LATEST_SNAPSHOT] = { marker: "keep-snapshot" };
+    storage[STORAGE.ROUTE_UPLOAD_STATE] = { task1: { fingerprint: "abc", lastUploadAt: 1, consecutiveFailures: 0 } };
+    const requestsBefore = requests.length;
+    const result = await sendPopup(MESSAGE.SELECT_TASK, { collectionTaskId: "task-1" });
+    expect(result).toMatchObject({ ok: true, config: { collectionTaskId: "task-1" } });
+    expect(storage[STORAGE.LATEST_SNAPSHOT]).toEqual({ marker: "keep-snapshot" });
+    expect(storage[STORAGE.ROUTE_UPLOAD_STATE]).toEqual({ task1: { fingerprint: "abc", lastUploadAt: 1, consecutiveFailures: 0 } });
+    expect(requests).toHaveLength(requestsBefore);
+  });
+
+  it("removes stale account and page state when unpairing", async () => {
+    await pair();
+    storage[STORAGE.LATEST_SNAPSHOT] = { marker: "old-snapshot" };
+    storage[STORAGE.ROUTE_UPLOAD_STATE] = { task1: { fingerprint: "abc", lastUploadAt: 1, consecutiveFailures: 0 } };
+    storage[STORAGE.PAGE_ACTIVITY] = { currentUrl: "https://eos.douyin.com/dp/liveScreen", pageType: "LIVE_DATA_SCREEN", collectable: true };
+    storage[STORAGE.LOGS] = [{ action: "live_pulse.started", detail: {}, createdAt: new Date().toISOString() }];
+    const result = await sendPopup(MESSAGE.CLEAR_PAIRING);
+    expect(result).toMatchObject({ ok: true });
+    expect(storage[STORAGE.TOKEN]).toBeUndefined();
+    expect(storage[STORAGE.CONFIG]).toBeUndefined();
+    expect(storage[STORAGE.CONTEXT]).toBeUndefined();
+    expect(storage[STORAGE.LATEST_SNAPSHOT]).toBeUndefined();
+    expect(storage[STORAGE.ROUTE_UPLOAD_STATE]).toBeUndefined();
+    expect(storage[STORAGE.PAGE_ACTIVITY]).toBeUndefined();
+    expect(storage[STORAGE.LOGS]).toEqual([expect.objectContaining({ action: "extension.unpaired" })]);
+    expect(await send(MESSAGE.GET_BRIDGE_STATUS)).toMatchObject({ ok: true, paired: false, boundTaskId: null });
+  });
+
+  it("clears stale page activity and logs when exchanging a fresh pairing", async () => {
+    await pair();
+    storage[STORAGE.PAGE_ACTIVITY] = { currentUrl: "https://localads.chengzijianzhan.cn/lamp/pc/liveboard2", pageType: "LOCAL_PROMOTION_DASHBOARD", collectable: true };
+    storage[STORAGE.LOGS] = [{ action: "live_pulse.failure", detail: {}, createdAt: new Date().toISOString() }];
+    storage[STORAGE.LIVE_PULSE_LAST_OUTCOME] = { stale: true };
+    storage[STORAGE.LIVE_PULSE_ACTIVITY] = { stale: true };
+    storage[STORAGE.LIVE_PULSE_STATE] = { stale: true };
+    expect(await pair()).toMatchObject({ ok: true, paired: true, boundTaskId: "task-1" });
+    expect(storage[STORAGE.PAGE_ACTIVITY]).toBeUndefined();
+    expect(storage[STORAGE.LOGS]).toEqual([expect.objectContaining({ action: "extension.paired" })]);
+    expect(storage[STORAGE.LIVE_PULSE_LAST_OUTCOME]).toBeUndefined();
+    expect(storage[STORAGE.LIVE_PULSE_ACTIVITY]).toBeUndefined();
+    expect(storage[STORAGE.LIVE_PULSE_STATE]).toBeUndefined();
   });
 
   it("does not reconnect revoked credentials or a page outside the exact task route", async () => {

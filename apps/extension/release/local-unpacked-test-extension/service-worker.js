@@ -5096,6 +5096,9 @@
       value: external_exports.string().max(100),
       displayValue: external_exports.string().max(100),
       unit: external_exports.string().nullable(),
+      unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+      scope: external_exports.string().max(100).optional(),
+      scopeExplicit: external_exports.boolean().optional(),
       timeRange: external_exports.string().max(100),
       displayPrecision: external_exports.number().int().min(0).max(20),
       fieldPath: external_exports.string().max(300),
@@ -5105,6 +5108,9 @@
       value: external_exports.string().max(100),
       displayValue: external_exports.string().max(100),
       unit: external_exports.string().nullable(),
+      unitSource: external_exports.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+      scope: external_exports.string().max(100).optional(),
+      scopeExplicit: external_exports.boolean().optional(),
       timeRange: external_exports.string().max(100),
       displayPrecision: external_exports.number().int().min(0).max(20),
       fieldPath: external_exports.string().max(300),
@@ -5389,6 +5395,44 @@
   }
   function reference(routeKey, metricKey) {
     return { routeKey, metricKey };
+  }
+
+  // ../../packages/shared/src/auth-schemas.ts
+  var optionalEmailSchema = external_exports.preprocess(
+    (value) => typeof value === "string" && !value.trim() ? void 0 : value,
+    external_exports.string().trim().toLowerCase().email("\u8BF7\u8F93\u5165\u6709\u6548\u90AE\u7BB1").max(128, "\u90AE\u7BB1\u4E0D\u80FD\u8D85\u8FC7 128 \u4E2A\u5B57\u7B26").optional()
+  );
+  var optionalPhoneSchema = external_exports.preprocess(
+    (value) => typeof value === "string" && !value.trim() ? void 0 : value,
+    external_exports.string().trim().max(32, "\u624B\u673A\u53F7\u4E0D\u80FD\u8D85\u8FC7 32 \u4E2A\u5B57\u7B26").transform((value, context) => {
+      const normalized = normalizePhoneNumber(value);
+      if (normalized) return normalized;
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "\u8BF7\u8F93\u5165\u6709\u6548\u624B\u673A\u53F7" });
+      return external_exports.NEVER;
+    }).optional()
+  );
+  var authLoginSchema = external_exports.object({
+    identifier: external_exports.string().trim().min(1, "\u8BF7\u8F93\u5165\u90AE\u7BB1\u6216\u624B\u673A\u53F7").max(128, "\u767B\u5F55\u6807\u8BC6\u4E0D\u80FD\u8D85\u8FC7 128 \u4E2A\u5B57\u7B26").optional(),
+    // 旧客户端此前直接提交 email 字段；保留为兼容别名，identifier 优先。
+    email: external_exports.string().trim().max(128).optional(),
+    password: external_exports.string().min(6, "\u5BC6\u7801\u81F3\u5C11 6 \u4F4D").max(128, "\u5BC6\u7801\u4E0D\u80FD\u8D85\u8FC7 128 \u4F4D")
+  }).superRefine((value, context) => {
+    if (value.identifier || value.email) return;
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["identifier"], message: "\u8BF7\u8F93\u5165\u90AE\u7BB1\u6216\u624B\u673A\u53F7" });
+  }).transform((value) => ({ identifier: (value.identifier || value.email || "").trim(), password: value.password }));
+  var authRegisterSchema = external_exports.object({
+    email: optionalEmailSchema,
+    phone: optionalPhoneSchema,
+    password: external_exports.string().min(8, "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D").max(128, "\u5BC6\u7801\u4E0D\u80FD\u8D85\u8FC7 128 \u4F4D"),
+    name: external_exports.string().trim().min(1, "\u8BF7\u8F93\u5165\u59D3\u540D").max(100, "\u59D3\u540D\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57").optional()
+  }).superRefine((value, context) => {
+    if (value.email || value.phone) return;
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["email"], message: "\u90AE\u7BB1\u548C\u624B\u673A\u53F7\u81F3\u5C11\u586B\u5199\u4E00\u4E2A" });
+  });
+  function normalizePhoneNumber(value) {
+    const compact = value.trim().replace(/[\s()-]/g, "");
+    const normalized = /^1[3-9]\d{9}$/.test(compact) ? `+86${compact}` : compact.startsWith("0086") ? `+${compact.slice(2)}` : compact;
+    return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
   }
 
   // ../../packages/shared/src/index.ts
@@ -6023,13 +6067,6 @@
   });
   var updateCollectionTaskStatusSchema = external_exports.object({
     status: external_exports.enum(collectionTaskStatuses)
-  });
-  var authLoginSchema = external_exports.object({
-    email: external_exports.string().trim().toLowerCase().email("\u8BF7\u8F93\u5165\u6709\u6548\u90AE\u7BB1").max(128, "\u90AE\u7BB1\u4E0D\u80FD\u8D85\u8FC7 128 \u4E2A\u5B57\u7B26"),
-    password: external_exports.string().min(6, "\u5BC6\u7801\u81F3\u5C11 6 \u4F4D").max(128, "\u5BC6\u7801\u4E0D\u80FD\u8D85\u8FC7 128 \u4F4D")
-  });
-  var authRegisterSchema = authLoginSchema.extend({
-    name: external_exports.string().trim().min(1, "\u8BF7\u8F93\u5165\u59D3\u540D").max(100, "\u59D3\u540D\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57").optional()
   });
   var emailVerificationConfirmSchema = external_exports.object({
     token: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/, "\u9A8C\u8BC1\u94FE\u63A5\u65E0\u6548\u6216\u5DF2\u8FC7\u671F")
@@ -6950,6 +6987,7 @@
         value: normalizedValue,
         displayValue,
         unit: field.unit,
+        unitSource: field.unit ? "DEFAULT" : "NONE",
         timeRange: "\u5B9E\u65F6",
         displayPrecision: field.displayPrecision,
         fieldPath: field.fieldPath,
@@ -7068,6 +7106,143 @@
     });
   }
 
+  // src/service-worker-runtime.ts
+  function registerServiceWorkerRuntime(deps) {
+    chrome.runtime.onInstalled.addListener(() => {
+      void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).then(() => deps.appendLog("extension.installed"));
+    });
+    void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      void deps.stopLivePulseForTab(tabId, "TAB_CLOSED");
+    });
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      void deps.stopLivePulseForTabUpdate(tabId, changeInfo);
+    });
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message?.type === MESSAGE.PAGE_ACTIVITY) {
+        void deps.handlePageActivity(message.payload, sender.tab?.id).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.CAPTURE_AND_UPLOAD) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u91C7\u96C6\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void deps.captureAndUploadSingleFlight(message.payload || {}).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.START_LIVE_PULSE) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5F00\u542F\u3002" });
+          return false;
+        }
+        void deps.startLivePulse(message.payload || {}).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.START_LOCAL_PROMOTION_PULSE) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5F00\u542F\u3002" });
+          return false;
+        }
+        void deps.startLocalPromotionPulse(message.payload || {}).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
+          return false;
+        }
+        void deps.stopLivePulse("USER_STOPPED", void 0, void 0, void 0, message.payload?.tabId).then(() => sendResponse({ ok: true }));
+        return true;
+      }
+      if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
+          return false;
+        }
+        void deps.stopLivePulse("USER_STOPPED", void 0, void 0, void 0, message.payload?.tabId).then(() => sendResponse({ ok: true }));
+        return true;
+      }
+      if (message?.type === MESSAGE.SUBMIT_LIVE_PULSE) {
+        void deps.submitLivePulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE) {
+        void deps.submitLocalPromotionPulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.GET_STATE) {
+        void deps.getState(Number.isInteger(message.payload?.tabId) ? Number(message.payload.tabId) : void 0).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.VERIFY_BOUND_CONTEXT) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u914D\u5BF9\u6821\u9A8C\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void deps.updateBinding(deps.verifyBoundContext).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
+        void deps.getBridgeStatus().then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
+        void deps.bridgeBindingResponse(() => deps.syncCurrentTaskFromBridge(sender)).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
+        void deps.bridgeBindingResponse(() => deps.pairTaskFromWeb(message.payload || {}, sender)).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
+        void deps.requestPairingConfirmation(message.payload || {}).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.CONFIRM_PAIRING) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u914D\u5BF9\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void deps.updateBinding(() => deps.confirmPairing(sender)).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.CANCEL_PAIRING) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u914D\u5BF9\u53D6\u6D88\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void deps.cancelPairingConfirmation().then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.SELECT_TASK) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u4EFB\u52A1\u5207\u6362\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void deps.updateBinding(() => deps.selectTask(message.payload || {})).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.CLEAR_PAIRING) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u89E3\u9664\u914D\u5BF9\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void deps.updateBinding(deps.clearPairing).then(sendResponse);
+        return true;
+      }
+      if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
+        if (!deps.isPopupSender(sender)) {
+          sendResponse({ ok: false, error: "\u6E05\u7A7A\u672C\u5730\u5FEB\u7167\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
+          return false;
+        }
+        void chrome.storage.local.remove(STORAGE.LATEST_SNAPSHOT).then(() => sendResponse({ ok: true }));
+        return true;
+      }
+      return false;
+    });
+  }
+
   // src/service-worker.ts
   var uploadQueue = Promise.resolve();
   var captureSingleFlight = createKeyedSingleFlight();
@@ -7080,6 +7255,20 @@
   var latestLivePulseOutcome = null;
   var connectionSessionId = crypto.randomUUID();
   var bindingQueue = Promise.resolve();
+  var pairingLocalStateKeys = [
+    STORAGE.TOKEN,
+    STORAGE.CONFIG,
+    STORAGE.CONTEXT,
+    STORAGE.ACTIVE_COLLECTION_SESSION,
+    STORAGE.PENDING_PAIRING_CONFIRMATION,
+    STORAGE.LATEST_SNAPSHOT,
+    STORAGE.ROUTE_UPLOAD_STATE,
+    STORAGE.PAGE_ACTIVITY,
+    STORAGE.LOGS,
+    STORAGE.LIVE_PULSE_LAST_OUTCOME,
+    STORAGE.LIVE_PULSE_ACTIVITY,
+    STORAGE.LIVE_PULSE_STATE
+  ];
   function updateBinding(operation) {
     const result = bindingQueue.then(operation);
     bindingQueue = result.then(() => void 0, () => void 0);
@@ -7093,139 +7282,6 @@
       return { ok: false, errorCode: "BRIDGE_REQUEST_FAILED" };
     }
   }
-  chrome.runtime.onInstalled.addListener(() => {
-    void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).then(() => appendLog("extension.installed"));
-  });
-  void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
-  chrome.tabs.onRemoved.addListener((tabId) => {
-    void stopLivePulseForTab(tabId, "TAB_CLOSED");
-  });
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    void stopLivePulseForTabUpdate(tabId, changeInfo);
-  });
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === MESSAGE.PAGE_ACTIVITY) {
-      void handlePageActivity(message.payload, sender.tab?.id).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.CAPTURE_AND_UPLOAD) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u91C7\u96C6\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void captureAndUploadSingleFlight(message.payload || {}).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.START_LIVE_PULSE) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5F00\u542F\u3002" });
-        return false;
-      }
-      void startLivePulse(message.payload || {}).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.START_LOCAL_PROMOTION_PULSE) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5F00\u542F\u3002" });
-        return false;
-      }
-      void startLocalPromotionPulse(message.payload || {}).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.STOP_LIVE_PULSE) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
-        return false;
-      }
-      void stopLivePulse("USER_STOPPED", void 0, void 0, void 0, message.payload?.tabId).then(() => sendResponse({ ok: true }));
-      return true;
-    }
-    if (message?.type === MESSAGE.STOP_LOCAL_PROMOTION_PULSE) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u5B9E\u65F6\u8109\u51B2\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u505C\u6B62\u3002" });
-        return false;
-      }
-      void stopLivePulse("USER_STOPPED", void 0, void 0, void 0, message.payload?.tabId).then(() => sendResponse({ ok: true }));
-      return true;
-    }
-    if (message?.type === MESSAGE.SUBMIT_LIVE_PULSE) {
-      void submitLivePulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.SUBMIT_LOCAL_PROMOTION_PULSE) {
-      void submitLocalPromotionPulse(message.payload || {}, sender.tab?.id, sender.tab?.url).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.GET_STATE) {
-      void getState(Number.isInteger(message.payload?.tabId) ? Number(message.payload.tabId) : void 0).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.VERIFY_BOUND_CONTEXT) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u914D\u5BF9\u6821\u9A8C\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void updateBinding(verifyBoundContext).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.GET_BRIDGE_STATUS) {
-      void getBridgeStatus().then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.SYNC_CURRENT_TASK) {
-      void bridgeBindingResponse(() => syncCurrentTaskFromBridge(sender)).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.PAIR_TASK_FROM_WEB) {
-      void bridgeBindingResponse(() => pairTaskFromWeb(message.payload || {}, sender)).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.REQUEST_PAIRING_CONFIRMATION) {
-      void requestPairingConfirmation(message.payload || {}).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.CONFIRM_PAIRING) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u914D\u5BF9\u786E\u8BA4\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void updateBinding(() => confirmPairing(sender)).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.CANCEL_PAIRING) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u914D\u5BF9\u53D6\u6D88\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void cancelPairingConfirmation().then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.SELECT_TASK) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u4EFB\u52A1\u5207\u6362\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void updateBinding(() => selectTask(message.payload || {})).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.CLEAR_PAIRING) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u89E3\u9664\u914D\u5BF9\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void updateBinding(clearPairing).then(sendResponse);
-      return true;
-    }
-    if (message?.type === MESSAGE.CLEAR_SNAPSHOT) {
-      if (!isPopupSender(sender)) {
-        sendResponse({ ok: false, error: "\u6E05\u7A7A\u672C\u5730\u5FEB\u7167\u53EA\u80FD\u5728\u63D2\u4EF6 Popup \u4E2D\u5B8C\u6210\u3002" });
-        return false;
-      }
-      void chrome.storage.local.remove(STORAGE.LATEST_SNAPSHOT).then(() => sendResponse({ ok: true }));
-      return true;
-    }
-    return false;
-  });
   async function saveSnapshot(snapshot2, tabId) {
     const safeSnapshot = sanitizeSnapshotPayload(snapshot2);
     await chrome.storage.local.set({
@@ -7391,7 +7447,23 @@
         [STORAGE.CONFIG]: { apiBaseUrl: confirmation.apiBaseUrl, collectionTaskId: suggestedTaskId },
         [STORAGE.CONTEXT]: null
       });
-      await chrome.storage.local.remove([STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT]);
+      await chrome.storage.local.remove([
+        STORAGE.PENDING_PAIRING_CONFIRMATION,
+        STORAGE.ACTIVE_COLLECTION_SESSION,
+        STORAGE.ROUTE_UPLOAD_STATE,
+        STORAGE.LATEST_SNAPSHOT,
+        STORAGE.PAGE_ACTIVITY,
+        STORAGE.LOGS
+      ]);
+      await hydrateLivePulseStorage();
+      if (livePulseStates.size === 0) {
+        await chrome.storage.local.remove([
+          STORAGE.LIVE_PULSE_LAST_OUTCOME,
+          STORAGE.LIVE_PULSE_ACTIVITY,
+          STORAGE.LIVE_PULSE_STATE
+        ]);
+        resetLivePulseStorage();
+      }
       const contextResponse = await fetchWithTimeout(`${confirmation.apiBaseUrl}/extension/context`, {
         headers: extensionContextRequestHeaders(token)
       });
@@ -7487,6 +7559,9 @@
     const project = context.account.projects.find((item) => item.tasks.some((task2) => task2.id === taskId));
     const task = project?.tasks.find((item) => item.id === taskId);
     if (!project || !task) return { ok: false, error: "\u6240\u9009\u4EFB\u52A1\u4E0D\u5C5E\u4E8E\u5F53\u524D\u7ED1\u5B9A\u8D26\u53F7\uFF0C\u5DF2\u963B\u6B62\u5207\u6362\u3002" };
+    if (config.collectionTaskId === task.id) {
+      return { ok: true, config };
+    }
     await hydrateLivePulseStorage();
     if (shouldBlockTaskSwitchForActivePulse({
       boundTaskId: config.collectionTaskId,
@@ -7497,15 +7572,14 @@
     }
     const nextConfig = { ...config, collectionTaskId: task.id, projectId: project.id, projectName: project.name };
     await chrome.storage.local.set({ [STORAGE.CONFIG]: nextConfig });
-    await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
+    await chrome.storage.local.remove([STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.ROUTE_UPLOAD_STATE, STORAGE.LATEST_SNAPSHOT, STORAGE.PAGE_ACTIVITY, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
     resetLivePulseStorage();
     await appendLog("task.selected", { accountProfileId: context.account.id, projectId: project.id, collectionTaskId: task.id });
-    await reportExtensionHeartbeatFromStoredActivity();
     return { ok: true, config: nextConfig };
   }
   async function clearPairing() {
     await stopLivePulse("UNPAIRED");
-    await chrome.storage.local.remove([STORAGE.TOKEN, STORAGE.CONFIG, STORAGE.CONTEXT, STORAGE.ACTIVE_COLLECTION_SESSION, STORAGE.PENDING_PAIRING_CONFIRMATION, STORAGE.LIVE_PULSE_LAST_OUTCOME, STORAGE.LIVE_PULSE_ACTIVITY, STORAGE.LIVE_PULSE_STATE]);
+    await chrome.storage.local.remove([...pairingLocalStateKeys]);
     resetLivePulseStorage();
     await appendLog("extension.unpaired");
     return { ok: true };
@@ -7600,7 +7674,7 @@
       connectionSessionId,
       protocolVersion: extensionBridgeProtocolVersion,
       extensionVersion: chrome.runtime.getManifest().version,
-      buildFingerprint: "a5c05f67d34f",
+      buildFingerprint: "ba8c652b84a9",
       message: paired ? config.collectionTaskId ? "\u63D2\u4EF6\u5DF2\u6709\u672C\u5730\u51ED\u8BC1\uFF0C\u6B63\u5728\u6838\u5BF9\u4EFB\u52A1\u8FDE\u63A5" : "\u63D2\u4EF6\u5DF2\u6709\u672C\u5730\u51ED\u8BC1\uFF0C\u5C1A\u672A\u9009\u62E9\u91C7\u96C6\u4EFB\u52A1" : "\u63D2\u4EF6\u8FD0\u884C\u6B63\u5E38\uFF0C\u5C1A\u672A\u914D\u5BF9"
     };
   }
@@ -7674,6 +7748,7 @@
           STORAGE.ACTIVE_COLLECTION_SESSION,
           STORAGE.ROUTE_UPLOAD_STATE,
           STORAGE.LATEST_SNAPSHOT,
+          STORAGE.PAGE_ACTIVITY,
           STORAGE.LIVE_PULSE_LAST_OUTCOME,
           STORAGE.LIVE_PULSE_ACTIVITY,
           STORAGE.LIVE_PULSE_STATE
@@ -7854,7 +7929,7 @@
       return { ok: false, error: "\u670D\u52A1\u7AEF API \u5F00\u5173\u672A\u5F00\u542F\uFF1B\u672A\u542F\u52A8\u5B9E\u65F6\u8109\u51B2\uFF0C\u4E5F\u4E0D\u4F1A\u9759\u9ED8\u6539\u7528 DOM\u3002" };
     }
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
-    if (pageContext?.buildFingerprint !== "a5c05f67d34f") {
+    if (pageContext?.buildFingerprint !== "ba8c652b84a9") {
       return { ok: false, error: "\u76EE\u6807\u76F4\u64AD\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u76F4\u64AD\u9875\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
     }
     const initialLiveActivity = livePulseActivityForTab({
@@ -7997,7 +8072,7 @@
       return { ok: false, error: "\u672C\u5730\u63A8 API \u5951\u7EA6\u6216\u9002\u914D\u5668\u7248\u672C\u4E0D\u5339\u914D\uFF1B\u8BF7\u66F4\u65B0\u5E76\u91CD\u542F\u672C\u5730\u670D\u52A1\u3001\u91CD\u65B0\u52A0\u8F7D\u63D2\u4EF6\u540E\u518D\u8BD5\u3002" };
     }
     const pageContext = await chrome.tabs.sendMessage(tabId, { type: MESSAGE.GET_PAGE_CONTEXT }).catch(() => null);
-    if (pageContext?.buildFingerprint !== "a5c05f67d34f") {
+    if (pageContext?.buildFingerprint !== "ba8c652b84a9") {
       return { ok: false, error: "\u76EE\u6807\u540E\u53F0\u9875\u4ECD\u5728\u8FD0\u884C\u65E7\u7248\u63D2\u4EF6\u811A\u672C\uFF1B\u8BF7\u5237\u65B0\u5F53\u524D\u672C\u5730\u63A8\u9875\u9762\u540E\u518D\u5F00\u59CB API \u6301\u7EED\u91C7\u96C6\u3002" };
     }
     if (pageContext?.pageType !== "LOCAL_PROMOTION_DASHBOARD" || !isExactLocalPromotionInternalApiPage(pageContext?.currentUrl || "") || pageContext?.localPromotionPulseEligible !== true) {
@@ -8311,7 +8386,7 @@
       lastFailureReason: state.lastFailureReason,
       lastFailureEndpoint: state.lastFailureEndpoint,
       rateLimitedUntil: state.rateLimitedUntil,
-      buildFingerprint: "a5c05f67d34f",
+      buildFingerprint: "ba8c652b84a9",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
   }
@@ -8380,7 +8455,7 @@
   }
   function parseStoredLivePulseOutcomes(value) {
     const context = {
-      buildFingerprint: "a5c05f67d34f",
+      buildFingerprint: "ba8c652b84a9",
       collectionProtocolVersion: extensionCollectionProtocolVersion,
       endpointKeys: [
         ...liveScreenInternalApiEndpointKeys,
@@ -8403,7 +8478,7 @@
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const candidate = value;
     const routeKey = candidate.routeKey === "LOCAL_PROMOTION_DASHBOARD" || candidate.routeKey === "LIVE_DATA_SCREEN" ? candidate.routeKey : null;
-    if (candidate.buildFingerprint !== "a5c05f67d34f" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
+    if (candidate.buildFingerprint !== "ba8c652b84a9" || candidate.collectionProtocolVersion !== extensionCollectionProtocolVersion || typeof candidate.loopId !== "string" || !Number.isInteger(candidate.tabId) || Number(candidate.tabId) <= 0 || typeof candidate.taskId !== "string" || typeof candidate.identityKey !== "string" || !routeKey || typeof candidate.currentUrl !== "string" || !(routeKey === "LOCAL_PROMOTION_DASHBOARD" ? isExactLocalPromotionInternalApiPage(candidate.currentUrl) : isExactLiveScreenPage(candidate.currentUrl)) || typeof candidate.startedAt !== "string" || !Number.isSafeInteger(candidate.successCount) || !Number.isSafeInteger(candidate.lastMetricCount) || !Array.isArray(candidate.lastMetricKeys)) {
       return null;
     }
     const allowedMetricKeys = routeKey === "LOCAL_PROMOTION_DASHBOARD" ? localPromotionPulseMetricKeys : liveScreenPulseCoreMetricKeys;
@@ -8435,7 +8510,7 @@
     await hydrateLivePulseStorage();
     const versionedOutcome = {
       ...outcome,
-      buildFingerprint: "a5c05f67d34f",
+      buildFingerprint: "ba8c652b84a9",
       collectionProtocolVersion: extensionCollectionProtocolVersion
     };
     latestLivePulseOutcome = versionedOutcome;
@@ -8555,12 +8630,6 @@
       return { ok: false, error: "\u65E0\u6CD5\u8FDE\u63A5\u8BCA\u65AD\u670D\u52A1\uFF0C\u8BF7\u68C0\u67E5 API \u662F\u5426\u8FD0\u884C\u3002" };
     }
   }
-  async function reportExtensionHeartbeatFromStoredActivity() {
-    const local = await chrome.storage.local.get([STORAGE.PAGE_ACTIVITY]);
-    const activity = local[STORAGE.PAGE_ACTIVITY];
-    if (!activity) return { ok: false, skipped: true };
-    return reportExtensionHeartbeat(activity);
-  }
   async function reportExtensionHeartbeat(activity, timeoutMs = extensionRequestTimeoutMs) {
     const api = await apiContext();
     if (!api.ok) return { ok: false, skipped: true, error: api.error };
@@ -8576,7 +8645,7 @@
           collectionTaskId: credentials.collectionTaskId,
           extensionVersion: chrome.runtime.getManifest().version,
           bridgeProtocolVersion: extensionBridgeProtocolVersion,
-          buildFingerprint: "a5c05f67d34f",
+          buildFingerprint: "ba8c652b84a9",
           connectionSessionId,
           currentUrl: activity.currentUrl,
           pageType: activity.pageType,
@@ -8753,4 +8822,29 @@
     logs.unshift({ action, detail, createdAt: (/* @__PURE__ */ new Date()).toISOString() });
     await chrome.storage.local.set({ [STORAGE.LOGS]: logs.slice(0, 100) });
   }
+  registerServiceWorkerRuntime({
+    appendLog,
+    bridgeBindingResponse,
+    cancelPairingConfirmation,
+    captureAndUploadSingleFlight,
+    clearPairing,
+    confirmPairing,
+    getBridgeStatus,
+    getState,
+    handlePageActivity,
+    isPopupSender,
+    pairTaskFromWeb,
+    requestPairingConfirmation,
+    selectTask,
+    startLivePulse,
+    startLocalPromotionPulse,
+    stopLivePulse,
+    stopLivePulseForTab,
+    stopLivePulseForTabUpdate,
+    submitLivePulse,
+    submitLocalPromotionPulse,
+    syncCurrentTaskFromBridge,
+    updateBinding,
+    verifyBoundContext
+  });
 })();

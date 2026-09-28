@@ -8,6 +8,7 @@ import {
   identifyMetricKey,
   standardizeMetricKey
 } from "./index";
+import { metricRawEvidenceSchema } from "./collection-capture";
 
 describe("metric dictionary", () => {
   it("maps explicit verification ROI aliases to the standard key", () => {
@@ -109,6 +110,44 @@ describe("collection snapshot contracts", () => {
       ...snapshot,
       detectedAccountId: "account-1001"
     })).not.toHaveProperty("detectedAccountId");
+  });
+});
+
+describe("metric evidence candidates", () => {
+  it("preserves selected candidate scope and unit source", () => {
+    const parsed = metricRawEvidenceSchema.parse({
+      sourceType: "INTERNAL_API",
+      sourceStatus: "SOURCE_CONFLICT",
+      apiCandidate: {
+        value: "12",
+        displayValue: "12元",
+        unit: "元",
+        unitSource: "DEFAULT",
+        scope: "FULL_DOMAIN",
+        scopeExplicit: true,
+        timeRange: "今日",
+        displayPrecision: 0,
+        fieldPath: "data.spend",
+        fieldLabel: "全域消耗"
+      },
+      domCandidate: {
+        value: "10",
+        displayValue: "10元",
+        unit: "元",
+        unitSource: "VALUE",
+        scope: "PAYMENT",
+        scopeExplicit: true,
+        timeRange: "今日",
+        displayPrecision: 0,
+        fieldPath: "section:0>span:0",
+        fieldLabel: "消耗"
+      }
+    });
+
+    expect(parsed.apiCandidate?.scope).toBe("FULL_DOMAIN");
+    expect(parsed.apiCandidate?.unitSource).toBe("DEFAULT");
+    expect(parsed.domCandidate?.scope).toBe("PAYMENT");
+    expect(parsed.domCandidate?.unitSource).toBe("VALUE");
   });
 });
 

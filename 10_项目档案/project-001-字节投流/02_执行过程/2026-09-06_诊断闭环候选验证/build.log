@@ -1,0 +1,50 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+$ corepack pnpm -r build
+Scope: 7 of 8 workspace projects
+packages/shared build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+packages/shared build: Done
+apps/extension build$ node scripts/build.mjs --target=local
+apps/web build$ next build
+packages/diagnosis-skills build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+packages/decision-engine build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/extension build: Done
+packages/llm build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/web build: ▲ Next.js 16.3.0 (Turbopack)
+apps/web build: ✓ Running next.config.ts took 211ms
+apps/web build:   Creating an optimized production build ...
+packages/llm build: Done
+packages/diagnosis-skills build: Done
+packages/decision-engine build: Done
+apps/web build: ✓ Compiled successfully in 3.1s
+apps/web build:   Running TypeScript ...
+apps/web build:   Finished TypeScript in 6.6s ...
+apps/web build:   Collecting page data using 15 workers ...
+apps/web build:   Generating static pages using 15 workers (0/12) ...
+apps/web build:   Generating static pages using 15 workers (3/12)
+apps/web build:   Generating static pages using 15 workers (6/12)
+apps/web build:   Generating static pages using 15 workers (9/12)
+apps/web build: ✓ Generating static pages using 15 workers (12/12) in 287ms
+apps/web build:   Finalizing page optimization ...
+apps/web build: Route (app)
+apps/web build: ┌ ƒ /
+apps/web build: ├ ƒ /_not-found
+apps/web build: ├ ƒ /accounts/[id]
+apps/web build: ├ ƒ /accounts/new
+apps/web build: ├ ƒ /action-proposals/[id]
+apps/web build: ├ ƒ /dashboard
+apps/web build: ├ ƒ /decision-center
+apps/web build: ├ ƒ /email-verification
+apps/web build: ├ ƒ /extension
+apps/web build: ├ ƒ /login
+apps/web build: ├ ƒ /privacy
+apps/web build: ├ ƒ /projects/[id]
+apps/web build: ├ ƒ /projects/[id]/history
+apps/web build: ├ ƒ /projects/new
+apps/web build: ├ ƒ /tasks/[id]
+apps/web build: ├ ƒ /tasks/[id]/collection-dashboard
+apps/web build: └ ƒ /terms
+apps/web build: ƒ Proxy (Middleware)
+apps/web build: ƒ  (Dynamic)  server-rendered on demand
+apps/web build: Done
+apps/api build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+apps/api build: Done

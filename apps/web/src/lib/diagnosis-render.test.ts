@@ -54,11 +54,56 @@ describe("rendered diagnosis partial-failure boundary", () => {
       analysis: [{ title: "ANALYSIS_TITLE", conclusion: "ANALYSIS_MEANING", supportingFacts: ["VERIFIED_SUPPORT"], conflictingFacts: ["COUNTER_EVIDENCE"], missingEvidence: ["DISTINGUISH_CAUSE"] }]
     };
     const html = render(fixture);
+    expect(html).toContain("本次目标已达成");
+    expect(html).toContain("全域目标结果已确认");
+    expect(html).not.toContain("MODEL_ONLY_SENTINEL");
+    expect(html.indexOf("今天先做什么")).toBeLessThan(html.indexOf("本次直播复盘分析"));
+    expect(html).toContain("<summary");
+    expect(html).toContain("证据与待核对项");
     for (const text of ["本次直播复盘分析", "ANALYSIS_MEANING", "VERIFIED_SUPPORT", "COUNTER_EVIDENCE", "DISTINGUISH_CAUSE", "高于目标"]) expect(html).toContain(text);
     expect(html).not.toContain("-9.94");
     expect(html).not.toContain("当前直播分析");
     expect(render({ ...fixture, status: "FAILED" })).not.toContain("ANALYSIS_MEANING");
     expect(render({ ...fixture, decisionView: { ...fixture.decisionView, analysis: undefined } })).toContain("尚无可展示的有据原因分析");
+    const compliance = render({
+      ...fixture, decisionView: {
+        ...fixture.decisionView, mainProblemTag: "ACTIVITY_COMPLIANCE",
+        headline: "合规风险优先", conclusion: "先核对活动权益与履约要求"
+      }
+    });
+    expect(compliance).toContain("合规风险优先");
+    expect(compliance).toContain("先核对活动权益与履约要求");
+    const reviewed = render({
+      ...fixture, deterministicReview: {
+        status: "CONFLICT", expectedMainProblemTag: "DELIVERY_ROI", conclusion: "SERVER_REVIEW_SENTINEL"
+      }
+    });
+    expect(reviewed).toContain("SERVER_REVIEW_SENTINEL");
+    expect(reviewed).not.toContain("全域目标结果已确认");
+    expect(reviewed).not.toContain("ANALYSIS_MEANING");
+    const actionView: NonNullable<DecisionRun["decisionView"]> = {
+      ...fixture.decisionView,
+      nextStep: { kind: "APPROVAL", title: "核对下个窗口", reason: "缺少可比窗口", proposalId: "proposal-render", actionType: "OBSERVE", status: "PENDING_APPROVAL" },
+      primaryExperiment: {
+        id: "E1", hypothesisId: "H1", title: "EXPERIMENT_SENTINEL", evidenceIds: ["metric:full_domain_pay_roi"],
+        steps: ["核对下个窗口"], verifyMetrics: ["spend"], stopConditions: ["口径变化时停止比较"]
+      }
+    };
+    expect(render({ ...fixture, decisionView: actionView })).toContain('href="/action-proposals/proposal-render"');
+    const conflictedAction = render({
+      ...fixture, decisionView: actionView,
+      deterministicReview: { status: "CONFLICT", expectedMainProblemTag: "DELIVERY_ROI", conclusion: "SERVER_REVIEW_SENTINEL" }
+    });
+    expect(conflictedAction).toContain("所有候选动作已暂停");
+    expect(conflictedAction).not.toContain('href="/action-proposals/');
+    expect(conflictedAction).not.toContain("EXPERIMENT_SENTINEL");
+    for (const kind of ["MANUAL_EXECUTION", "OBSERVATION", "OUTCOME_REVIEW", "COMPLETED"] as const) {
+      const lifecycle = render({
+        ...fixture, decisionView: { ...actionView, nextStep: { ...actionView.nextStep, kind } }
+      });
+      expect(lifecycle).toContain('href="/action-proposals/proposal-render"');
+      expect(lifecycle).not.toContain("打开后人工审批");
+    }
   });
 
   it.each(["SUCCEEDED", "FAILED"] as const)("renders trusted target, trend and cause independently for %s", (status) => {
@@ -78,5 +123,29 @@ describe("rendered diagnosis partial-failure boundary", () => {
     expect(html).toContain("旧记录没有可独立验证的事实输入");
     expect(html).not.toContain("已确认的可信事实");
     expect(html).not.toContain("MODEL_ONLY_SENTINEL");
+  });
+
+  it("collapses empty history without hiding available comparisons", () => {
+    const empty: NonNullable<DecisionRun["historyContext"]>["archiveComparison"] = {
+      kind: "ANALYSIS_ARCHIVE", status: "INSUFFICIENT", label: "上次诊断",
+      baselineLabel: "上次", currentLabel: "本次", baselineAt: null, currentAt: null,
+      rows: [], notices: ["缺少历史基线"]
+    };
+    const context: NonNullable<DecisionRun["historyContext"]> = {
+      version: 1, capturedAt: "2026-09-18T12:00:00.000Z",
+      archiveComparison: empty, periodComparison: { ...empty, kind: "PERIOD", label: "周期对比" }
+    };
+    const html = render({ ...run("SUCCEEDED"), historyContext: context });
+    expect(html).toContain("历史与周期对比：暂无可比数据");
+    expect(html.match(/缺少历史基线/g)).toHaveLength(1);
+    expect(html).not.toContain("比较时点");
+    const withData = render({ ...run("SUCCEEDED"), historyContext: {
+      ...context, archiveComparison: { ...empty, status: "IMPROVED", rows: [{
+        routeKey: "LOCAL_PROMOTION_DASHBOARD", metricKey: "full_domain_pay_roi", metricName: "全域支付 ROI",
+        unit: null, baselineValue: 50, currentValue: 60, delta: 10, conclusion: "IMPROVED", note: "同口径可比较"
+      }] }
+    } });
+    expect(withData).toContain("50 → 60");
+    expect(withData).not.toContain("历史与周期对比：暂无可比数据");
   });
 });

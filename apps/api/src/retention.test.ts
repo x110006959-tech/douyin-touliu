@@ -6,10 +6,12 @@ const now = new Date("2026-07-17T12:00:00.000Z");
 const userIds: string[] = [];
 const securityMetricIds: string[] = [];
 const auditLogIds: string[] = [];
+const rateLimitBucketIds: string[] = [];
 
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { id: { in: auditLogIds.splice(0) } } });
   await prisma.securityMetric.deleteMany({ where: { id: { in: securityMetricIds.splice(0) } } });
+  await prisma.rateLimitBucket.deleteMany({ where: { keyHash: { in: rateLimitBucketIds.splice(0) } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds.splice(0) } } });
 });
 
@@ -49,6 +51,8 @@ describe("data retention", () => {
     expect(dryRun.structuredData.projectAnalysisArchives.candidateCount).toBe(1);
     expect(dryRun.structuredData.projectHistorySessions.candidateCount).toBe(0);
     expect(dryRun.structuredData.securityMetrics.candidateCount).toBe(1);
+    expect(dryRun.structuredData.rateLimitBuckets.candidateCount).toBe(1);
+    expect(dryRun.structuredData.rateLimitBuckets.processedCount).toBe(0);
     expect(await prisma.dataSnapshot.findUniqueOrThrow({ where: { id: fixture.expiredSnapshotId } })).toMatchObject({ rawDomText: "expired DOM" });
 
     const report = await runRetention(prisma, { mode: "run", now });
@@ -58,6 +62,7 @@ describe("data retention", () => {
     expect(report.structuredData.projectHistoryMetricPoints.processedCount).toBe(1);
     expect(report.structuredData.projectAnalysisArchives.processedCount).toBe(1);
     expect(report.structuredData.projectHistorySessions.processedCount).toBe(1);
+    expect(report.structuredData.rateLimitBuckets.processedCount).toBe(1);
 
     const expiredSnapshot = await prisma.dataSnapshot.findUniqueOrThrow({ where: { id: fixture.expiredSnapshotId } });
     expect(expiredSnapshot).toMatchObject({
@@ -93,6 +98,8 @@ describe("data retention", () => {
     expect(await prisma.auditLog.findUnique({ where: { id: fixture.expiredAuditId } })).toBeNull();
     expect(await prisma.securityMetric.findUnique({ where: { id: fixture.expiredSecurityMetricId } })).toBeNull();
     expect(await prisma.securityMetric.findUnique({ where: { id: fixture.boundarySecurityMetricId } })).not.toBeNull();
+    expect(await prisma.rateLimitBucket.findUnique({ where: { keyHash: fixture.expiredRateLimitKeyHash } })).toBeNull();
+    expect(await prisma.rateLimitBucket.findUnique({ where: { keyHash: fixture.activeRateLimitKeyHash } })).not.toBeNull();
     expect(await prisma.project.findUnique({ where: { id: fixture.projectId } })).not.toBeNull();
     expect(await prisma.accountProfile.findUnique({ where: { id: fixture.accountId } })).not.toBeNull();
   });
@@ -286,6 +293,25 @@ async function createFixture() {
   await prisma.approvalRecord.create({ data: { actionProposalId: expiredProposal.id, userId: created.id, decision: "APPROVE", createdAt: expiredAt } });
   await prisma.executionLog.create({ data: { actionProposalId: expiredProposal.id, projectId: project.id, collectionTaskId: task.id, userId: created.id, createdAt: expiredAt } });
   const expiredAudit = await prisma.auditLog.create({ data: { userId: created.id, workspaceId, projectId: project.id, taskId: task.id, action: "retention.fixture", createdAt: expiredAt } });
+  const expiredRateLimitKeyHash = `expired-rate-limit-${suffix}`;
+  const activeRateLimitKeyHash = `active-rate-limit-${suffix}`;
+  await prisma.rateLimitBucket.create({
+    data: {
+      keyHash: expiredRateLimitKeyHash,
+      windowStartedAt: expiredAt,
+      expiresAt: expiredAt,
+      count: 1
+    }
+  });
+  await prisma.rateLimitBucket.create({
+    data: {
+      keyHash: activeRateLimitKeyHash,
+      windowStartedAt: new Date(now.getTime() - 60_000),
+      expiresAt: new Date(now.getTime() + 60_000),
+      count: 1
+    }
+  });
+  rateLimitBucketIds.push(expiredRateLimitKeyHash, activeRateLimitKeyHash);
   const expiredSecurityMetric = await prisma.securityMetric.create({
     data: { metricKey: "retention_runs", windowStartedAt: expiredAt, occurrenceCount: 1, valueTotal: 1n, lastValue: 1n }
   });
@@ -314,6 +340,8 @@ async function createFixture() {
     expiredHistoryArchiveId: expiredHistoryArchive.id,
     expiredAnalysisId: expiredAnalysis.id,
     expiredAuditId: expiredAudit.id,
+    expiredRateLimitKeyHash,
+    activeRateLimitKeyHash,
     expiredSecurityMetricId: expiredSecurityMetric.id,
     boundarySecurityMetricId: boundarySecurityMetric.id
   };

@@ -6,6 +6,7 @@ import type { DiagnosisScenario, RiskLevel } from "@douyin-local-life/shared";
 import type { DiagnosisTrustedFactsView } from "@douyin-local-life/shared/diagnosis";
 import { apiFetch } from "@/lib/api";
 import { diagnosisExperimentFailureReason, humanizeBusinessText, humanizeDiagnosisFailure, summarizeDecisionBoundaries } from "@/lib/diagnosis-presentation";
+import { buildTrustedBusinessInterpretation } from "@/lib/diagnosis-insights";
 import { Button } from "@/components/ui/button";
 import type { DecisionRun } from "./task-types";
 
@@ -20,6 +21,7 @@ type DiagnosisComparisonProps = {
   onScenarioChange?: (scenario: DiagnosisScenario) => void;
   token?: string | null;
   onRefresh?: () => void;
+  creditBalance?: number;
 };
 
 export function DiagnosisComparison({
@@ -32,7 +34,8 @@ export function DiagnosisComparison({
   scenario: selectedScenario,
   onScenarioChange,
   token,
-  onRefresh
+  onRefresh,
+  creditBalance = 0
 }: DiagnosisComparisonProps) {
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [mainProblemCorrect, setMainProblemCorrect] = useState(true);
@@ -45,8 +48,9 @@ export function DiagnosisComparison({
   const pending = decisionRun?.status === "PENDING" || decisionRun?.status === "RUNNING";
   const result = decisionRun?.finalResult || null;
   const deterministicReview = decisionRun?.deterministicReview || null;
-  const decisionView = decisionRun?.decisionView || null;
+  const decisionView = deterministicReview ? null : decisionRun?.decisionView || null;
   const trustedFacts = decisionRun?.trustedFacts || null;
+  const trustedInterpretation = trustedFacts ? buildTrustedBusinessInterpretation(trustedFacts) : null;
   const visibleAnalysis = deterministicReview ? [] : decisionView?.analysis || [];
   const failureRuleDetail = diagnosisFailureRuleDetail(decisionRun?.errorCode, decisionRun?.errorMessage);
   const failedSkillExecution = decisionRun?.skillExecutions.find((execution) => execution.status === "FAILED") || null;
@@ -64,7 +68,7 @@ export function DiagnosisComparison({
     || decisionRun?.promptVersion === "managed-live-growth-prompt-v21")
       ? result?.experiments.slice(0, 3) || []
       : [];
-  const decisionBoundaries = decisionView?.openQuestions || summarizeDecisionBoundaries([
+  const decisionBoundaries = summarizeDecisionBoundaries(decisionView?.openQuestions || [
     ...(result?.missingEvidence || []),
     ...(result?.hypotheses.flatMap((item) => item.missingEvidence) || [])
   ]);
@@ -117,14 +121,16 @@ export function DiagnosisComparison({
         </div>
         <Button
           className="shrink-0"
-          disabled={!formalReady || Boolean(busy) || pending}
+          disabled={!formalReady || Boolean(busy) || pending || creditBalance <= 0}
           onClick={() => onRunFormal(scenario)}
           title={formalReady ? "创建异步 AI 诊断" : "请先完成基础路线采集和人工复核"}
           type="button"
         >
-          {pending ? "AI 诊断运行中..." : decisionRun?.mode === "AI_SKILL_ORCHESTRATED" ? "重新运行 AI 诊断" : "运行 AI 诊断"}
+          {pending ? "AI 诊断运行中..." : decisionRun?.mode === "AI_SKILL_ORCHESTRATED" ? "重新运行 AI 诊断（1 积分）" : "运行 AI 诊断（1 积分）"}
         </Button>
       </div>
+
+      {creditBalance <= 0 && !pending ? <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">积分不足，当前不能创建新的 AI 诊断。</div> : null}
 
       {evidenceAdvisory ? <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"><strong>规则裁决提示：</strong>{evidenceAdvisory}</div> : null}
 
@@ -179,38 +185,58 @@ export function DiagnosisComparison({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="max-w-4xl">
                 <p className="text-xs font-semibold text-primary">本轮经营判断</p>
-                <h4 className="mt-1 text-lg font-semibold">{decisionView?.headline || problemLabel(deterministicReview?.expectedMainProblemTag || result.mainProblemTag)}</h4>
-                <p className="mt-2 leading-7">{humanizeBusinessText(decisionView?.conclusion || deterministicReview?.conclusion || result.coreConclusion)}</p>
+                <h4 className="mt-1 text-lg font-semibold">{deterministicReview ? problemLabel(deterministicReview.expectedMainProblemTag) : decisionView?.headline || problemLabel(result.mainProblemTag)}</h4>
+                <p className="mt-2 leading-7">{humanizeBusinessText(deterministicReview?.conclusion || decisionView?.conclusion || result.coreConclusion)}</p>
               </div>
               <div className="flex flex-wrap justify-end gap-2 text-xs">
                 <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">目标、趋势和原因分别展示</span>
                 {decisionView?.actionRisk ? <span className={`rounded-full px-3 py-1 font-semibold ${riskTone(decisionView.actionRisk)}`}>下一步动作风险 {riskLabel(decisionView.actionRisk)}</span> : null}
               </div>
             </div>
-            {decisionView?.targetComparison ? (
+            {decisionView?.targetComparison && !trustedInterpretation?.insights.some((item) => item.key === "target") ? (
               <div className="mt-4 grid gap-2 sm:grid-cols-4">
                 <MetricFact label="实际全域支付 ROI" value={formatNumber(decisionView.targetComparison.actual)} />
                 <MetricFact label="本次目标 ROI" value={formatNumber(decisionView.targetComparison.target)} />
-                <MetricFact label={decisionView.targetComparison.status === "MET" ? "高于目标" : "低于目标"} value={formatNumber(Math.abs(decisionView.targetComparison.absoluteGap))} />
+                <MetricFact label={decisionView.targetComparison.absoluteGap === 0 ? "等于目标" : decisionView.targetComparison.status === "MET" ? "高于目标" : "低于目标"} value={formatNumber(Math.abs(decisionView.targetComparison.absoluteGap))} />
                 <MetricFact label="目标达成率" value={`${Math.round(decisionView.targetComparison.achievementRate * 1000) / 10}%`} />
               </div>
             ) : null}
-            <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-xs text-muted">
-              判断顺序：先确认数据口径，再确认目标差距，随后区分已知事实与原因假设，最后只展示服务端规则允许推进的下一步。没有目标、同口径历史或对照时，不把当前数字硬判为好或差。
-            </p>
           </section>
 
+          {trustedInterpretation?.insights.length ? (
+            <section className="border-t border-border py-4">
+              <h4 className="font-semibold">这组数据能直接说明什么</h4>
+              <p className="mt-1 text-xs text-muted">目标差距与近期变化分别核对，原因仍待验证。</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {trustedInterpretation.insights.map((insight) => (
+                  <div className={`rounded-md p-4 ${insight.tone === "positive" ? "bg-emerald-50" : insight.tone === "warning" ? "bg-amber-50" : "bg-slate-50"}`} key={insight.key}>
+                    <p className="text-xs font-semibold text-muted">{insight.title}</p>
+                    <strong className="mt-1 block text-base">{insight.value}</strong>
+                    <p className="mt-2 text-sm leading-6 text-muted">{insight.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <NextStepPanel decisionView={decisionView} pendingProposals={pendingProposals} reviewConflict={Boolean(deterministicReview)} />
+
           {!deterministicReview ? (
-            <section className="rounded-lg border border-blue-200 bg-white p-5">
+            <section className="border-t border-border py-4">
               <h4 className="font-semibold">{trustedFacts?.scenario === "POST_LIVE_REVIEW" ? "本次直播复盘分析" : trustedFacts?.scenario === "LIVE_MONITORING" ? "当前直播分析" : "本次经营分析"}</h4>
-              <p className="mt-1 text-xs text-muted">以下是有证据支持的待验证解释，不代表原因已确认；调整仍以“今天先做什么”的审批结果为准。</p>
-              {visibleAnalysis.length ? <div className="mt-3 grid gap-3">
-                {visibleAnalysis.map((item, index) => <div className="rounded-md bg-blue-50/60 p-4" key={`${item.title}-${index}`}>
+              <p className="mt-1 text-xs text-muted">原因假设，尚未验证；操作以“今天先做什么”的审批状态为准。</p>
+              {visibleAnalysis.length ? <div className="mt-3 divide-y divide-border">
+                {visibleAnalysis.map((item, index) => <div className="min-w-0 break-words py-4" key={`${item.title}-${index}`}>
                   <h5 className="font-semibold">{humanizeBusinessText(item.title)}</h5>
                   <p className="mt-2 text-sm leading-7">{humanizeBusinessText(item.conclusion)}</p>
-                  <p className="mt-2 text-xs text-muted"><strong>依据：</strong>{item.supportingFacts.map(humanizeBusinessText).join("；")}</p>
-                  {item.conflictingFacts.length ? <p className="mt-2 text-xs text-muted"><strong>相反证据：</strong>{item.conflictingFacts.map(humanizeBusinessText).join("；")}</p> : null}
-                  <p className="mt-2 text-xs text-muted"><strong>还需核对：</strong>{item.missingEvidence.length ? item.missingEvidence.map(humanizeBusinessText).join("；") : "该解释尚未经过对照验证，不能据此认定因果或直接调整。"}</p>
+                  <details className="mt-2 text-sm">
+                    <summary className="cursor-pointer font-medium text-primary">证据与待核对项</summary>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div><strong>数据依据</strong><ul className="mt-1 list-disc space-y-1 pl-5 text-muted">{item.supportingFacts.map((fact, factIndex) => <li key={factIndex}>{humanizeBusinessText(fact)}</li>)}</ul></div>
+                      <div><strong>还需核对</strong>{item.missingEvidence.length ? <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">{item.missingEvidence.map((missing, missingIndex) => <li key={missingIndex}>{humanizeBusinessText(missing)}</li>)}</ul> : <p className="mt-1 text-muted">该解释尚未经过对照验证，不能据此认定因果或直接调整。</p>}</div>
+                    </div>
+                    {item.conflictingFacts.length ? <div className="mt-3"><strong>相反证据</strong><ul className="mt-1 list-disc space-y-1 pl-5 text-muted">{item.conflictingFacts.map((fact, factIndex) => <li key={factIndex}>{humanizeBusinessText(fact)}</li>)}</ul></div> : null}
+                  </details>
                 </div>)}
               </div> : <p className="mt-3 text-sm text-muted">本次尚无可展示的有据原因分析。已确认的事实仍然有效，不能用这些数字代替原因判断。</p>}
             </section>
@@ -230,55 +256,15 @@ export function DiagnosisComparison({
             </div>
           </section> : null}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="rounded-lg border border-emerald-200 bg-white p-4">
-              <h4 className="font-semibold">今天先做什么</h4>
-              <p className="mt-1 text-xs text-muted">只展示服务端规则允许推进的唯一下一步，并保留审批、人工执行和复盘状态。</p>
-              {decisionView ? (
-                decisionView.nextStep.proposalId ? (
-                  <Link className="mt-3 block rounded-md border border-emerald-200 bg-emerald-50 p-3 transition hover:border-primary" href={`/action-proposals/${decisionView.nextStep.proposalId}`}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">{nextStepLabel(decisionView.nextStep.kind)}</span>
-                      <strong className="text-sm">{humanizeBusinessText(decisionView.nextStep.title)}</strong>
-                    </div>
-                    <p className="mt-2 text-sm text-muted">{humanizeBusinessText(decisionView.nextStep.reason)}</p>
-                    <p className="mt-2 text-xs font-semibold text-primary">{nextStepCta(decisionView.nextStep.kind)} →</p>
-                  </Link>
-                ) : (
-                  <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm">
-                    <strong>{humanizeBusinessText(decisionView.nextStep.title)}</strong>
-                    <p className="mt-1 text-muted">{humanizeBusinessText(decisionView.nextStep.reason)}</p>
-                  </div>
-                )
-              ) : pendingProposals.length ? (
-                <div className="mt-3 grid gap-2">
-                  {pendingProposals.map((proposal, index) => (
-                    <Link className="rounded-md border border-emerald-200 bg-emerald-50 p-3 transition hover:border-primary" href={`/action-proposals/${proposal.id}`} key={proposal.id}>
-                      <div className="flex items-center gap-2"><span className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">第 {index + 1} 项</span><strong className="text-sm">{humanizeBusinessText(proposal.title)}</strong></div>
-                      <p className="mt-2 text-sm text-muted">{humanizeBusinessText(proposal.reason)}</p>
-                      <p className="mt-2 text-xs font-semibold text-primary">打开后人工审批 →</p>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm">
-                  {deterministicReview
-                    ? "本轮 AI 核心结论与服务端证据冲突，所有候选动作已暂停，不进入人工审批。"
-                    : "本轮没有新的待审批动作。先保持当前设置，补齐右侧判断条件后再诊断，不要仅凭一次快照改预算或停计划。"}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-lg border border-amber-200 bg-white p-4">
+            <section className="border-t border-border py-4">
               <h4 className="font-semibold">作决定前还缺什么</h4>
               <p className="mt-1 text-xs text-muted">缺少这些条件时，系统只给验证建议，不把示例数字当作行业标准。</p>
               {decisionBoundaries.length ? (
                 <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
                   {decisionBoundaries.map((item) => <li key={item}>{humanizeBusinessText(item)}</li>)}
                 </ul>
-              ) : <p className="mt-3 rounded-md bg-emerald-50 p-3 text-sm">本轮未发现会阻断判断的关键缺口。</p>}
+              ) : <p className="mt-3 text-sm text-muted">本轮未记录关键缺口，不代表所有原因均已确认。</p>}
             </section>
-          </div>
 
           {decisionView?.blockedActions.length ? (
             <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -356,6 +342,18 @@ export function DiagnosisComparison({
 }
 
 function HistoryComparisonSummary({ context }: { context: NonNullable<DecisionRun["historyContext"]> }) {
+  const comparisons = [context.archiveComparison, context.periodComparison];
+  const hasComparableData = comparisons.some((comparison) => comparison.rows.some((row) =>
+    row.conclusion !== "INSUFFICIENT" && row.baselineValue !== null && row.currentValue !== null
+  ));
+  if (!hasComparableData) {
+    return <details className="border-t border-border py-3">
+      <summary className="cursor-pointer text-sm text-muted">历史与周期对比：暂无可比数据</summary>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+        {[...new Set(comparisons.flatMap((comparison) => comparison.notices))].map((notice) => <li key={notice}>{humanizeBusinessText(notice)}</li>)}
+      </ul>
+    </details>;
+  }
   return (
     <section className="rounded-lg border border-violet-200 bg-white p-4">
       <h4 className="font-semibold">历史与周期对比</h4>
@@ -366,6 +364,48 @@ function HistoryComparisonSummary({ context }: { context: NonNullable<DecisionRu
       </div>
     </section>
   );
+}
+
+function NextStepPanel({ decisionView, pendingProposals, reviewConflict }: {
+  decisionView: DecisionRun["decisionView"];
+  pendingProposals: DecisionRun["actionProposals"];
+  reviewConflict: boolean;
+}) {
+  return <section className="border-t border-border py-4">
+    <h4 className="font-semibold">今天先做什么</h4>
+    <p className="mt-1 text-xs text-muted">只展示服务端规则允许推进的唯一下一步，并保留审批、人工执行和复盘状态。</p>
+    {reviewConflict ? (
+      <p className="mt-3 text-sm">本轮 AI 核心结论与服务端证据冲突，所有候选动作已暂停，不进入人工审批。</p>
+    ) : decisionView ? (
+      decisionView.nextStep.proposalId ? (
+        <Link className="mt-3 block break-words rounded-md border border-emerald-200 bg-emerald-50 p-3 transition hover:border-primary" href={`/action-proposals/${decisionView.nextStep.proposalId}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-emerald-800">{nextStepLabel(decisionView.nextStep.kind)}</span>
+            <strong className="text-sm">{humanizeBusinessText(decisionView.nextStep.title)}</strong>
+          </div>
+          <p className="mt-2 text-sm text-muted">{humanizeBusinessText(decisionView.nextStep.reason)}</p>
+          <p className="mt-2 text-xs font-semibold text-primary">{nextStepCta(decisionView.nextStep.kind)} →</p>
+        </Link>
+      ) : (
+        <div className="mt-3 break-words text-sm">
+          <strong>{humanizeBusinessText(decisionView.nextStep.title)}</strong>
+          <p className="mt-1 text-muted">{humanizeBusinessText(decisionView.nextStep.reason)}</p>
+        </div>
+      )
+    ) : pendingProposals.length ? (
+      <div className="mt-3 grid gap-2">
+        {pendingProposals.map((proposal, index) => (
+          <Link className="break-words rounded-md border border-emerald-200 bg-emerald-50 p-3 transition hover:border-primary" href={`/action-proposals/${proposal.id}`} key={proposal.id}>
+            <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-emerald-800">第 {index + 1} 项</span><strong className="text-sm">{humanizeBusinessText(proposal.title)}</strong></div>
+            <p className="mt-2 text-sm text-muted">{humanizeBusinessText(proposal.reason)}</p>
+            <p className="mt-2 text-xs font-semibold text-primary">打开后人工审批 →</p>
+          </Link>
+        ))}
+      </div>
+    ) : (
+      <p className="mt-3 text-sm">本轮没有新的待审批动作。先保持当前设置，补齐判断条件后再诊断，不要仅凭一次快照改预算或停计划。</p>
+    )}
+  </section>;
 }
 
 function TrustedFactsPanel({ facts, failed }: { facts: DiagnosisTrustedFactsView; failed: boolean }) {

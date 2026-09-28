@@ -164,11 +164,11 @@ function buildSkillOutput(request: ChatRequest) {
     hypotheses: [{
       id: "domain-hypothesis",
       dimension: dimensionFromPrompt(request),
-      title: "领域主问题假设",
-      conclusion: "当前证据支持该领域存在需要验证的经营问题。",
+      title: "当前指标与经营结果的关系待核对",
+      conclusion: "当前领域指标已经反映出一个需要继续核对的经营关系，但现有数据还不能区分商品、直播承接或投放因素。",
       supportingEvidenceIds: [firstId],
       conflictingEvidenceIds: [],
-      missingEvidence: [],
+      missingEvidence: ["核对同口径的前置指标与成交结果，区分商品、直播承接和投放因素。"],
       confidence: 0.8
     }],
     missingEvidence: [],
@@ -212,11 +212,11 @@ function buildFinalResult(testCase: DiagnosisEvaluationCase, request: ChatReques
     hypotheses: [{
       id: "main-hypothesis",
       dimension: dimension as DiagnosisFinalResult["hypotheses"][number]["dimension"],
-      title: "核心问题假设",
-      conclusion: `主要问题为 ${mainProblemTag}。`,
+      title: "当前结果与上游经营因素的关系待核对",
+      conclusion: `当前结果已支持 ${mainProblemTag} 这一服务端问题分类，但还不能仅凭本轮结果区分具体上游因素。`,
       supportingEvidenceIds: decisionEvidenceIds,
       conflictingEvidenceIds: [],
-      missingEvidence: [],
+      missingEvidence: ["核对同口径的前置指标与成交结果，区分具体经营原因。"],
       confidence: 0.9
     }],
     missingEvidence: [],

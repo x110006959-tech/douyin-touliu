@@ -116,6 +116,70 @@ describe("extension web bridge protocol", () => {
     expect(response).toEqual(expect.objectContaining({ ok: true, paired: true, boundTaskId: "task-a", pendingConfirmation: false }));
   });
 
+  it("keeps only a valid worker connection session id", () => {
+    const valid = sanitizeBridgeResponse({
+      requestId: "session-valid",
+      extensionVersion: "0.2.6",
+      buildFingerprint: "build-a",
+      runtimeResult: {
+        ok: true,
+        paired: true,
+        boundTaskId: "task-a",
+        connectionSessionId: "019621df-3b10-4c6a-8a2f-1a1d3e4f5a6b"
+      }
+    });
+    const invalid = sanitizeBridgeResponse({
+      requestId: "session-invalid",
+      extensionVersion: "0.2.6",
+      buildFingerprint: "build-a",
+      runtimeResult: {
+        ok: true,
+        paired: true,
+        boundTaskId: "task-a",
+        connectionSessionId: "not-a-session-id"
+      }
+    });
+
+    expect(valid.connectionSessionId).toBe("019621df-3b10-4c6a-8a2f-1a1d3e4f5a6b");
+    expect(invalid.connectionSessionId).toBeNull();
+  });
+
+  it("keeps bound task ids inside a narrow safe shape", () => {
+    const safe = sanitizeBridgeResponse({
+      requestId: "task-safe",
+      extensionVersion: "0.2.6",
+      buildFingerprint: "build-a",
+      runtimeResult: { ok: true, paired: true, boundTaskId: "task-1" }
+    });
+    const unsafe = sanitizeBridgeResponse({
+      requestId: "task-unsafe",
+      extensionVersion: "0.2.6",
+      buildFingerprint: "build-a",
+      runtimeResult: { ok: true, paired: true, boundTaskId: "../account-owner@example.com" }
+    });
+
+    expect(safe.boundTaskId).toBe("task-1");
+    expect(unsafe.boundTaskId).toBeNull();
+  });
+
+  it("sanitizes success messages instead of passing through arbitrary runtime text", () => {
+    const longMessage = `token=secret-token email=user@example.com phone=13800138000 ${"x".repeat(300)}`;
+    const response = sanitizeBridgeResponse({
+      requestId: "message-safe",
+      extensionVersion: "0.2.6",
+      buildFingerprint: "build-a",
+      runtimeResult: {
+        ok: true,
+        paired: true,
+        boundTaskId: "task-a",
+        message: longMessage
+      }
+    });
+
+    expect(response.message).not.toMatch(/secret-token|user@example\.com|13800138000/);
+    expect(response.message.length).toBeLessThanOrEqual(200);
+  });
+
   it("reduces unknown runtime failures to a fixed safe code and message", () => {
     const response = sanitizeBridgeResponse({
       requestId: "pair-error",

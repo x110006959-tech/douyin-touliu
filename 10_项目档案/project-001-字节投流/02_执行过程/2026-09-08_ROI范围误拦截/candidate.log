@@ -1,0 +1,6 @@
+{"path":"/ready","status":200}
+{"path":"/version","status":200}
+{"path":"/login","status":200}
+{"compiledWebDiagnosisMarkers":7}
+{"diagnosisPromptVersion":"managed-live-growth-prompt-v28","diagnosisOrchestrationVersion":"server-determined-skill-plan-v36","structurePassed":24,"groundedConclusions":24,"policyAccepted":24,"policyRejected":0,"partialFailureFactsPreserved":24}
+Verified 11 candidate artifact hashes; no running service was switched.

@@ -54,7 +54,7 @@ export default function NewAccountPage() {
         <p className="mb-5 text-sm leading-6 text-muted">一个抖音/巨量本地推账号只建立一次。插件凭证和任务归属由服务端校验，无需填写页面账号 ID。</p>
         <form className="grid gap-4" onSubmit={submit}>
           {error ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger bg-red-50 px-3 py-2 text-sm text-danger" role="alert"><span>{error}</span>{!token ? <Link className="font-semibold underline" href="/login">重新登录</Link> : null}</div> : null}
-          <label className="grid gap-1 text-sm"><span>平台账号名称 <strong className="text-danger">必填</strong></span><Input name="accountName" required placeholder="例如：好想来零食乐园-广东区域号" /><span className="text-xs text-muted">填写平台右上角或账号切换处显示的完整名称。</span></label>
+          <label className="grid gap-1 text-sm"><span>平台账号名称 <strong className="text-danger">必填</strong></span><Input name="accountName" required placeholder="例如：某某品牌" /><span className="text-xs text-muted">填写品牌名称，例如：某某品牌；门店或区域可在下方选填。</span></label>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm"><span>商家或品牌名称 <span className="text-muted">选填</span></span><Input name="merchantName" /></label>
             <label className="grid gap-1 text-sm"><span>门店或区域 <span className="text-muted">选填</span></span><Input name="storeName" /></label>

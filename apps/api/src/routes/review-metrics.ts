@@ -16,6 +16,8 @@ import {
   isSourceConflictMetric,
   normalizeReviewPatch,
   resolveSourceConflictReview,
+  sourceConflictReviewPersistence,
+  taskLevelConfirmableReviewedMetrics,
   toReviewedMetricDTO,
   validateCurrentReviewedMetricSnapshot
 } from "../review-metrics.js";
@@ -96,13 +98,29 @@ export function createReviewMetricRouter() {
           reviewedValue: reviewedValueInput.value || undefined,
           timeRange: timeRangeInput.value || undefined
         });
+        const conflictSourceSelection = patch.sourceSelection;
+        const conflictPersistence = conflictSourceSelection === "API" || conflictSourceSelection === "DOM"
+          ? sourceConflictReviewPersistence(metric, { sourceSelection: conflictSourceSelection })
+          : null;
         if (patch.reviewStatus === "CONFIRMED" && !isSourceConflictMetric(metric) && !canConfirmMetric(metric)) return { error: "METRIC_EVIDENCE_INVALID" as const };
         if (!canModifyMetric(patch)) return { error: "METRIC_TIME_RANGE_REQUIRED" as const };
         const now = new Date();
         const current = await tx.reviewedMetric.update({
           where: { id: metric.id },
-          data: reviewMetricUpdateData(metric, patch, user.id, now)
+          data: reviewMetricUpdateData(metric, patch, user.id, now, conflictPersistence)
         });
+        if (conflictPersistence && metric.normalizedMetricId) {
+          await tx.normalizedMetric.updateMany({
+            where: { id: metric.normalizedMetricId },
+          data: {
+              metricValue: patch.reviewedValue ?? "",
+              metricSource: conflictPersistence.metricSource,
+              metricUnit: conflictPersistence.metricUnit,
+              confidence: conflictPersistence.confidence,
+              rawEvidence: toJson(conflictPersistence.rawEvidence)
+            }
+          });
+        }
         if (patch.reviewStatus === "CONFIRMED" && !isSourceConflictMetric(metric)) {
           await recordMetricBindingCalibration(tx, {
             workspaceId: task.project.workspaceId,
@@ -179,7 +197,7 @@ export function createReviewMetricRouter() {
         }
 
         const now = new Date();
-        const updated = await Promise.all(reviewInputs.map((item) => {
+        const updated = await Promise.all(reviewInputs.map(async (item) => {
           const metric = byId.get(item.metricId);
           if (!metric) throw new Error("REVIEW_METRIC_NOT_FOUND");
           const conflictResolution = resolveSourceConflictReview(metric, {
@@ -193,10 +211,27 @@ export function createReviewMetricRouter() {
             reviewedValue: item.reviewedValueInput.value || undefined,
             timeRange: item.timeRangeInput.value || undefined
           });
-          return tx.reviewedMetric.update({
+          const conflictSourceSelection = patch.sourceSelection;
+          const conflictPersistence = conflictSourceSelection === "API" || conflictSourceSelection === "DOM"
+            ? sourceConflictReviewPersistence(metric, { sourceSelection: conflictSourceSelection })
+            : null;
+          const current = await tx.reviewedMetric.update({
             where: { id: metric.id },
-            data: reviewMetricUpdateData(metric, patch, user.id, now)
+            data: reviewMetricUpdateData(metric, patch, user.id, now, conflictPersistence)
           });
+          if (conflictPersistence && metric.normalizedMetricId) {
+            await tx.normalizedMetric.updateMany({
+              where: { id: metric.normalizedMetricId },
+              data: {
+                metricValue: patch.reviewedValue ?? "",
+                metricSource: conflictPersistence.metricSource,
+                metricUnit: conflictPersistence.metricUnit,
+                confidence: conflictPersistence.confidence,
+                rawEvidence: toJson(conflictPersistence.rawEvidence)
+              }
+            });
+          }
+          return current;
         }));
         const snapshotsById = new Map(task.snapshots.map((snapshot) => [snapshot.id, snapshot]));
         await Promise.all(updated.map(async (metric) => {
@@ -254,12 +289,32 @@ export function createReviewMetricRouter() {
         }
 
         const pending = initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING");
+        const taskConfirmable = taskLevelConfirmableReviewedMetrics(pending);
         const now = new Date();
-        const updates = await Promise.all(pending.map((metric) => tx.reviewedMetric.updateMany({
-          where: { id: metric.id, reviewStatus: "PENDING" },
-          data: { reviewStatus: "CONFIRMED", reviewedValue: metric.originalValue || "", reviewerId: user.id, reviewedAt: now, confidence: 1 }
-        })));
-        if (pending.length) {
+        const snapshotsById = new Map(task.snapshots.map((snapshot) => [snapshot.id, snapshot]));
+        const updates = await Promise.all(taskConfirmable.map((metric) => {
+          const patch = normalizeReviewPatch(metric, {
+            reviewedValue: metric.originalValue || "",
+            reviewStatus: "CONFIRMED"
+          });
+          return tx.reviewedMetric.updateMany({
+            where: { id: metric.id, reviewStatus: "PENDING" },
+            data: reviewMetricUpdateData(metric, patch, user.id, now)
+          });
+        }));
+        await Promise.all(taskConfirmable.map(async (metric) => {
+          const snapshot = metric.snapshotId ? snapshotsById.get(metric.snapshotId) : null;
+          if (!snapshot) return;
+          await recordMetricBindingCalibration(tx, {
+            workspaceId: task.project.workspaceId,
+            routeKey: snapshot.routeKey,
+            captureMetaJson: snapshot.captureMetaJson,
+            metricKey: metric.metricKey,
+            rawEvidence: metric.rawEvidence,
+            reviewerId: user.id
+          });
+        }));
+        if (taskConfirmable.length) {
           await Promise.all(initialized.snapshotIds.map((snapshotId) => tx.dataSnapshot.update({
             where: { id: snapshotId },
             data: { updatedAt: now }
@@ -277,7 +332,9 @@ export function createReviewMetricRouter() {
             taskId: task.id,
             snapshotIds: initialized.snapshotIds,
             updatedCount: updates.reduce((count, update) => count + update.count, 0),
-            blockedInvalidMetricCount: initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING" && !canConfirmMetric(metric)).length,
+            bindingCalibrationAttemptCount: taskConfirmable.length,
+            blockedInvalidMetricCount: initialized.metrics.filter((metric) => metric.reviewStatus === "PENDING" && !isSourceConflictMetric(metric) && !canConfirmMetric(metric)).length,
+            blockedSourceConflictMetricCount: pending.filter(isSourceConflictMetric).length,
             source: "ReviewedMetric"
           }
         }, tx);
@@ -298,7 +355,8 @@ function reviewMetricUpdateData(
   metric: Parameters<typeof normalizeReviewPatch>[0],
   patch: ReturnType<typeof normalizeReviewPatch>,
   reviewerId: string,
-  reviewedAt: Date
+  reviewedAt: Date,
+  conflictPersistence: ReturnType<typeof sourceConflictReviewPersistence> = null
 ) {
   const originalEvidence = metric.rawEvidence && typeof metric.rawEvidence === "object" && !Array.isArray(metric.rawEvidence)
     ? metric.rawEvidence as Record<string, unknown>
@@ -309,7 +367,12 @@ function reviewMetricUpdateData(
     timeRange: patch.timeRange || metric.timeRange,
     ...(patch.sourceSelection
       ? {
-          rawEvidence: toJson({
+          ...(conflictPersistence ? {
+            metricSource: conflictPersistence.metricSource,
+            metricUnit: conflictPersistence.metricUnit,
+            scope: conflictPersistence.scope
+          } : {}),
+          rawEvidence: toJson(conflictPersistence?.rawEvidence || {
             ...originalEvidence,
             manualSourceSelection: patch.sourceSelection,
             selectionReason: patch.sourceSelection === "IGNORE"
@@ -374,7 +437,7 @@ function sendReviewMetricError(res: Parameters<typeof sendError>[0], error: "TAS
   if (error === "METRIC_EVIDENCE_INVALID") return sendError(res, 409, error, "字段、单位、周期或页面位置校验异常，请逐项修改后再确认");
   if (error === "METRIC_TIME_RANGE_REQUIRED") return sendError(res, 409, error, "修改指标时必须明确填写统计周期");
   if (error === "SOURCE_CONFLICT_SELECTION_REQUIRED") return sendError(res, 409, error, "API 与 DOM 值冲突，请明确选择 API、DOM 或忽略");
-  if (error === "SOURCE_CONFLICT_SELECTION_INVALID") return sendError(res, 409, error, "冲突字段只能选择 API、DOM 或忽略，不能自由修改数值");
+  if (error === "SOURCE_CONFLICT_SELECTION_INVALID") return sendError(res, 409, error, "来源选择只能用于 API 与 DOM 冲突字段，且不能自由修改候选值");
   if (error === "SOURCE_CONFLICT_VALUE_MISMATCH") return sendError(res, 409, error, "所选冲突候选值与原始 API/DOM 证据不一致");
   return sendError(res, 409, "SNAPSHOT_NOT_CURRENT", "只能校准当前路线的最新快照，请刷新后重试");
 }

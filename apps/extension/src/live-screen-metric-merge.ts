@@ -77,6 +77,7 @@ function toCandidate(metric: VisibleMetric): Candidate {
     value,
     displayValue: evidence?.displayValue || value,
     unit: metric.unit || null,
+    unitSource: evidence?.unitSource,
     timeRange: evidence?.timeRange || "UNKNOWN",
     displayPrecision: evidence?.displayPrecision ?? 0,
     fieldPath: evidence?.componentPath || evidence?.path || evidence?.jsonPath || "unknown",

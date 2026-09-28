@@ -28,6 +28,7 @@ import { currentUser, toJson } from "../server-utils.js";
 import { readSafeOptionalText } from "../persisted-input.js";
 import { latestRealtimeMetricFrames } from "../realtime-signals.js";
 import { runSerializableTransaction } from "../transactions.js";
+import { chargeDiagnosisCredit } from "../credits.js";
 import {
   archiveMetricsFromDecisionInput,
   buildDiagnosisContext,
@@ -148,6 +149,8 @@ export function createDecisionRunRouter() {
         }
         const limit = await checkDecisionRateLimit(task.id, tx);
         if (!limit.allowed) return { rateLimited: true as const, retryAfterSeconds: limit.retryAfterSeconds };
+        const charged = await chargeDiagnosisCredit(tx, currentUser(req).id);
+        if (!charged) return { insufficientCredits: true as const };
         const run = await tx.decisionRun.create({
           data: {
             projectId: task.projectId,
@@ -165,6 +168,7 @@ export function createDecisionRunRouter() {
             inputFingerprint,
             strategyVersion: diagnosisSkillSetVersion,
             currentStage: "QUEUED",
+            creditCharged: true,
             inputJson: toJson(decisionInput)
           },
           include: decisionRunInclude
@@ -195,6 +199,9 @@ export function createDecisionRunRouter() {
       if (created.rateLimited) {
         res.setHeader("Retry-After", String(created.retryAfterSeconds));
         return sendError(res, 429, "RATE_LIMITED", "AI 诊断运行过于频繁，请稍后再试");
+      }
+      if (created.insufficientCredits) {
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "积分不足，无法创建新的 AI 诊断。");
       }
       if (created.unchangedEvidence) {
         res.setHeader("Diagnosis-Reused-Unchanged-Evidence", "true");

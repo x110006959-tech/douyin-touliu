@@ -192,7 +192,6 @@ function summaryCandidate(metric: CaptureSummaryMetricDTO): DashboardOverviewCan
     routeKey,
     metricKey,
     metricName: textOrNull(metric.metricName) || metricKey,
-    scopeLabel: scopeLabelFor(routeKey, metricKey, metric.metricName),
     displayValue,
     normalizedValue,
     unit: metric.metricUnit,
@@ -202,7 +201,8 @@ function summaryCandidate(metric: CaptureSummaryMetricDTO): DashboardOverviewCan
     snapshotId: metric.provenance.snapshotId,
     reviewStatus: metric.reviewStatus,
     valueStatus: candidateStatus(metric.reviewStatus, displayValue, normalizedValue),
-    confidence: safeConfidence(metric.confidence)
+    confidence: safeConfidence(metric.confidence),
+    scopeLabel: scopeLabelFor(routeKey, metricKey, metric.metricName, metric.semanticScope ?? undefined)
   };
 }
 

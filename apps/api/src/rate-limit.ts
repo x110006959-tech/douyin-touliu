@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { normalizePhoneNumber } from "@douyin-local-life/shared";
 import { securitySecret } from "./auth.js";
 import { prisma } from "./prisma.js";
 
@@ -15,7 +16,7 @@ export type RateLimitCheck =
   | { allowed: false; retryAfterSeconds: number };
 
 const loginIpRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 30 };
-const loginEmailRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 10 };
+const loginIdentifierRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 10 };
 const registrationEmailIpRule: RateLimitRule = { windowMs: 60 * 60 * 1000, maxAttempts: 3 };
 const registrationEmailRule: RateLimitRule = { windowMs: 60 * 60 * 1000, maxAttempts: 3 };
 const extensionPairingIpRule: RateLimitRule = { windowMs: 15 * 60 * 1000, maxAttempts: 10 };
@@ -32,25 +33,25 @@ const decisionRule: RateLimitRule = { windowMs: 60 * 1000, maxAttempts: 6 };
 const aiExplanationRule: RateLimitRule = { windowMs: 60 * 60 * 1000, maxAttempts: 10 };
 const writeRule: RateLimitRule = { windowMs: 60 * 1000, maxAttempts: 120 };
 
-export async function checkLoginRateLimit(input: { ip?: string | null; email: string }) {
+export async function checkLoginRateLimit(input: { ip?: string | null; identifier: string }) {
   return checkCompositeRateLimit([
     ["auth:login:ip", normalizeIp(input.ip), loginIpRule],
-    ["auth:login:email", normalizeEmail(input.email), loginEmailRule]
+    ["auth:login:identifier", normalizeIdentifier(input.identifier), loginIdentifierRule]
   ]);
 }
 
-export async function checkRegisterRateLimit(input: { ip?: string | null; email: string }) {
-  return checkRegistrationEmailRateLimit(input);
+export async function checkRegisterRateLimit(input: { ip?: string | null; identifier: string }) {
+  return checkRegistrationIdentifierRateLimit(input);
 }
 
 export async function checkEmailVerificationRateLimit(input: { ip?: string | null; email: string }) {
-  return checkRegistrationEmailRateLimit(input);
+  return checkRegistrationIdentifierRateLimit({ ip: input.ip, identifier: input.email });
 }
 
-function checkRegistrationEmailRateLimit(input: { ip?: string | null; email: string }) {
+function checkRegistrationIdentifierRateLimit(input: { ip?: string | null; identifier: string }) {
   return checkCompositeRateLimit([
     ["auth:registration-email:ip", normalizeIp(input.ip), registrationEmailIpRule],
-    ["auth:registration-email:email", normalizeEmail(input.email), registrationEmailRule]
+    ["auth:registration-identifier", normalizeIdentifier(input.identifier), registrationEmailRule]
   ]);
 }
 
@@ -128,8 +129,10 @@ function hashRateLimitKey(scope: string, subject: string) {
   return createHmac("sha256", securitySecret()).update(`${scope}\u0000${subject}`, "utf8").digest("hex");
 }
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
+function normalizeIdentifier(identifier: string) {
+  const trimmed = identifier.trim().toLowerCase();
+  if (trimmed.includes("@")) return trimmed;
+  return normalizePhoneNumber(trimmed) || trimmed;
 }
 
 function normalizeIp(ip?: string | null) {

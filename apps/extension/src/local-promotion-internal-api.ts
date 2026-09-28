@@ -649,6 +649,7 @@ function createRawEvidence(field: LocalPromotionInternalApiField, displayValue: 
       value: normalizedValue,
       displayValue,
       unit: field.unit,
+      unitSource: field.unit ? "DEFAULT" as const : "NONE" as const,
       timeRange: "实时",
       displayPrecision: field.displayPrecision,
       fieldPath: field.fieldPath,

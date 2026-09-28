@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "./prisma.js";
 import {
+  checkLoginRateLimit,
   checkMetricPulseRateLimit,
   metricPulseRateLimitWindowMs,
   resetRateLimitBuckets
@@ -43,5 +44,28 @@ describe("metric pulse rate limit", () => {
 
     await expect(checkMetricPulseRateLimit({ ...base, routeKey: "LIVE_DATA_SCREEN" }, now)).resolves.toEqual({ allowed: true });
     await expect(checkMetricPulseRateLimit({ ...base, routeKey: "LOCAL_PROMOTION_DASHBOARD" }, now)).resolves.toEqual({ allowed: true });
+  });
+});
+
+describe("login identifier rate limit", () => {
+  it("normalizes phone formatting into the same login identifier bucket", async () => {
+    const digits = String(Date.now()).slice(-8);
+    const forms = [
+      `136${digits}`,
+      `+86136${digits}`,
+      `+86 136 ${digits.slice(0, 4)} ${digits.slice(4)}`
+    ];
+
+    for (let index = 0; index < 10; index += 1) {
+      await expect(checkLoginRateLimit({
+        ip: "login-phone-normalization",
+        identifier: forms[index % forms.length]
+      })).resolves.toEqual({ allowed: true });
+    }
+
+    await expect(checkLoginRateLimit({
+      ip: "login-phone-normalization",
+      identifier: forms[0]
+    })).resolves.toMatchObject({ allowed: false });
   });
 });

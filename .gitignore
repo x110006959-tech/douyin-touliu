@@ -7,6 +7,10 @@ coverage/
 .backups/
 .tmp/
 
+# Local codebase memory and runtime environment switch files are not source artifacts.
+.codebase-memory/
+.runtime-switch-*/
+
 .next/
 dist/
 tsconfig.tsbuildinfo

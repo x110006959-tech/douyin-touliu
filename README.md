@@ -7,9 +7,9 @@
 ## 当前状态
 
 - 已发布：`v0.2.6` 源码与生产扩展归档；GitHub Release 为 [v0.2.6](https://github.com/x110006959-tech/douyin-touliu/releases/tag/v0.2.6)；这不是生产部署。
-- 本机运行态：本次 GitHub 上传未切换本机或生产容器，当前运行态以 [docs/NOW.md](docs/NOW.md) 为准。
-- 正在处理：实时趋势仍只作观察；双路线真实 Chrome 验收和真实 AI 诊断仍需用户显式完成。
-- 尚未完成：双路线真实 Chrome 验收、基于当前可信数据的真实 AI 诊断、可归因的人工策略实验闭环。
+- 本机运行态：以 [docs/NOW.md](docs/NOW.md) 为准；当前记录为本机 API/Worker/Web 已切换至 `code-boundaries-v33-20260920`。
+- 正在处理：项目文档与代码边界治理、确定性代码索引和超大文件低风险拆分。
+- 尚未完成：真实 AI 分析质量验收、真实 Chrome 双路线验收、可归因的人工策略实验闭环。
 
 完整文档入口：[当前事实](docs/NOW.md)｜[安全边界](docs/SAFETY_BOUNDARY.md)｜[交接账本](docs/CODEX_HANDOFF.md)｜[部署状态](docs/DEPLOYMENT_STATE.md)。
 
@@ -24,6 +24,7 @@ packages/
   shared/           共享类型、主体枚举、动作库、zod schema、免责声明
   decision-engine/  V0.1 规则引擎与审批护栏
   llm/              mock LLM/provider 框架，保留后续接入位置
+  diagnosis-skills/ 诊断领域 Skill 注册与评测案例
 prisma/
   schema.prisma     PostgreSQL schema
 ```

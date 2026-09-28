@@ -1,0 +1,198 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.32kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:22-alpine
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 203B done
+#3 DONE 0.0s
+
+#4 [build  1/10] FROM docker.io/library/node:22-alpine
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 586.02kB 0.0s done
+#5 DONE 0.1s
+
+#6 [build  5/10] COPY apps/web ./apps/web
+#6 CACHED
+
+#7 [build  2/10] WORKDIR /app
+#7 CACHED
+
+#8 [build  3/10] RUN corepack enable
+#8 CACHED
+
+#9 [build  4/10] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#9 CACHED
+
+#10 [build  6/10] COPY packages/shared ./packages/shared
+#10 CACHED
+
+#11 [build  7/10] COPY tools ./tools
+#11 DONE 0.0s
+
+#12 [build  8/10] RUN corepack pnpm install --frozen-lockfile
+#12 40.41 Scope: all 3 workspace projects
+#12 40.49 ? Verifying lockfile against supply-chain policies (389 entries)...
+#12 40.51 Lockfile is up to date, resolution step is skipped
+#12 40.63 Progress: resolved 1, reused 0, downloaded 0, added 0
+#12 40.70 Packages: +179
+#12 40.70 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#12 41.63 Progress: resolved 179, reused 0, downloaded 0, added 0
+#12 42.63 Progress: resolved 179, reused 0, downloaded 29, added 28
+#12 43.05
+#12 43.05    ╭──────────────────────────────────────────────╮
+#12 43.05    │                                              │
+#12 43.05    │      Update available! 11.9.0 → 12.3.4.      │
+#12 43.05    │     Changelog: https://pnpm.io/v/12.3.4      │
+#12 43.05    │   To update, run: corepack use pnpm@12.3.4   │
+#12 43.05    │                                              │
+#12 43.05    ╰──────────────────────────────────────────────╯
+#12 43.05
+#12 43.64 Progress: resolved 179, reused 0, downloaded 59, added 59
+#12 44.64 Progress: resolved 179, reused 0, downloaded 102, added 102
+#12 45.64 Progress: resolved 179, reused 0, downloaded 138, added 138
+#12 46.64 Progress: resolved 179, reused 0, downloaded 159, added 160
+#12 47.64 Progress: resolved 179, reused 0, downloaded 165, added 167
+#12 48.64 Progress: resolved 179, reused 0, downloaded 167, added 169
+#12 48.65 [WARN] Tarball download average speed 32 KiB/s (size 55 KiB) is below 50 KiB/s: https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-2.3.0.tgz (GET)
+#12 49.64 Progress: resolved 179, reused 0, downloaded 169, added 171
+#12 50.64 Progress: resolved 179, reused 0, downloaded 170, added 173
+#12 53.05 [WARN] Request took 11095ms: https://registry.npmjs.org/@next%2Fswc-win32-arm64-msvc
+#12 53.27 [WARN] Tarball download average speed 15 KiB/s (size 87 KiB) is below 50 KiB/s: https://registry.npmjs.org/magic-string/-/magic-string-0.30.21.tgz (GET)
+#12 53.27 Progress: resolved 179, reused 0, downloaded 171, added 173
+#12 53.58 [WARN] Request took 11314ms: https://registry.npmjs.org/@prisma%2Fengines
+#12 54.27 Progress: resolved 179, reused 0, downloaded 171, added 174
+#12 56.09 Progress: resolved 179, reused 0, downloaded 172, added 174
+#12 56.32 [WARN] Request took 10339ms: https://registry.npmjs.org/electron-to-chromium
+#12 57.09 Progress: resolved 179, reused 0, downloaded 172, added 175
+#12 60.24 [WARN] Request took 13050ms: https://registry.npmjs.org/next
+#12 61.73 [WARN] Request took 13401ms: https://registry.npmjs.org/typescript
+#12 62.27 [WARN] Request took 20094ms: https://registry.npmjs.org/@prisma%2Fdebug
+#12 63.20 [WARN] Request took 21046ms: https://registry.npmjs.org/@prisma%2Fclient
+#12 75.65 Progress: resolved 179, reused 0, downloaded 173, added 175
+#12 76.66 Progress: resolved 179, reused 0, downloaded 173, added 176
+#12 81.82 Progress: resolved 179, reused 0, downloaded 174, added 176
+#12 82.82 Progress: resolved 179, reused 0, downloaded 174, added 177
+#12 87.65 [WARN] Request took 39973ms: https://registry.npmjs.org/prisma
+#12 87.68 ✓ Lockfile passes supply-chain policies (389 entries in 47.1s)
+#12 100.8 [WARN] GET https://registry.npmjs.org/next/-/next-16.3.0.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#12 100.8 [WARN] GET https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-16.3.0.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#12 170.8 [WARN] GET https://registry.npmjs.org/next/-/next-16.3.0.tgz error (23). Will retry in 1 minute. 1 retries left.
+#12 170.8 [WARN] GET https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-16.3.0.tgz error (23). Will retry in 1 minute. 1 retries left.
+#12 249.8 Progress: resolved 179, reused 0, downloaded 175, added 177
+#12 250.8 Progress: resolved 179, reused 0, downloaded 175, added 178
+#12 272.7 Progress: resolved 179, reused 0, downloaded 176, added 178
+#12 272.9 Progress: resolved 179, reused 0, downloaded 176, added 179, done
+#12 273.1 .../node_modules/@prisma/engines postinstall$ node scripts/postinstall.js
+#12 273.1 .../esbuild@0.28.1/node_modules/esbuild postinstall$ node install.js
+#12 273.1 .../esbuild@0.28.1/node_modules/esbuild postinstall: Done
+#12 286.7 .../node_modules/@prisma/engines postinstall: Done
+#12 286.8 .../node_modules/prisma preinstall$ node scripts/preinstall-entry.js
+#12 286.8 .../node_modules/prisma preinstall: Done
+#12 287.0 .../node_modules/@prisma/client postinstall$ node scripts/postinstall.js
+#12 288.8 .../node_modules/@prisma/client postinstall: prisma:warn We could not find your Prisma schema in the default locations (see: https://pris.ly/d/prisma-schema-location).
+#12 288.8 .../node_modules/@prisma/client postinstall: If you have a Prisma schema file in a custom path, you will need to run
+#12 288.8 .../node_modules/@prisma/client postinstall: `prisma generate --schema=./path/to/your/schema.prisma` to generate Prisma Client.
+#12 288.8 .../node_modules/@prisma/client postinstall: If you do not have a Prisma schema file yet, you can ignore this message.
+#12 288.8 .../node_modules/@prisma/client postinstall: Done
+#12 289.1
+#12 289.1 dependencies:
+#12 289.1 + @prisma/client 6.19.3
+#12 289.1
+#12 289.1 devDependencies:
+#12 289.1 + pnpm 11.9.0
+#12 289.1 + prisma 6.19.3
+#12 289.1
+#12 289.2 Done in 4m 9.3s using pnpm v11.9.0
+#12 DONE 289.5s
+
+#13 [build  9/10] RUN corepack pnpm --filter @douyin-local-life/shared build
+#13 0.620 $ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+#13 DONE 3.4s
+
+#14 [build 10/10] RUN corepack pnpm --filter @douyin-local-life/web build
+#14 0.650 $ next build
+#14 1.033 ▲ Next.js 16.3.0 (Turbopack)
+#14 1.059 ✓ Running next.config.ts took 25ms
+#14 1.065 Attention: Next.js now collects completely anonymous telemetry regarding usage.
+#14 1.065 This information is used to shape Next.js' roadmap and prioritize features.
+#14 1.065 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+#14 1.065 https://nextjs.org/telemetry
+#14 1.065
+#14 1.084
+#14 1.137   Creating an optimized production build ...
+#14 6.786 ✓ Compiled successfully in 3.5s
+#14 6.797   Running TypeScript ...
+#14 12.80   Finished TypeScript in 6.0s ...
+#14 12.81   Collecting page data using 15 workers ...
+#14 13.95   Generating static pages using 15 workers (0/12) ...
+#14 14.11   Generating static pages using 15 workers (3/12)
+#14 14.15   Generating static pages using 15 workers (6/12)
+#14 14.22   Generating static pages using 15 workers (9/12)
+#14 14.23 ✓ Generating static pages using 15 workers (12/12) in 283ms
+#14 14.24   Finalizing page optimization ...
+#14 14.26
+#14 14.26 Route (app)
+#14 14.26 ┌ ƒ /
+#14 14.26 ├ ƒ /_not-found
+#14 14.26 ├ ƒ /accounts/[id]
+#14 14.26 ├ ƒ /accounts/new
+#14 14.26 ├ ƒ /action-proposals/[id]
+#14 14.26 ├ ƒ /dashboard
+#14 14.26 ├ ƒ /decision-center
+#14 14.26 ├ ƒ /email-verification
+#14 14.26 ├ ƒ /extension
+#14 14.26 ├ ƒ /login
+#14 14.26 ├ ƒ /privacy
+#14 14.26 ├ ƒ /projects/[id]
+#14 14.26 ├ ƒ /projects/[id]/history
+#14 14.26 ├ ƒ /projects/new
+#14 14.26 ├ ƒ /tasks/[id]
+#14 14.26 ├ ƒ /tasks/[id]/collection-dashboard
+#14 14.26 └ ƒ /terms
+#14 14.26
+#14 14.26
+#14 14.26 ƒ Proxy (Middleware)
+#14 14.26
+#14 14.26 ƒ  (Dynamic)  server-rendered on demand
+#14 14.26
+#14 DONE 14.5s
+
+#15 [runtime  3/10] RUN addgroup -S app && adduser -S -G app -h /app app
+#15 CACHED
+
+#16 [runtime  4/10] COPY --from=build --chown=app:app /app/node_modules ./node_modules
+#16 DONE 2.4s
+
+#17 [runtime  5/10] COPY --from=build --chown=app:app /app/package.json ./package.json
+#17 DONE 0.0s
+
+#18 [runtime  6/10] COPY --from=build --chown=app:app /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+#18 DONE 0.0s
+
+#19 [runtime  7/10] COPY --from=build --chown=app:app /app/apps/web ./apps/web
+#19 DONE 0.1s
+
+#20 [runtime  8/10] COPY --from=build --chown=app:app /app/packages/shared/package.json ./packages/shared/package.json
+#20 DONE 0.0s
+
+#21 [runtime  9/10] COPY --from=build --chown=app:app /app/packages/shared/dist ./packages/shared/dist
+#21 DONE 0.0s
+
+#22 [runtime 10/10] WORKDIR /app/apps/web
+#22 DONE 0.0s
+
+#23 exporting to image
+#23 exporting layers
+#23 exporting layers 2.1s done
+#23 writing image sha256:0019e8a2e89e4e1f1a33be3f8c0fdd36cb8df42869f112ac947de7b25c561b70 done
+#23 naming to docker.io/library/pxxis-web:diagnosis-scenario-candidate-v24-20260906 done
+#23 DONE 2.1s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/owbk5jmk5qck69leg8ttjdg15

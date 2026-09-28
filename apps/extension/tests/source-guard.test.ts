@@ -7,6 +7,7 @@ const root = resolve(import.meta.dirname, "..");
 const guardedFiles = [
   "src/content.ts",
   "src/service-worker.ts",
+  "src/service-worker-runtime.ts",
   "src/popup.ts",
   "src/sidepanel.ts",
   "src/web-bridge.ts",
@@ -16,6 +17,13 @@ const guardedFiles = [
   "release/local-unpacked-test-extension/sidepanel.js",
   "release/local-unpacked-test-extension/web-bridge.js"
 ];
+
+function readServiceWorkerSources() {
+  return [
+    "src/service-worker.ts",
+    "src/service-worker-runtime.ts"
+  ].map((file) => readFileSync(resolve(root, file), "utf8")).join("\n");
+}
 
 describe("extension source safety guard", () => {
   it("does not contain automatic platform operation calls", () => {
@@ -58,7 +66,7 @@ describe("extension source safety guard", () => {
     expect(manifest.host_permissions).not.toContain("http://localhost/*");
     expect(manifest.host_permissions).not.toContain("https://*.chengzijianzhan.cn/*");
     expect(manifest.host_permissions.some((entry: string) => entry.includes("*.") || entry === "*://*/*")).toBe(false);
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
     expect(worker).not.toContain("START_PATROL");
     expect(worker).not.toContain("STOP_PATROL");
@@ -100,7 +108,7 @@ describe("extension source safety guard", () => {
   });
 
   it("stops live pulses when the user leaves or closes the live-screen tab", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
     expect(worker).toContain("chrome.tabs.onRemoved");
     expect(worker).toContain("chrome.tabs.onUpdated");
@@ -113,7 +121,7 @@ describe("extension source safety guard", () => {
   });
 
   it("keeps formal snapshots and DOM pulses connected to the server feature state", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const content = readFileSync(resolve(root, "src/content.ts"), "utf8");
     expect(worker).toContain("liveScreenInternalApiEnabled: refreshedContext.context.liveScreenInternalApi.enabled");
     expect(worker).toContain("MESSAGE.BEGIN_LIVE_PULSE_LOOP");
@@ -123,7 +131,7 @@ describe("extension source safety guard", () => {
 
   it("allows only a trusted task-page bridge to exchange a pairing code directly", () => {
     const bridge = readFileSync(resolve(root, "src/web-bridge.ts"), "utf8");
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     expect(bridge).toContain("PAIR_TASK_FROM_WEB");
     expect(bridge).not.toContain("CONFIRM_PAIRING");
     expect(bridge).not.toContain("label");
@@ -139,7 +147,7 @@ describe("extension source safety guard", () => {
     expect(worker).toContain("任务切换只能在插件 Popup 中完成。");
     expect(worker).toContain("解除配对只能在插件 Popup 中完成。");
     expect(worker).toContain("采集确认只能在插件 Popup 中完成。");
-    expect(worker).toContain("if (!isPopupSender(sender))");
+    expect(worker).toContain("if (!deps.isPopupSender(sender))");
     const directPairingSource = worker.slice(
       worker.indexOf("async function pairTaskFromWeb"),
       worker.indexOf("async function confirmPairing")
@@ -170,7 +178,7 @@ describe("extension source safety guard", () => {
   });
 
   it("rejects auto-detected snapshot routes that are no longer enabled for the current task", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const captureSource = worker.slice(
       worker.indexOf("async function captureAndUpload("),
       worker.indexOf("async function startLivePulse")
@@ -182,7 +190,7 @@ describe("extension source safety guard", () => {
   });
 
   it("rejects local-promotion DOM snapshots even if a stale popup sends the old message", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const captureSource = worker.slice(
       worker.indexOf("async function captureAndUpload("),
       worker.indexOf("async function startLivePulse")
@@ -211,7 +219,7 @@ describe("extension source safety guard", () => {
   });
 
   it("keeps one-shot manual route confirmation scoped to the current task", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const popup = readFileSync(resolve(root, "src/popup.ts"), "utf8");
     expect(worker).toContain("currentTaskRouteKeys");
     expect(worker).not.toContain("[\"LIVE_DATA_SCREEN\", \"LIVE_PRODUCT_TAB\", \"LIVE_TRAFFIC_TAB\"]");
@@ -221,7 +229,7 @@ describe("extension source safety guard", () => {
   });
 
   it("coalesces only matching user-confirmed capture requests", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     expect(worker).toContain("SingleFlight");
     expect(worker).toContain("captureSingleFlight.run");
     expect(worker).not.toContain("patrolSingleFlight.run");
@@ -233,7 +241,7 @@ describe("extension source safety guard", () => {
   });
 
   it("keeps status polling local and synchronizes only exact trusted task pages", () => {
-    const worker = readFileSync(resolve(root, "src/service-worker.ts"), "utf8");
+    const worker = readServiceWorkerSources();
     const recovery = readFileSync(resolve(root, "src/task-page-bridge-recovery.ts"), "utf8");
     const statusStart = worker.indexOf("async function getBridgeStatus");
     const syncStart = worker.indexOf("async function syncCurrentTaskFromBridge");

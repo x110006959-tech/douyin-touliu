@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectOverviewMetrics, summaryDisplayValue } from "./capture-summary.js";
+import { selectOverviewMetrics, summaryDisplayValue, summarySemanticScope } from "./capture-summary.js";
 import { selectLatestSnapshotsByRoute } from "./current-snapshots.js";
 
 describe("capture summary overview", () => {
@@ -33,6 +33,13 @@ describe("capture summary overview", () => {
       { metricValue: "", rawEvidence: {} },
       { reviewStatus: "PENDING", reviewedValue: null, originalValue: "123.45" }
     )).toBeNull();
+  });
+
+  it("prefers the reviewed semantic scope after source conflict selection", () => {
+    expect(summarySemanticScope(
+      { rawEvidence: { sourceType: "XHR_JSON", semanticScope: "API_SCOPE" } },
+      { rawEvidence: { sourceType: "DOM_TEXT", semanticScope: "DOM_SCOPE" } }
+    )).toBe("DOM_SCOPE");
   });
 
   it("keeps repeated collection on one route separate from the other current routes", () => {

@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { computeCodeIndex } from "./build-code-index.mjs";
 
 const root = process.cwd();
 const lineBudgets = new Map([
@@ -37,7 +38,47 @@ async function sourceFiles(directory) {
 }
 for (const file of await sourceFiles("packages")) {
   const source = await readFile(path.join(root, file), "utf8");
-  if (/from\s+["'](?:\.\.\/)+apps\//.test(source)) failures.push(`${file} imports an app layer; packages must remain app-independent.`);
+  if (/from\s+["'](?:\.\.\/)+apps\//.test(source) || /from\s+["']@douyin-local-life\/(api|web|extension)(?:[/"']|$)/.test(source)) {
+    failures.push(`${file} imports an app layer; packages must remain app-independent.`);
+  }
+}
+for (const file of await sourceFiles("apps/web/src")) {
+  const source = await readFile(path.join(root, file), "utf8");
+  if (/from\s+["']@douyin-local-life\/(api|extension)(?:[/"']|$)/.test(source) || /from\s+["'](?:\.\.\/)+(api|extension)\//.test(source)) {
+    failures.push(`${file} imports another app layer; apps/web must depend only on shared contracts.`);
+  }
+}
+for (const file of [...await sourceFiles("apps"), ...await sourceFiles("packages")]) {
+  if (/\.(?:test|spec)\.(?:ts|tsx|js|mjs)$/.test(file)) continue;
+  const source = await readFile(path.join(root, file), "utf8");
+  if (/from\s+["'][^"']*\.(?:test|spec)(?:\.(?:ts|tsx|js|mjs))?["']/.test(source)) {
+    failures.push(`${file} imports a test file as a production module.`);
+  }
+}
+
+const generatedIndex = await computeCodeIndex();
+const manifestPath = path.join(root, "docs", ".code-index-manifest.json");
+try {
+  const manifestSource = await readFile(manifestPath, "utf8");
+  if (manifestSource.trim() !== `${JSON.stringify(generatedIndex.manifest, null, 2)}`) {
+    failures.push("docs/.code-index-manifest.json is stale; run pnpm code:index.");
+  }
+} catch (error) {
+  if (error?.code === "ENOENT") failures.push("docs/.code-index-manifest.json is missing; run pnpm code:index.");
+  else throw error;
+}
+for (const [relative, expected] of [
+  ["docs/CODE_INDEX.md", generatedIndex.codeIndexMarkdown],
+  ["docs/ARCHITECTURE.md", generatedIndex.architectureMarkdown],
+  ["docs/CODE_OWNERSHIP.md", generatedIndex.ownershipMarkdown]
+]) {
+  try {
+    const source = await readFile(path.join(root, relative), "utf8");
+    if (source !== expected) failures.push(`${relative} is stale; run pnpm code:index.`);
+  } catch (error) {
+    if (error?.code === "ENOENT") failures.push(`${relative} is missing; run pnpm code:index.`);
+    else throw error;
+  }
 }
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));

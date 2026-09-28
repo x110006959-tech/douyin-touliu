@@ -1,0 +1,17 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+$ corepack pnpm -r typecheck
+Scope: 7 of 8 workspace projects
+packages/shared typecheck$ tsc -p tsconfig.json --noEmit
+packages/shared typecheck: Done
+apps/extension typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck$ tsc -p tsconfig.json --noEmit
+packages/diagnosis-skills typecheck$ tsc -p tsconfig.json --noEmit
+packages/decision-engine typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+packages/llm typecheck$ tsc -p tsconfig.json --noEmit
+packages/diagnosis-skills typecheck: Done
+packages/decision-engine typecheck: Done
+apps/extension typecheck: Done
+packages/llm typecheck: Done
+apps/api typecheck$ tsc -p tsconfig.json --noEmit
+apps/api typecheck: Done

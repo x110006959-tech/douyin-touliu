@@ -85,6 +85,14 @@ describe("dashboard overview projection", () => {
     const cards = buildDashboardOverviewCards([], [invalidPage], now);
     expect(overviewCard(cards, "live_gmv").status).toBe("MISSING");
   });
+
+  it("uses the reviewed semantic scope for generic overview candidates", () => {
+    const cards = buildDashboardOverviewCards([
+      summaryMetric("LIVE_DATA_SCREEN", "custom_gmv", "1200", "自定义成交金额", "2026-08-28T11:59:00.000Z", "PENDING", "全域自定义成交金额")
+    ]);
+
+    expect(overviewCard(cards, "other:LIVE_DATA_SCREEN:custom_gmv").scopeLabel).toBe("全域");
+  });
 });
 
 function overviewCard(cards: ReturnType<typeof buildDashboardOverviewCards>, displayKey: string) {
@@ -99,7 +107,8 @@ function summaryMetric(
   metricValue: string,
   metricName: string,
   capturedAt = "2026-08-28T11:59:00.000Z",
-  reviewStatus: MetricReviewStatus = "PENDING"
+  reviewStatus: MetricReviewStatus = "PENDING",
+  semanticScope?: string
 ): CaptureSummaryMetricDTO {
   return {
     metricKey,
@@ -108,6 +117,7 @@ function summaryMetric(
     displayValue: null,
     originalValue: null,
     metricUnit: metricKey.includes("gmv") ? "yuan" : null,
+    semanticScope: semanticScope || null,
     category: "UNKNOWN",
     confidence: 1,
     metricSource: "DOM_TEXT",

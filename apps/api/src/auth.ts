@@ -6,7 +6,8 @@ import { prisma } from "./prisma.js";
 
 export type AuthUser = {
   id: string;
-  email: string;
+  email: string | null;
+  phone?: string | null;
   workspaceId?: string;
   authKind?: "USER_SESSION" | "EXTENSION";
   extensionCredentialId?: string;
@@ -125,6 +126,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     (req as AuthenticatedRequest).user = {
       id: credential.userId,
       email: credential.user.email,
+      phone: credential.user.phone,
       workspaceId: credential.workspaceId,
       authKind: "EXTENSION",
       extensionCredentialId: credential.id,
@@ -157,6 +159,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   request.user = {
     id: session.userId,
     email: session.user.email,
+    phone: session.user.phone,
     workspaceId: session.user.workspaces[0]?.id,
     authKind: "USER_SESSION"
   };

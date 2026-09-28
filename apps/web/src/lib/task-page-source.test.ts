@@ -14,6 +14,10 @@ const diagnosisBusinessSummarySource = readFileSync(
   fileURLToPath(new URL("../app/tasks/[id]/diagnosis-business-summary.tsx", import.meta.url)),
   "utf8"
 );
+const diagnosisInsightsSource = readFileSync(
+  fileURLToPath(new URL("./diagnosis-insights.ts", import.meta.url)),
+  "utf8"
+);
 const dashboardSource = readFileSync(
   fileURLToPath(new URL("../app/dashboard/page.tsx", import.meta.url)),
   "utf8"
@@ -58,6 +62,10 @@ describe("task page acceptance guard", () => {
     expect(diagnosisComparisonSource).not.toContain("结论置信度");
     expect(diagnosisComparisonSource).toContain("DeepSeek + 业务 Skills");
     expect(diagnosisComparisonSource).toContain("本轮经营判断");
+    expect(diagnosisComparisonSource).toContain("这组数据能直接说明什么");
+    expect(diagnosisComparisonSource).toContain("buildTrustedBusinessInterpretation");
+    expect(diagnosisInsightsSource).toContain("目标差距");
+    expect(diagnosisInsightsSource).toContain("近期趋势");
     expect(diagnosisComparisonSource).toContain("这组数据已经说明什么");
     expect(diagnosisComparisonSource).toContain("今天先做什么");
     expect(diagnosisComparisonSource).toContain("作决定前还缺什么");

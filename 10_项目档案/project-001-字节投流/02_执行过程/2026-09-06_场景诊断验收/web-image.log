@@ -1,0 +1,132 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 DONE 0.0s
+
+#2 [build  1/16] FROM docker.io/library/node:22-alpine
+#2 DONE 0.0s
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.32kB done
+#1 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:22-alpine
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 203B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 603.22kB 0.1s done
+#5 DONE 0.1s
+
+#6 [build  2/10] WORKDIR /app
+#6 CACHED
+
+#7 [build  3/10] RUN corepack enable
+#7 CACHED
+
+#8 [build  4/10] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#8 DONE 0.2s
+
+#9 [build  5/10] COPY apps/web ./apps/web
+#9 DONE 0.0s
+
+#10 [build  6/10] COPY packages/shared ./packages/shared
+#10 DONE 0.0s
+
+#11 [build  7/10] COPY tools ./tools
+#11 DONE 0.0s
+
+#12 [build  8/10] RUN corepack pnpm install --frozen-lockfile
+#12 7.387 Scope: all 3 workspace projects
+#12 7.481 ? Verifying lockfile against supply-chain policies (389 entries)...
+#12 7.497 Lockfile is up to date, resolution step is skipped
+#12 7.648 Progress: resolved 1, reused 0, downloaded 0, added 0
+#12 7.725 Packages: +179
+#12 7.725 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#12 8.649 Progress: resolved 179, reused 0, downloaded 0, added 0
+#12 9.654 Progress: resolved 179, reused 0, downloaded 16, added 16
+#12 10.65 Progress: resolved 179, reused 0, downloaded 53, added 53
+#12 11.65 Progress: resolved 179, reused 0, downloaded 85, added 85
+#12 12.09 [WARN] Tarball download average speed 13 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/braces/-/braces-3.0.3.tgz (GET)
+#12 12.27
+#12 12.27    ╭──────────────────────────────────────────────╮
+#12 12.27    │                                              │
+#12 12.27    │      Update available! 11.9.0 → 12.3.4.      │
+#12 12.27    │     Changelog: https://pnpm.io/v/12.3.4      │
+#12 12.27    │   To update, run: corepack use pnpm@12.3.4   │
+#12 12.27    │                                              │
+#12 12.27    ╰──────────────────────────────────────────────╯
+#12 12.27
+#12 12.65 Progress: resolved 179, reused 0, downloaded 114, added 114
+#12 13.65 Progress: resolved 179, reused 0, downloaded 141, added 142
+#12 14.65 Progress: resolved 179, reused 0, downloaded 161, added 163
+#12 15.36 [WARN] Tarball download average speed 37 KiB/s (size 55 KiB) is below 50 KiB/s: https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-2.3.0.tgz (GET)
+#12 15.65 Progress: resolved 179, reused 0, downloaded 164, added 167
+#12 16.65 Progress: resolved 179, reused 0, downloaded 166, added 169
+#12 18.14 Progress: resolved 179, reused 0, downloaded 167, added 169
+#12 19.14 Progress: resolved 179, reused 0, downloaded 167, added 170
+#12 20.49 [WARN] Request took 10927ms: https://registry.npmjs.org/@prisma%2Fengines-version
+#12 20.88 [WARN] Request took 11737ms: https://registry.npmjs.org/@next%2Fswc-linux-arm64-gnu
+#12 21.51 [WARN] Request took 11961ms: https://registry.npmjs.org/@prisma%2Fclient
+#12 21.70 Progress: resolved 179, reused 0, downloaded 168, added 170
+#12 22.25 [WARN] Tarball download average speed 41 KiB/s (size 412 KiB) is below 50 KiB/s: https://registry.npmjs.org/jiti/-/jiti-1.21.7.tgz (GET)
+#12 22.71 Progress: resolved 179, reused 0, downloaded 169, added 172
+#12 25.17 Progress: resolved 179, reused 0, downloaded 170, added 172
+#12 26.17 Progress: resolved 179, reused 0, downloaded 170, added 173
+#12 27.17 Progress: resolved 179, reused 0, downloaded 171, added 174
+#12 27.20 [WARN] Request took 10884ms: https://registry.npmjs.org/react
+#12 27.33 [WARN] Request took 10577ms: https://registry.npmjs.org/tailwindcss
+#12 27.63 [WARN] Request took 11504ms: https://registry.npmjs.org/prisma
+#12 28.17 Progress: resolved 179, reused 0, downloaded 172, added 175
+#12 33.87 [WARN] Request took 24284ms: https://registry.npmjs.org/@prisma%2Ffetch-engine
+#12 33.90 [WARN] Request took 17424ms: https://registry.npmjs.org/scheduler
+#12 44.06 [WARN] Request took 34424ms: https://registry.npmjs.org/@prisma%2Fget-platform
+#12 49.21 [WARN] Request took 33635ms: https://registry.npmjs.org/next
+#12 63.38 [WARN] Tarball download average speed 0 KiB/s (size 26 KiB) is below 50 KiB/s: https://registry.npmjs.org/commander/-/commander-4.1.1.tgz (GET)
+#12 63.38 Progress: resolved 179, reused 0, downloaded 173, added 175
+#12 64.38 Progress: resolved 179, reused 0, downloaded 173, added 176
+#12 67.74 [WARN] GET https://registry.npmjs.org/@prisma/client/-/client-6.19.3.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#12 67.89 [WARN] GET https://registry.npmjs.org/next/-/next-16.3.0.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#12 68.40 Progress: resolved 179, reused 0, downloaded 174, added 176
+#12 69.40 Progress: resolved 179, reused 0, downloaded 174, added 177
+#12 75.00 [WARN] Request took 54529ms: https://registry.npmjs.org/typescript
+#12 75.00 ✓ Lockfile passes supply-chain policies (389 entries in 1m 7.5s)
+#12 137.7 [WARN] GET https://registry.npmjs.org/@prisma/client/-/client-6.19.3.tgz error (23). Will retry in 1 minute. 1 retries left.
+#12 137.9 [WARN] GET https://registry.npmjs.org/next/-/next-16.3.0.tgz error (23). Will retry in 1 minute. 1 retries left.
+#12 239.5 Progress: resolved 179, reused 0, downloaded 175, added 177
+#12 240.5 Progress: resolved 179, reused 0, downloaded 175, added 178
+#12 257.9 [23] The operation was aborted due to timeout
+#12 257.9
+#12 257.9 TimeoutError: The operation was aborted due to timeout
+#12 257.9     at new DOMException (node:internal/per_context/domexception:76:18)
+#12 257.9     at Timeout._onTimeout (node:internal/abort_controller:155:9)
+#12 257.9     at listOnTimeout (node:internal/timers:585:17)
+#12 257.9     at process.processTimers (node:internal/timers:521:7)
+#12 ERROR: process "/bin/sh -c corepack pnpm install --frozen-lockfile" did not complete successfully: exit code: 1
+------
+ > [build  8/10] RUN corepack pnpm install --frozen-lockfile:
+137.9 [WARN] GET https://registry.npmjs.org/next/-/next-16.3.0.tgz error (23). Will retry in 1 minute. 1 retries left.
+239.5 Progress: resolved 179, reused 0, downloaded 175, added 177
+240.5 Progress: resolved 179, reused 0, downloaded 175, added 178
+257.9 [23] The operation was aborted due to timeout
+257.9
+257.9 TimeoutError: The operation was aborted due to timeout
+257.9     at new DOMException (node:internal/per_context/domexception:76:18)
+257.9     at Timeout._onTimeout (node:internal/abort_controller:155:9)
+257.9     at listOnTimeout (node:internal/timers:585:17)
+257.9     at process.processTimers (node:internal/timers:521:7)
+------
+Dockerfile:13
+--------------------
+  11 |     COPY tools ./tools
+  12 |
+  13 | >>> RUN corepack pnpm install --frozen-lockfile
+  14 |     RUN corepack pnpm --filter @douyin-local-life/shared build
+  15 |     ARG NEXT_PUBLIC_API_URL
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c corepack pnpm install --frozen-lockfile" did not complete successfully: exit code: 1
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/q75vokvvlwanhjlssjqr6q2i5

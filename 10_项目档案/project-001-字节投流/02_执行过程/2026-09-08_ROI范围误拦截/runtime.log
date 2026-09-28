@@ -1,0 +1,9 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+$ powershell -NoProfile -File tools/verify-local-pxxis-runtime.ps1
+HTTP 200: http://127.0.0.1:4300/ready
+HTTP 200: http://127.0.0.1:4300/version
+HTTP 200: http://127.0.0.1:3300/login
+{"diagnosisPromptVersion":"managed-live-growth-prompt-v28","diagnosisOrchestrationVersion":"server-determined-skill-plan-v36","diagnosisSkillSetVersion":"managed-live-growth-skills-v11"}
+{"structurePassed":24,"groundedConclusions":24,"partialFailureFactsPreserved":24}
+{"Mode":"apply","PlannedContainers":3,"RemovedContainers":3,"PlannedImageTags":2,"RemovedImageTags":2,"ProtectedImageIds":9}
+Runtime and offline diagnosis verified; cleanup completed. Real model acceptance is separate.

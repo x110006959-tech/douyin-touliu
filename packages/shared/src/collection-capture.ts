@@ -53,11 +53,15 @@ export const metricRawEvidenceSchema = z.object({
   validationReasons: z.array(z.string().max(100)).max(20).optional(),
   sourceStatus: z.enum(metricSourceStatuses).optional(),
   apiCandidate: z.object({
-    value: z.string().max(100), displayValue: z.string().max(100), unit: z.string().nullable(), timeRange: z.string().max(100),
+    value: z.string().max(100), displayValue: z.string().max(100), unit: z.string().nullable(),
+    unitSource: z.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+    scope: z.string().max(100).optional(), scopeExplicit: z.boolean().optional(), timeRange: z.string().max(100),
     displayPrecision: z.number().int().min(0).max(20), fieldPath: z.string().max(300), fieldLabel: z.string().max(100)
   }).optional(),
   domCandidate: z.object({
-    value: z.string().max(100), displayValue: z.string().max(100), unit: z.string().nullable(), timeRange: z.string().max(100),
+    value: z.string().max(100), displayValue: z.string().max(100), unit: z.string().nullable(),
+    unitSource: z.enum(["VALUE", "HEADER", "LABEL", "DEFAULT", "NONE"]).optional(),
+    scope: z.string().max(100).optional(), scopeExplicit: z.boolean().optional(), timeRange: z.string().max(100),
     displayPrecision: z.number().int().min(0).max(20), fieldPath: z.string().max(300), fieldLabel: z.string().max(100)
   }).optional(),
   selectionReason: z.string().max(200).optional(),

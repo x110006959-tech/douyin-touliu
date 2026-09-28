@@ -1,0 +1,359 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 3.57kB 0.0s done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/node:22-alpine
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 203B 0.0s done
+#3 DONE 0.0s
+
+#4 [build  1/16] FROM docker.io/library/node:22-alpine
+#4 CACHED
+
+#5 [internal] load build context
+#5 transferring context: 1.66MB 0.1s done
+#5 DONE 0.1s
+
+#6 [build  2/16] RUN apk add --no-cache openssl
+#6 ...
+
+#7 [runtime  2/25] RUN apk add --no-cache openssl && addgroup -S app && adduser -S -G app -h /app app
+#7 ...
+
+#6 [build  2/16] RUN apk add --no-cache openssl
+#6 19.69 (1/3) Upgrading libcrypto3 (3.5.7-r0 -> 3.5.8-r0)
+#6 20.62 (2/3) Upgrading libssl3 (3.5.7-r0 -> 3.5.8-r0)
+#6 21.25 (3/3) Installing openssl (3.5.8-r0)
+#6 21.75 Executing busybox-1.37.0-r31.trigger
+#6 21.76 OK: 11.6 MiB in 19 packages
+#6 DONE 21.9s
+
+#7 [runtime  2/25] RUN apk add --no-cache openssl && addgroup -S app && adduser -S -G app -h /app app
+#7 20.48 (1/3) Upgrading libcrypto3 (3.5.7-r0 -> 3.5.8-r0)
+#7 21.59 (2/3) Upgrading libssl3 (3.5.7-r0 -> 3.5.8-r0)
+#7 22.07 (3/3) Installing openssl (3.5.8-r0)
+#7 22.39 Executing busybox-1.37.0-r31.trigger
+#7 22.40 OK: 11.6 MiB in 19 packages
+#7 ...
+
+#8 [build  3/16] WORKDIR /app
+#8 DONE 1.3s
+
+#7 [runtime  2/25] RUN apk add --no-cache openssl && addgroup -S app && adduser -S -G app -h /app app
+#7 DONE 23.2s
+
+#9 [runtime  3/25] WORKDIR /app
+#9 DONE 0.1s
+
+#10 [build  4/16] RUN corepack enable
+#10 DONE 2.0s
+
+#11 [runtime  4/25] RUN corepack enable
+#11 DONE 1.9s
+
+#12 [build  5/16] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#12 DONE 0.1s
+
+#13 [build  6/16] COPY prisma ./prisma
+#13 DONE 0.1s
+
+#14 [build  7/16] COPY apps/api ./apps/api
+#14 DONE 0.1s
+
+#15 [build  8/16] COPY packages/shared ./packages/shared
+#15 DONE 0.1s
+
+#16 [build  9/16] COPY packages/llm ./packages/llm
+#16 DONE 0.1s
+
+#17 [build 10/16] COPY packages/decision-engine ./packages/decision-engine
+#17 DONE 3.3s
+
+#18 [build 11/16] COPY packages/diagnosis-skills ./packages/diagnosis-skills
+#18 DONE 0.1s
+
+#19 [build 12/16] COPY tools ./tools
+#19 DONE 0.1s
+
+#20 [build 13/16] RUN corepack pnpm install --frozen-lockfile
+#20 20.57 Scope: all 6 workspace projects
+#20 20.85 ? Verifying lockfile against supply-chain policies (389 entries)...
+#20 20.89 Lockfile is up to date, resolution step is skipped
+#20 21.41 Progress: resolved 1, reused 0, downloaded 0, added 0
+#20 21.75 Packages: +193
+#20 21.75 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#20 22.81 Progress: resolved 193, reused 0, downloaded 0, added 0
+#20 24.21 Progress: resolved 193, reused 0, downloaded 1, added 0
+#20 25.21 Progress: resolved 193, reused 0, downloaded 48, added 47
+#20 25.72 [WARN] Tarball download average speed 44 KiB/s (size 57 KiB) is below 50 KiB/s: https://registry.npmjs.org/express/-/express-4.22.2.tgz (GET)
+#20 26.09 [WARN] Tarball download average speed 43 KiB/s (size 76 KiB) is below 50 KiB/s: https://registry.npmjs.org/bcryptjs/-/bcryptjs-2.4.3.tgz (GET)
+#20 26.21 Progress: resolved 193, reused 0, downloaded 68, added 68
+#20 26.54 [WARN] Tarball download average speed 31 KiB/s (size 39 KiB) is below 50 KiB/s: https://registry.npmjs.org/confbox/-/confbox-0.2.4.tgz (GET)
+#20 26.77 [WARN] Tarball download average speed 37 KiB/s (size 69 KiB) is below 50 KiB/s: https://registry.npmjs.org/qs/-/qs-6.15.3.tgz (GET)
+#20 27.22 Progress: resolved 193, reused 0, downloaded 101, added 101
+#20 28.17 [WARN] Tarball download average speed 36 KiB/s (size 81 KiB) is below 50 KiB/s: https://registry.npmjs.org/consola/-/consola-3.4.2.tgz (GET)
+#20 28.22 Progress: resolved 193, reused 0, downloaded 110, added 110
+#20 29.22 Progress: resolved 193, reused 0, downloaded 133, added 133
+#20 29.52 [WARN] Tarball download average speed 35 KiB/s (size 183 KiB) is below 50 KiB/s: https://registry.npmjs.org/@prisma/fetch-engine/-/fetch-engine-6.19.3.tgz (GET)
+#20 30.18 [WARN] Tarball download average speed 32 KiB/s (size 57 KiB) is below 50 KiB/s: https://registry.npmjs.org/@smithy/types/-/types-4.16.1.tgz (GET)
+#20 30.22 Progress: resolved 193, reused 0, downloaded 147, added 147
+#20 30.24 [WARN] Tarball download average speed 47 KiB/s (size 86 KiB) is below 50 KiB/s: https://registry.npmjs.org/@aws-sdk/core/-/core-3.975.3.tgz (GET)
+#20 30.93 [WARN] Tarball download average speed 35 KiB/s (size 131 KiB) is below 50 KiB/s: https://registry.npmjs.org/nodemailer/-/nodemailer-9.0.1.tgz (GET)
+#20 31.20 [WARN] Tarball download average speed 33 KiB/s (size 44 KiB) is below 50 KiB/s: https://registry.npmjs.org/@vitest/utils/-/utils-4.1.9.tgz (GET)
+#20 31.21 [WARN] Tarball download average speed 39 KiB/s (size 274 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-check/-/fast-check-3.23.2.tgz (GET)
+#20 31.22 Progress: resolved 193, reused 0, downloaded 153, added 152
+#20 31.56 [WARN] Tarball download average speed 45 KiB/s (size 54 KiB) is below 50 KiB/s: https://registry.npmjs.org/@vitest/mocker/-/mocker-4.1.9.tgz (GET)
+#20 31.67 [WARN] Tarball download average speed 42 KiB/s (size 297 KiB) is below 50 KiB/s: https://registry.npmjs.org/@node-rs/argon2-linux-x64-musl/-/argon2-linux-x64-musl-2.0.2.tgz (GET)
+#20 31.89 [WARN] Tarball download average speed 33 KiB/s (size 251 KiB) is below 50 KiB/s: https://registry.npmjs.org/@prisma/get-platform/-/get-platform-6.19.3.tgz (GET)
+#20 32.22 Progress: resolved 193, reused 0, downloaded 163, added 163
+#20 33.17 [WARN] Tarball download average speed 28 KiB/s (size 50 KiB) is below 50 KiB/s: https://registry.npmjs.org/postcss/-/postcss-8.5.26.tgz (GET)
+#20 33.22 Progress: resolved 193, reused 0, downloaded 173, added 173
+#20 34.22 Progress: resolved 193, reused 0, downloaded 174, added 174
+#20 34.92 [WARN] Tarball download average speed 13 KiB/s (size 31 KiB) is below 50 KiB/s: https://registry.npmjs.org/expect-type/-/expect-type-1.4.0.tgz (GET)
+#20 35.00 [WARN] Tarball download average speed 21 KiB/s (size 87 KiB) is below 50 KiB/s: https://registry.npmjs.org/magic-string/-/magic-string-0.30.21.tgz (GET)
+#20 35.22 Progress: resolved 193, reused 0, downloaded 175, added 175
+#20 35.24 [WARN] Tarball download average speed 15 KiB/s (size 47 KiB) is below 50 KiB/s: https://registry.npmjs.org/@vitest/runner/-/runner-4.1.9.tgz (GET)
+#20 35.43 [WARN] Tarball download average speed 17 KiB/s (size 55 KiB) is below 50 KiB/s: https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-2.3.0.tgz (GET)
+#20 36.23 Progress: resolved 193, reused 0, downloaded 178, added 178
+#20 36.32 [WARN] Tarball download average speed 34 KiB/s (size 417 KiB) is below 50 KiB/s: https://registry.npmjs.org/jiti/-/jiti-2.7.0.tgz (GET)
+#20 37.23 Progress: resolved 193, reused 0, downloaded 179, added 179
+#20 37.43 [WARN] Tarball download average speed 24 KiB/s (size 221 KiB) is below 50 KiB/s: https://registry.npmjs.org/@aws-sdk/client-sesv2/-/client-sesv2-3.1087.0.tgz (GET)
+#20 38.23 Progress: resolved 193, reused 0, downloaded 180, added 180
+#20 40.05 [WARN] Request took 11659ms: https://registry.npmjs.org/browserslist
+#20 40.44 [WARN] Request took 10437ms: https://registry.npmjs.org/consola
+#20 43.68 [WARN] Request took 12684ms: https://registry.npmjs.org/deepmerge-ts
+#20 43.69 [WARN] Request took 15490ms: https://registry.npmjs.org/autoprefixer
+#20 43.82 [WARN] Request took 12435ms: https://registry.npmjs.org/dotenv
+#20 43.82 [WARN] Request took 13069ms: https://registry.npmjs.org/csstype
+#20 43.90 [WARN] Request took 12186ms: https://registry.npmjs.org/es-module-lexer
+#20 43.95 [WARN] Request took 10671ms: https://registry.npmjs.org/expect-type
+#20 44.99 [WARN] Request took 24392ms: https://registry.npmjs.org/pnpm
+#20 45.00
+#20 45.00    ╭──────────────────────────────────────────────╮
+#20 45.00    │                                              │
+#20 45.00    │      Update available! 11.9.0 → 12.3.4.      │
+#20 45.00    │     Changelog: https://pnpm.io/v/12.3.4      │
+#20 45.00    │   To update, run: corepack use pnpm@12.3.4   │
+#20 45.00    │                                              │
+#20 45.00    ╰──────────────────────────────────────────────╯
+#20 45.00
+#20 45.05 [WARN] Request took 10884ms: https://registry.npmjs.org/express
+#20 46.15 [WARN] Request took 14648ms: https://registry.npmjs.org/effect
+#20 47.62 [WARN] Tarball download average speed 18 KiB/s (size 346 KiB) is below 50 KiB/s: https://registry.npmjs.org/@smithy/core/-/core-3.29.4.tgz (GET)
+#20 47.91 Progress: resolved 193, reused 0, downloaded 181, added 180
+#20 48.11 [WARN] Request took 13462ms: https://registry.npmjs.org/fast-check
+#20 48.13 [WARN] Tarball download average speed 21 KiB/s (size 436 KiB) is below 50 KiB/s: https://registry.npmjs.org/@types/node/-/node-22.20.0.tgz (GET)
+#20 48.30 [WARN] Request took 20897ms: https://registry.npmjs.org/@types%2Freact
+#20 48.91 Progress: resolved 193, reused 0, downloaded 182, added 182
+#20 56.83 [WARN] Request took 10023ms: https://registry.npmjs.org/raw-body
+#20 57.25 [WARN] Request took 11100ms: https://registry.npmjs.org/postcss-selector-parser
+#20 57.86 [WARN] Request took 10378ms: https://registry.npmjs.org/safe-buffer
+#20 58.17 [WARN] Request took 11014ms: https://registry.npmjs.org/readdirp
+#20 58.33 [WARN] Request took 10355ms: https://registry.npmjs.org/setprototypeof
+#20 58.67 [WARN] Request took 12453ms: https://registry.npmjs.org/pure-rand
+#20 58.71 [WARN] Request took 10409ms: https://registry.npmjs.org/side-channel-map
+#20 58.74 [WARN] Request took 14562ms: https://registry.npmjs.org/node-releases
+#20 58.80 [WARN] Request took 10682ms: https://registry.npmjs.org/side-channel-list
+#20 58.97 [WARN] Request took 10576ms: https://registry.npmjs.org/side-channel-weakmap
+#20 59.15 [WARN] Request took 14920ms: https://registry.npmjs.org/nodemailer
+#20 59.49 [WARN] Request took 11548ms: https://registry.npmjs.org/send
+#20 59.50 [WARN] Request took 10315ms: https://registry.npmjs.org/side-channel
+#20 59.51 [WARN] Request took 11546ms: https://registry.npmjs.org/serve-static
+#20 59.56 [WARN] Request took 13218ms: https://registry.npmjs.org/qs
+#20 59.61 [WARN] Request took 12313ms: https://registry.npmjs.org/resolve
+#20 60.58 [WARN] Request took 10480ms: https://registry.npmjs.org/std-env
+#20 60.58 [WARN] Request took 13078ms: https://registry.npmjs.org/semver
+#20 62.14 [WARN] Request took 11915ms: https://registry.npmjs.org/styled-jsx
+#20 62.24 [WARN] Tarball download average speed 16 KiB/s (size 569 KiB) is below 50 KiB/s: https://registry.npmjs.org/zod/-/zod-3.25.76.tgz (GET)
+#20 62.24 [WARN] Request took 14265ms: https://registry.npmjs.org/sharp
+#20 62.26 [WARN] Tarball download average speed 14 KiB/s (size 463 KiB) is below 50 KiB/s: https://registry.npmjs.org/vitest/-/vitest-4.1.9.tgz (GET)
+#20 62.50 Progress: resolved 193, reused 0, downloaded 183, added 182
+#20 62.56 [WARN] Request took 23604ms: https://registry.npmjs.org/@types%2Fchrome
+#20 62.96 [WARN] Request took 12734ms: https://registry.npmjs.org/sucrase
+#20 63.17 [WARN] Request took 34020ms: https://registry.npmjs.org/caniuse-lite
+#20 63.50 Progress: resolved 193, reused 0, downloaded 184, added 184
+#20 63.84 [WARN] Tarball download average speed 16 KiB/s (size 530 KiB) is below 50 KiB/s: https://registry.npmjs.org/vite/-/vite-7.3.6.tgz (GET)
+#20 63.93 [WARN] Request took 39721ms: https://registry.npmjs.org/@next%2Fswc-win32-x64-msvc
+#20 64.06 [WARN] Request took 39965ms: https://registry.npmjs.org/@next%2Fswc-linux-arm64-musl
+#20 64.11 [WARN] Request took 31971ms: https://registry.npmjs.org/esbuild
+#20 64.23 [WARN] Request took 40144ms: https://registry.npmjs.org/@next%2Fswc-linux-arm64-gnu
+#20 64.28 [WARN] Request took 12180ms: https://registry.npmjs.org/tailwind-merge
+#20 64.37 [WARN] Request took 40181ms: https://registry.npmjs.org/@next%2Fswc-win32-arm64-msvc
+#20 64.47 [WARN] Request took 40362ms: https://registry.npmjs.org/@next%2Fswc-linux-x64-gnu
+#20 64.51 Progress: resolved 193, reused 0, downloaded 185, added 185
+#20 64.55 [WARN] Request took 18367ms: https://registry.npmjs.org/postcss
+#20 64.58 [WARN] Request took 40515ms: https://registry.npmjs.org/@next%2Fswc-darwin-x64
+#20 64.73 [WARN] Request took 17377ms: https://registry.npmjs.org/rollup
+#20 64.85 [WARN] Request took 40794ms: https://registry.npmjs.org/@next%2Fswc-darwin-arm64
+#20 65.02 [WARN] Request took 41026ms: https://registry.npmjs.org/@next%2Fenv
+#20 65.12 [WARN] Tarball download average speed 16 KiB/s (size 558 KiB) is below 50 KiB/s: https://registry.npmjs.org/rollup/-/rollup-4.62.2.tgz (GET)
+#20 65.18 [WARN] Request took 40998ms: https://registry.npmjs.org/@next%2Fswc-linux-x64-musl
+#20 65.46 [WARN] Tarball download average speed 26 KiB/s (size 891 KiB) is below 50 KiB/s: https://registry.npmjs.org/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.62.2.tgz (GET)
+#20 65.51 Progress: resolved 193, reused 0, downloaded 187, added 186
+#20 65.77 [WARN] Request took 38642ms: https://registry.npmjs.org/@types%2Fnode
+#20 66.51 Progress: resolved 193, reused 0, downloaded 187, added 187
+#20 67.32 [WARN] Request took 35792ms: https://registry.npmjs.org/electron-to-chromium
+#20 77.24 [WARN] Request took 18044ms: https://registry.npmjs.org/vite
+#20 77.35 [WARN] Request took 17847ms: https://registry.npmjs.org/zod
+#20 81.20 [WARN] Request took 34223ms: https://registry.npmjs.org/react
+#20 81.82 [WARN] GET https://registry.npmjs.org/@prisma/client/-/client-6.19.3.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#20 82.04 [WARN] GET https://registry.npmjs.org/effect/-/effect-3.21.0.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#20 82.23 [WARN] GET https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#20 82.30 [WARN] GET https://registry.npmjs.org/pnpm/-/pnpm-11.9.0.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.40 [WARN] GET https://registry.npmjs.org/@prisma%2Fclient error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.47 [WARN] GET https://registry.npmjs.org/@prisma%2Fdebug error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.53 [WARN] GET https://registry.npmjs.org/@prisma%2Fengines-version error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.60 [WARN] GET https://registry.npmjs.org/@prisma%2Fengines error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.65 [WARN] GET https://registry.npmjs.org/@prisma%2Ffetch-engine error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.66 [WARN] GET https://registry.npmjs.org/@prisma%2Fget-platform error (23). Will retry in 10 seconds. 2 retries left.
+#20 84.76 [WARN] GET https://registry.npmjs.org/prisma/-/prisma-6.19.3.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#20 86.66 [WARN] Request took 39165ms: https://registry.npmjs.org/scheduler
+#20 86.74 [WARN] GET https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.1.tgz error (23). Will retry in 10 seconds. 2 retries left.
+#20 97.29 [WARN] Request took 50330ms: https://registry.npmjs.org/react-dom
+#20 99.75 [WARN] Request took 46990ms: https://registry.npmjs.org/tailwindcss
+#20 104.1 [WARN] GET https://registry.npmjs.org/next error (23). Will retry in 10 seconds. 2 retries left.
+#20 105.0 [WARN] Request took 46284ms: https://registry.npmjs.org/typescript
+#20 106.2 [WARN] GET https://registry.npmjs.org/prisma error (23). Will retry in 10 seconds. 2 retries left.
+#20 113.9 [WARN] Request took 19416ms: https://registry.npmjs.org/@prisma%2Fengines-version
+#20 117.3 [WARN] Request took 12041ms: https://registry.npmjs.org/typescript
+#20 118.8 [WARN] Request took 24161ms: https://registry.npmjs.org/@prisma%2Fengines
+#20 123.8 Progress: resolved 193, reused 0, downloaded 188, added 187
+#20 124.8 Progress: resolved 193, reused 0, downloaded 189, added 189
+#20 126.7 Progress: resolved 193, reused 0, downloaded 190, added 189
+#20 127.2 [WARN] Request took 32493ms: https://registry.npmjs.org/@prisma%2Fget-platform
+#20 127.3 [WARN] Request took 32697ms: https://registry.npmjs.org/@prisma%2Ffetch-engine
+#20 127.5 [WARN] Request took 33019ms: https://registry.npmjs.org/@prisma%2Fdebug
+#20 127.7 Progress: resolved 193, reused 0, downloaded 191, added 191
+#20 128.9 [WARN] Request took 34505ms: https://registry.npmjs.org/@prisma%2Fclient
+#20 130.6 [WARN] Request took 14423ms: https://registry.npmjs.org/prisma
+#20 130.7 ✓ Lockfile passes supply-chain policies (389 entries in 1m 49.8s)
+#20 135.8 Progress: resolved 193, reused 0, downloaded 192, added 191
+#20 136.8 Progress: resolved 193, reused 0, downloaded 192, added 192
+#20 141.7 Progress: resolved 193, reused 0, downloaded 193, added 192
+#20 141.8 Progress: resolved 193, reused 0, downloaded 193, added 193, done
+#20 142.0 .../node_modules/@prisma/engines postinstall$ node scripts/postinstall.js
+#20 142.0 .../esbuild@0.28.1/node_modules/esbuild postinstall$ node install.js
+#20 142.1 .../esbuild@0.28.1/node_modules/esbuild postinstall: Done
+#20 148.2 .../node_modules/@prisma/engines postinstall: Done
+#20 148.4 .../node_modules/prisma preinstall$ node scripts/preinstall-entry.js
+#20 148.4 .../node_modules/prisma preinstall: Done
+#20 148.7 .../node_modules/@prisma/client postinstall$ node scripts/postinstall.js
+#20 151.7 .../node_modules/@prisma/client postinstall: Prisma schema loaded from prisma/schema.prisma
+#20 152.7 .../node_modules/@prisma/client postinstall: ✔ Generated Prisma Client (v6.19.3) to ./node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 549ms
+#20 152.7 .../node_modules/@prisma/client postinstall: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#20 152.7 .../node_modules/@prisma/client postinstall: Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+#20 152.7 .../node_modules/@prisma/client postinstall: Done
+#20 153.2
+#20 153.2 dependencies:
+#20 153.2 + @prisma/client 6.19.3
+#20 153.2
+#20 153.2 devDependencies:
+#20 153.2 + pnpm 11.9.0
+#20 153.2 + prisma 6.19.3
+#20 153.2
+#20 153.3 Done in 2m 15.3s using pnpm v11.9.0
+#20 DONE 153.7s
+
+#21 [build 14/16] RUN corepack pnpm prisma:generate
+#21 1.108 $ corepack pnpm exec prisma generate
+#21 2.658 Prisma schema loaded from prisma/schema.prisma
+#21 3.328
+#21 3.328 ✔ Generated Prisma Client (v6.19.3) to ./node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 346ms
+#21 3.328
+#21 3.328 Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#21 3.328
+#21 3.328 Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+#21 3.328
+#21 DONE 3.4s
+
+#22 [build 15/16] RUN corepack pnpm --filter @douyin-local-life/shared --filter @douyin-local-life/llm --filter @douyin-local-life/decision-engine --filter @douyin-local-life/diagnosis-skills build
+#22 0.901 Scope: 4 of 6 workspace projects
+#22 0.913 packages/shared build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+#22 7.112 packages/shared build: Done
+#22 7.114 packages/llm build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+#22 7.115 packages/decision-engine build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+#22 7.117 packages/diagnosis-skills build$ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+#22 12.98 packages/llm build: Done
+#22 13.25 packages/diagnosis-skills build: Done
+#22 13.44 packages/decision-engine build: Done
+#22 DONE 13.5s
+
+#23 [build 16/16] RUN corepack pnpm --filter @douyin-local-life/api build
+#23 0.957 $ node ../../tools/clean-dist.mjs dist && tsc -p tsconfig.json
+#23 DONE 11.3s
+
+#24 [runtime  5/25] COPY --from=build --chown=app:app /app/node_modules ./node_modules
+#24 DONE 3.1s
+
+#25 [runtime  6/25] COPY --from=build --chown=app:app /app/package.json ./package.json
+#25 DONE 0.1s
+
+#26 [runtime  7/25] COPY --from=build --chown=app:app /app/pnpm-lock.yaml ./pnpm-lock.yaml
+#26 DONE 0.0s
+
+#27 [runtime  8/25] COPY --from=build --chown=app:app /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+#27 DONE 0.1s
+
+#28 [runtime  9/25] COPY --from=build --chown=app:app /app/prisma ./prisma
+#28 DONE 0.1s
+
+#29 [runtime 10/25] COPY --from=build --chown=app:app /app/apps/api/package.json ./apps/api/package.json
+#29 DONE 0.1s
+
+#30 [runtime 11/25] COPY --from=build --chown=app:app /app/apps/api/node_modules ./apps/api/node_modules
+#30 DONE 0.1s
+
+#31 [runtime 12/25] COPY --from=build --chown=app:app /app/apps/api/dist ./apps/api/dist
+#31 DONE 0.1s
+
+#32 [runtime 13/25] COPY --from=build --chown=app:app /app/packages/shared/package.json ./packages/shared/package.json
+#32 DONE 0.0s
+
+#33 [runtime 14/25] COPY --from=build --chown=app:app /app/packages/shared/node_modules ./packages/shared/node_modules
+#33 DONE 0.1s
+
+#34 [runtime 15/25] COPY --from=build --chown=app:app /app/packages/shared/dist ./packages/shared/dist
+#34 DONE 0.1s
+
+#35 [runtime 16/25] COPY --from=build --chown=app:app /app/packages/llm/package.json ./packages/llm/package.json
+#35 DONE 0.1s
+
+#36 [runtime 17/25] COPY --from=build --chown=app:app /app/packages/llm/node_modules ./packages/llm/node_modules
+#36 DONE 0.1s
+
+#37 [runtime 18/25] COPY --from=build --chown=app:app /app/packages/llm/dist ./packages/llm/dist
+#37 DONE 0.1s
+
+#38 [runtime 19/25] COPY --from=build --chown=app:app /app/packages/decision-engine/package.json ./packages/decision-engine/package.json
+#38 DONE 0.1s
+
+#39 [runtime 20/25] COPY --from=build --chown=app:app /app/packages/decision-engine/node_modules ./packages/decision-engine/node_modules
+#39 DONE 0.1s
+
+#40 [runtime 21/25] COPY --from=build --chown=app:app /app/packages/decision-engine/dist ./packages/decision-engine/dist
+#40 DONE 0.1s
+
+#41 [runtime 22/25] COPY --from=build --chown=app:app /app/packages/diagnosis-skills/package.json ./packages/diagnosis-skills/package.json
+#41 DONE 0.1s
+
+#42 [runtime 23/25] COPY --from=build --chown=app:app /app/packages/diagnosis-skills/node_modules ./packages/diagnosis-skills/node_modules
+#42 DONE 0.1s
+
+#43 [runtime 24/25] COPY --from=build --chown=app:app /app/packages/diagnosis-skills/dist ./packages/diagnosis-skills/dist
+#43 DONE 0.1s
+
+#44 [runtime 25/25] RUN node -e "import('./apps/api/dist/server.js')"
+#44 DONE 0.7s
+
+#45 exporting to image
+#45 exporting layers
+#45 exporting layers 2.2s done
+#45 writing image sha256:1355e5bab4f2b07bf58676e6cd30348621a52c72e445c42a816f005342079f91 done
+#45 naming to docker.io/library/pxxis-api:diagnosis-uncertainty-v23-20260906 done
+#45 DONE 2.2s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/qd1twcef95w156u1p3zi7hoos

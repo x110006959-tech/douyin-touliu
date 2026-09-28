@@ -745,6 +745,7 @@ export type CaptureSummaryMetricDTO = {
   displayValue: string | null;
   originalValue: string | null;
   metricUnit: string | null;
+  semanticScope?: string | null;
   category: MetricCategory;
   confidence: number;
   metricSource: MetricSource;
@@ -1581,14 +1582,7 @@ export const updateCollectionTaskStatusSchema = z.object({
   status: z.enum(collectionTaskStatuses)
 });
 
-export const authLoginSchema = z.object({
-  email: z.string().trim().toLowerCase().email("请输入有效邮箱").max(128, "邮箱不能超过 128 个字符"),
-  password: z.string().min(6, "密码至少 6 位").max(128, "密码不能超过 128 位")
-});
-
-export const authRegisterSchema = authLoginSchema.extend({
-  name: z.string().trim().min(1, "请输入姓名").max(100, "姓名不能超过 100 个字").optional()
-});
+export { authLoginSchema, authRegisterSchema, normalizePhoneNumber } from "./auth-schemas.js";
 
 export const emailVerificationConfirmSchema = z.object({
   token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "验证链接无效或已过期")

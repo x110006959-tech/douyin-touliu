@@ -137,12 +137,15 @@ export function buildDecisionInput(task: {
   const reviewSnapshots = selectedSnapshots.filter((snapshot) => !realtimeCoveredRoutes.has(normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)));
   const selectedSnapshotIds = new Set(reviewSnapshots.map((snapshot) => snapshot.id));
   const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
+  const ignoredNormalizedMetricIds = new Set(latestReviewedMetrics
+    .filter((metric) => metric.reviewStatus === "IGNORED" && metric.normalizedMetricId)
+    .map((metric) => metric.normalizedMetricId as string));
   const usableReviewedMetrics = selectedReviewedMetrics(latestReviewedMetrics);
   const hasPendingMetrics = latestReviewedMetrics.some((metric) => metric.reviewStatus === "PENDING");
   const tableReview = assessTableReviewState(reviewSnapshots);
   const hasUsableTableCells = tableReview.confirmedCount + tableReview.modifiedCount > 0;
-  const hasUntrustedEvidence = reviewSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
-    || latestReviewedMetrics.some((metric) => !isConfirmableMetricEvidence(metric.rawEvidence));
+  const hasUntrustedEvidence = reviewSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot, ignoredNormalizedMetricIds))
+    || latestReviewedMetrics.some((metric) => metric.reviewStatus !== "IGNORED" && !isConfirmableMetricEvidence(metric.rawEvidence));
   const useReviewedEvidence = (usableReviewedMetrics.length > 0 || hasUsableTableCells)
     && !hasPendingMetrics
     && tableReview.pendingCount === 0
@@ -230,19 +233,28 @@ export function hasUntrustedCurrentEvidence(task: {
     localCollectedAt?: Date;
     createdAt?: Date;
     rawTableData: Prisma.JsonValue | null;
-    normalizedMetrics: Array<{ rawEvidence?: Prisma.JsonValue | null }>;
+    normalizedMetrics: Array<{ id: string; rawEvidence?: Prisma.JsonValue | null }>;
     captureMetaJson?: Prisma.JsonValue | null;
   }>;
-  reviewedMetrics?: Array<{ snapshotId: string | null; rawEvidence: Prisma.JsonValue | null }>;
+  reviewedMetrics?: Array<{
+    snapshotId: string | null;
+    normalizedMetricId: string | null;
+    rawEvidence: Prisma.JsonValue | null;
+    reviewStatus: "PENDING" | "CONFIRMED" | "MODIFIED" | "IGNORED";
+  }>;
   collectionRuns?: Array<{ id: string }>;
 }, options: { coveredRoutes?: Set<string> } = {}) {
   const selectedSnapshots = selectFreshVerifiedSnapshots(task.snapshots, task.collectionRuns?.[0]?.id)
     .filter((snapshot) => !options.coveredRoutes?.has(normalizeCollectionRouteKey(snapshot.routeKey || snapshot.pageType)));
   const selectedSnapshotIds = new Set(selectedSnapshots.map((snapshot) => snapshot.id));
-  return selectedSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot))
-    || (task.reviewedMetrics || []).some((metric) => (
+  const latestReviewedMetrics = (task.reviewedMetrics || []).filter((metric) => metric.snapshotId && selectedSnapshotIds.has(metric.snapshotId));
+  const ignoredNormalizedMetricIds = new Set(latestReviewedMetrics
+    .filter((metric) => metric.reviewStatus === "IGNORED" && metric.normalizedMetricId)
+    .map((metric) => metric.normalizedMetricId as string));
+  return selectedSnapshots.some((snapshot) => hasUntrustedSnapshotEvidence(snapshot, ignoredNormalizedMetricIds))
+    || latestReviewedMetrics.some((metric) => (
       metric.snapshotId !== null
-      && selectedSnapshotIds.has(metric.snapshotId)
+      && metric.reviewStatus !== "IGNORED"
       && !isConfirmableMetricEvidence(metric.rawEvidence)
     ));
 }
@@ -264,10 +276,13 @@ function selectFreshVerifiedSnapshots<T extends {
 
 function hasUntrustedSnapshotEvidence(snapshot: {
   rawTableData: Prisma.JsonValue | null;
-  normalizedMetrics: Array<{ rawEvidence?: Prisma.JsonValue | null }>;
+  normalizedMetrics: Array<{ id: string; rawEvidence?: Prisma.JsonValue | null }>;
   captureMetaJson?: Prisma.JsonValue | null;
-}) {
-  return snapshot.normalizedMetrics.some((metric) => !isConfirmableMetricEvidence(metric.rawEvidence))
+}, ignoredNormalizedMetricIds: ReadonlySet<string> = new Set()) {
+  return snapshot.normalizedMetrics.some((metric) => (
+    !ignoredNormalizedMetricIds.has(metric.id)
+    && !isConfirmableMetricEvidence(metric.rawEvidence)
+  ))
     || hasUntrustedTableBinding(snapshot.rawTableData, snapshot.captureMetaJson);
 }
 

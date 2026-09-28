@@ -37,6 +37,7 @@ import { getTaskWizardProgress } from "@/lib/task-progress";
 import { subscribeRealtimeMetricStream, usableRealtimeMetrics, type RealtimeMetricStreamStatus } from "@/lib/realtime-metric-stream";
 import { DiagnosisComparison } from "./diagnosis-comparison";
 import { DiagnosisBusinessSummary } from "./diagnosis-business-summary";
+import { CollectionTutorial } from "./collection-tutorial";
 import type { DecisionPreview, DecisionRun } from "./task-types";
 import { useExtensionTaskStatus, type WebBridgeUiState } from "./use-extension-task-status";
 import { useTaskData } from "./use-task-data";
@@ -439,6 +440,8 @@ export default function TaskDetailPage() {
           </div>
         </Card>
       ) : null}
+
+      <CollectionTutorial />
 
       {extensionConnected || hasCapture ? (
         <Card className="mb-4 border-primary/40">

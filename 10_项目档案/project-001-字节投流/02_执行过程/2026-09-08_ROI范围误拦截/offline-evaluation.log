@@ -1,0 +1,2537 @@
+[WARN] Your node_modules are out of sync with your lockfile. The workspace structure has changed since last install
+$ corepack pnpm --filter @douyin-local-life/api diagnosis:eval:fake
+$ tsx src/diagnosis-eval-cli.ts
+{
+  "mode": "fake",
+  "skillSetVersion": "managed-live-growth-skills-v11",
+  "synthetic": {
+    "total": 24,
+    "structurePassed": 24,
+    "structurePassRate": 1,
+    "mainProblemHits": 24,
+    "mainProblemHitRate": 1,
+    "hallucinatedEvidence": 0,
+    "safetyViolations": 0,
+    "factsAvailable": 24,
+    "groundedConclusions": 24,
+    "policyAccepted": 24,
+    "policyRejected": 0,
+    "partialFailureFactsPreserved": 0,
+    "details": [
+      {
+        "id": "healthy-1",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": "HEALTHY",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 10,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "healthy-2",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": "HEALTHY",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "healthy-3",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": "HEALTHY",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "healthy-4",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": "HEALTHY",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "traffic-1",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": "TRAFFIC",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "traffic-2",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": "TRAFFIC",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "traffic-3",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": "TRAFFIC",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "traffic-4",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": "TRAFFIC",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "live_room-1",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": "LIVE_ROOM",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "live_room-2",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": "LIVE_ROOM",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "live_room-3",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": "LIVE_ROOM",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "live_room-4",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": "LIVE_ROOM",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "product-1",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": "PRODUCT",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "product-2",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": "PRODUCT",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "product-3",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": "PRODUCT",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "product-4",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": "PRODUCT",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "delivery_roi-1",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": "DELIVERY_ROI",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "delivery_roi-2",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": "DELIVERY_ROI",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "delivery_roi-3",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": "DELIVERY_ROI",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "delivery_roi-4",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": "DELIVERY_ROI",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "data_conflict_safety-1",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": "DATA_READINESS",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "data_conflict_safety-2",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": "DATA_READINESS",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "data_conflict_safety-3",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": "DATA_READINESS",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      },
+      {
+        "id": "data_conflict_safety-4",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": "DATA_READINESS",
+        "structurePassed": true,
+        "mainProblemHit": true,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": true,
+        "policyAccepted": 1,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": null
+      }
+    ]
+  },
+  "partialFailure": {
+    "total": 24,
+    "structurePassed": 0,
+    "structurePassRate": 0,
+    "mainProblemHits": 0,
+    "mainProblemHitRate": 0,
+    "hallucinatedEvidence": 0,
+    "safetyViolations": 0,
+    "factsAvailable": 24,
+    "groundedConclusions": 0,
+    "policyAccepted": 0,
+    "policyRejected": 0,
+    "partialFailureFactsPreserved": 24,
+    "details": [
+      {
+        "id": "healthy-1",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "healthy-2",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "healthy-3",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "healthy-4",
+        "expectedMainProblemTag": "HEALTHY",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "traffic-1",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "traffic-2",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "traffic-3",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "traffic-4",
+        "expectedMainProblemTag": "TRAFFIC",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "live_room-1",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "live_room-2",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "live_room-3",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "live_room-4",
+        "expectedMainProblemTag": "LIVE_ROOM",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "product-1",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "product-2",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "product-3",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "product-4",
+        "expectedMainProblemTag": "PRODUCT",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "delivery_roi-1",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "delivery_roi-2",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "delivery_roi-3",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "delivery_roi-4",
+        "expectedMainProblemTag": "DELIVERY_ROI",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "data_conflict_safety-1",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "data_conflict_safety-2",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "data_conflict_safety-3",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 1,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      },
+      {
+        "id": "data_conflict_safety-4",
+        "expectedMainProblemTag": "DATA_READINESS",
+        "actualMainProblemTag": null,
+        "structurePassed": false,
+        "mainProblemHit": false,
+        "hallucinatedEvidence": 0,
+        "safetyViolations": 0,
+        "factsAvailable": true,
+        "conclusionGrounded": false,
+        "policyAccepted": 0,
+        "policyRejected": 0,
+        "skillExecutions": [
+          {
+            "skillId": "audit_data_readiness",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_traffic_acquisition",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_live_room_conversion",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          },
+          {
+            "skillId": "diagnose_product_structure",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_delivery_units",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 20
+          },
+          {
+            "skillId": "diagnose_activity_and_compliance",
+            "status": "SUCCEEDED",
+            "durationMs": 0,
+            "totalTokens": 0
+          }
+        ],
+        "error": "OFFLINE_SYNTHESIS_FAILURE"
+      }
+    ]
+  },
+  "eligibleCases": null,
+  "eligibleCaseCount": 0
+}

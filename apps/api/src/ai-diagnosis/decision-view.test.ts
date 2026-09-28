@@ -20,6 +20,51 @@ describe("diagnosis decision view", () => {
     expect(view?.analysis[0]?.conflictingFacts[0]).toContain(metrics[1]!.label);
   });
 
+  it("falls back to server-grounded insights when the model returns only generic hypotheses", () => {
+    const base = syntheticDiagnosisCases[0]!.input;
+    const input = {
+      ...base,
+      metrics: [
+        {
+          key: "full_domain_gmv",
+          name: "全域成交金额",
+          value: 119_785.4,
+          source: "network",
+          confidence: 1,
+          rawEvidence: { sourceType: "test", routeKey: "LOCAL_PROMOTION_DASHBOARD", semanticScope: "FULL_DOMAIN" }
+        },
+        {
+          key: "spend",
+          name: "全域消耗",
+          value: 1_912.77,
+          source: "network",
+          confidence: 1,
+          rawEvidence: { sourceType: "test", routeKey: "LOCAL_PROMOTION_DASHBOARD", semanticScope: "FULL_DOMAIN" }
+        },
+        {
+          key: "full_domain_pay_roi",
+          name: "全域支付 ROI",
+          value: 62.62,
+          source: "network",
+          confidence: 1,
+          rawEvidence: { sourceType: "test", routeKey: "LOCAL_PROMOTION_DASHBOARD", semanticScope: "FULL_DOMAIN" }
+        }
+      ]
+    };
+    const result = minimalResult();
+    const evidence = buildDiagnosisEvidenceCatalog(input);
+    result.mainProblemTag = determineMainProblemTag(buildDeterministicDiagnosticSignals(evidence, input));
+    result.hypotheses = [];
+
+    const view = buildDiagnosisDecisionView(input, result, []);
+
+    expect(view?.analysis[0]).toMatchObject({
+      title: "全域投放投入产出已确认",
+      conclusion: expect.stringContaining("62.62")
+    });
+    expect(view?.analysis[0]?.missingEvidence[0]).toContain("自然或商业流量");
+  });
+
   it.each(["missing-reference", "policy-only", "adjustment", "benchmark", "unreviewed"])("does not expose %s as an actionable analysis", (kind) => {
     const input = { ...syntheticDiagnosisCases[0]!.input };
     const evidence = buildDiagnosisEvidenceCatalog(input);

@@ -1,0 +1,47 @@
+{"path":"/ready","status":200}
+{"path":"/version","status":200}
+{"path":"/login","status":200}
+file:///app/apps/web/[eval1]:2
+const markers=['浜嬪疄宸茬‘璁わ紝AI 寤鸿鏈畬鎴?,'鐩爣鏄惁杈炬垚','瓒嬪娍鑳藉惁鍒ゆ柇','鍘熷洜鏄惁纭','鏈€杩戜袱涓畬鏁?15 鍒嗛挓绐楀彛'];
+                                      ^
+
+SyntaxError: Unexpected identifier '鐩'
+    at compileSourceTextModule (node:internal/modules/esm/utils:346:16)
+    at ModuleLoader.createModuleWrap (node:internal/modules/esm/loader:266:12)
+    at ModuleLoader.eval (node:internal/modules/esm/loader:306:23)
+    at node:internal/process/execution:73:24
+    at asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:11)
+    at Object.runEntryPointWithESMLoader (node:internal/modules/run_main:139:19)
+    at evalModuleEntryPoint (node:internal/process/execution:72:47)
+    at node:internal/main/eval_string:38:3
+
+Node.js v22.23.2
+2026-09-06 09:20:29.822 UTC [55] LOG:  shutting down
+2026-09-06 09:20:30.037 UTC [1] LOG:  starting PostgreSQL 16.14 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-09-06 09:20:29.826 UTC [55] LOG:  checkpoint starting: shutdown immediate
+2026-09-06 09:20:29.966 UTC [55] LOG:  checkpoint complete: wrote 926 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.021 s, sync=0.108 s, total=0.144 s; sync files=301, longest=0.008 s, average=0.001 s; distance=4283 kB, estimate=4283 kB; lsn=0/1925CD8, redo lsn=0/1925CD8
+2026-09-06 09:20:29.974 UTC [54] LOG:  database system is shut down
+ done
+server stopped
+
+PostgreSQL init process complete; ready for start up.
+
+2026-09-06 09:20:30.037 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-09-06 09:20:30.037 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-09-06 09:20:30.045 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-09-06 09:20:30.052 UTC [70] LOG:  database system was shut down at 2026-09-06 09:20:29 UTC
+2026-09-06 09:20:30.059 UTC [1] LOG:  database system is ready to accept connections
+▲ Next.js 16.3.0
+⚠ Warning: Next.js ignored pnpm-workspace.yaml in /app because it would include your home directory (/app).
+ To use this directory, set `outputFileTracingRoot` in your Next.js config.
+
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+✓ Ready in 611ms
+✓ Running next.config.ts took 347ms
+Candidate Docker operation failed: exec
+At C:\Users\Admin\Documents\字节投流\tools\verify-diagnosis-closure-candidate.ps1:15 char:30
++ ... DE -ne 0) { throw "Candidate Docker operation failed: $($Arguments[0] ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Candidate Docker operation failed: exec:String) [], RuntimeException
+    + FullyQualifiedErrorId : Candidate Docker operation failed: exec

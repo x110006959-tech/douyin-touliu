@@ -1,6 +1,8 @@
 import { extensionBridgeProtocolVersion } from "@douyin-local-life/shared";
 
 const bridgeWindowMessageChannel = "PXXIS_EXTENSION_BRIDGE";
+const bridgeTaskIdPattern = /^[A-Za-z0-9_-]{1,64}$/;
+const bridgeConnectionSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type BridgeWindowMessageType = "READY" | "PING" | "REQUEST" | "RESPONSE";
 type BridgeWindowMessage = { channel: typeof bridgeWindowMessageChannel; type: BridgeWindowMessageType; payload?: unknown };
 
@@ -122,15 +124,16 @@ function parseBridgeWindowMessage(value: unknown): BridgeWindowMessage | null {
   }
 }
 
-function parseBridgeResponse(value: unknown): WebExtensionBridgeResponse | null {
+export function parseBridgeResponse(value: unknown): WebExtensionBridgeResponse | null {
   if (!value || typeof value !== "object") return null;
   const response = value as Partial<WebExtensionBridgeResponse>;
   if (typeof response.requestId !== "string" || typeof response.ok !== "boolean") return null;
   if (response.protocolVersion !== extensionBridgeProtocolVersion || typeof response.extensionVersion !== "string" || !response.extensionVersion.trim()) return null;
   if (typeof response.buildFingerprint !== "string" || typeof response.paired !== "boolean") return null;
-  if (response.connectionSessionId !== null && (typeof response.connectionSessionId !== "string" || !/^[a-f0-9-]{36}$/i.test(response.connectionSessionId))) return null;
+  if (response.connectionSessionId !== null && (typeof response.connectionSessionId !== "string" || !bridgeConnectionSessionIdPattern.test(response.connectionSessionId))) return null;
   if (typeof response.pendingConfirmation !== "boolean" || typeof response.message !== "string") return null;
-  if (response.boundTaskId !== null && typeof response.boundTaskId !== "string") return null;
+  if (response.message.length > 200) return null;
+  if (response.boundTaskId !== null && (typeof response.boundTaskId !== "string" || !bridgeTaskIdPattern.test(response.boundTaskId))) return null;
   if (response.errorCode !== null && typeof response.errorCode !== "string") return null;
   return response as WebExtensionBridgeResponse;
 }

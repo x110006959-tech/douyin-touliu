@@ -187,6 +187,7 @@ function projectMetrics(endpoint: LiveScreenInternalApiEndpointKey, data: Record
       value: parsedValue.normalizedText,
       displayValue,
       unit: field.unit,
+      unitSource: evidence.unitSource,
       timeRange: field.timeRange,
       displayPrecision: field.displayPrecision,
       fieldPath,
