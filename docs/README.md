@@ -11,6 +11,7 @@
 | `CODEX_HANDOFF.md` | 下一位执行者 | 当前交接入口、待继续事项 |
 | `PROJECT_STATE.md` | 项目管理和执行者 | 当前版本、能力、完成度 |
 | `DEPLOYMENT_STATE.md` | 运维和后续执行者 | 当前运行态、环境与回退位置 |
+| `PRODUCTION_DEPLOYMENT.md` | 首次上线执行者 | 腾讯云服务器生产部署步骤 |
 | `DECISION_LOG.md` | 架构与产品决策参考 | 最近决策和完整历史入口 |
 | `SAFETY_BOUNDARY.md` | 所有执行者 | 永久安全边界 |
 | `ARCHITECTURE.md` | 开发与审查 | 分层、依赖方向和禁止边界 |

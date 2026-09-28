@@ -13,20 +13,22 @@
 
 ## 本轮最高优先级
 
-1. 完成文档治理和归档，不改写历史内容。
-2. 完成确定性代码索引与边界校验。
-3. 完成已知超大文件的低风险拆分，并分别回归 API、Web、Extension 测试。
+1. 完成腾讯云生产部署准备，输出可复制的服务器上线步骤。
+2. 让 `www.pxxis.cn` 与 `api.pxxis.cn` 通过 Caddy HTTPS 反向代理接入现有 Web/API 容器。
+3. 服务器上线前补齐腾讯云安全组、DNS、SMTP 和生产环境变量，并先在本机完成配置校验。
 
-> 本轮代码与文档治理及本机部署已完成；剩余真实 AI 质量验收和 Chrome 插件页面验收仍需用户显式发起。
+> 生产部署配置与上线步骤已在本机准备完成；服务器、DNS 和 HTTPS 证书尚未实际执行，也未切换正式流量。
 
 ## 阻塞项
 
-- 真实 AI 分析质量验收需要用户在新运行态下显式发起真实诊断。
-- 真实 Chrome 插件页面验收需要用户手动重载本地解包扩展。
-- 本轮不执行生产部署、数据库迁移或业务数据写入。
+- 需要腾讯云服务器公网 IP、安全组放行 80/443，并完成 `www` / `api` DNS A 记录。
+- 需要可用的 TLS SMTP 邮箱配置；否则注册邮箱验证无法投递。
+- 需要把本机新增的生产部署文件同步到服务器或 GitHub 后，再执行服务器部署。
+- 真实 AI 分析质量和 Chrome 插件页面验收仍需用户显式发起。
 
 ## 最近一次变更
 
+- `2026-09-29`：新增 `docker-compose.prod.yml`、`deploy/Caddyfile` 和 `deploy/env.production.example`，并完成 Compose 与 Caddy 配置校验；尚未在腾讯云服务器执行部署。
 - `2026-09-29`：将当前工作树提交并推送到 GitHub；全仓 `typecheck`、`test`、`build`、`lint`、`version:check`、`docs:verify` 和 Prisma validate 通过，敏感本机环境与代码图谱未提交。
 - `2026-09-20`：完成项目文档与代码边界治理，并把本机 API/Worker/Web 切换到 `code-boundaries-v33-20260920`；`runtime:verify` 通过，旧应用容器已清理。
 

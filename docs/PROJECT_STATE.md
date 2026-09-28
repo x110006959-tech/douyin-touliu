@@ -11,6 +11,7 @@
 - 当前运行态：本机 API/Worker/Web 为 `code-boundaries-v33-20260920`
 - 工程治理：仓库内确定性代码索引、代码所有权矩阵、架构门禁和文档归档入口已建立；`docs/CODE_INDEX.md`、`docs/ARCHITECTURE.md`、`docs/CODE_OWNERSHIP.md` 由 `pnpm code:index` 生成并参与边界校验。
 - GitHub 同步：`main` 分支已于 `2026-09-29` 同步当前工作树。
+- 生产部署准备：`docker-compose.prod.yml`、`deploy/Caddyfile`、`deploy/env.production.example` 已就绪；尚未在腾讯云服务器执行部署。
 
 ## 能力边界
 

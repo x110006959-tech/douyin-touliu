@@ -16,12 +16,14 @@
 - 当前本机运行态为 `2026-09-20` 的 `code-boundaries-v33-20260920`。
 - 本轮文档治理、代码索引、超大文件拆分与本机部署已完成；不迁移、不改变 API/Schema/采集协议。
 - `2026-09-29` 已将当前工作树提交并推送到 GitHub；本机运行态未因本次上传切换。
+- 生产部署准备新增 `docker-compose.prod.yml`、`deploy/Caddyfile`、`deploy/env.production.example`；Compose 与 Caddy 校验通过，尚未在腾讯云执行。
 
 ## 待继续事项
 
 - 已通过全仓 `typecheck`、`build`、API/Web/Extension 测试、`lint`、`version:check`、Prisma validate、`docs:verify`、`git diff --check` 和 `runtime:verify`。
 - 本轮 Git 上传已完成；敏感本机环境文件与代码图谱未提交。
 - 待用户显式完成真实 AI 分析质量验收和 Chrome 插件页面验收。
+- 腾讯云上线前仍需准备服务器公网 IP、DNS、安全组、TLS SMTP 和生产 `.env`，然后同步部署文件并在服务器执行 `docker compose up`。
 
 ## 历史入口
 

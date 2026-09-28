@@ -1,0 +1,27 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    init: true
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:?CADDY_ACME_EMAIL is required}
+      WEB_DOMAIN: ${WEB_DOMAIN:-www.pxxis.cn}
+      API_DOMAIN: ${API_DOMAIN:-api.pxxis.cn}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    networks:
+      - backend
+
+volumes:
+  caddy-data:
+  caddy-config:

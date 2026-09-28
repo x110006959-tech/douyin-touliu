@@ -1,0 +1,13 @@
+{
+	email {$CADDY_ACME_EMAIL}
+}
+
+{$WEB_DOMAIN:www.pxxis.cn} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN:api.pxxis.cn} {
+	encode zstd gzip
+	reverse_proxy api:4000
+}

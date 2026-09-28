@@ -10,6 +10,14 @@
 - Schema：`20260731_v035_ai_skill_diagnosis`
 - 最近一次切换：`2026-09-20` 项目文档与代码边界治理部署
 
+## 生产部署准备
+
+- 新增 `docker-compose.prod.yml`：在现有 Compose 基础上增加 Caddy 反向代理。
+- 新增 `deploy/Caddyfile`：`www.pxxis.cn` 转发 Web `3000`，`api.pxxis.cn` 转发 API `4000`，自动申请 HTTPS。
+- 新增 `deploy/env.production.example`：生产环境变量模板，含 Postgres、安全密钥、域名、SMTP 和功能开关占位符。
+- 本机校验：`docker compose ... config --quiet` 通过，Caddy 官方镜像 `caddy validate` 返回 `Valid configuration`。
+- 腾讯云服务器部署尚未执行；公网域名、DNS、HTTPS 证书和 SMTP 尚未配置。
+
 ## 部署边界
 
 - 本轮治理任务已按用户明确要求完成本机容器切换；未执行生产部署、数据库迁移或业务数据写入。
